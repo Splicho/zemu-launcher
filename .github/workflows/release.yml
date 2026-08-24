@@ -1,0 +1,85 @@
+name: Release Launcher
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: launcher-windows-x64
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Verify tag matches launcher version
+        run: node scripts/assert-release-tag.cjs "${{ github.ref_name }}"
+
+      - name: Sync generated launcher metadata
+        run: pnpm run sync:launcher-config
+
+      - name: Download FreeArc unarc.exe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = Join-Path $env:RUNNER_TEMP 'freearc'
+          if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+          $zipPath = Join-Path $env:RUNNER_TEMP 'freearc.zip'
+          Write-Host "Downloading FreeArc..."
+          Invoke-WebRequest -Uri 'https://sourceforge.net/projects/freearc/files/FreeArc/0.666/freeArc-0.666-windows.zip/download' -OutFile $zipPath
+          Expand-Archive -Path $zipPath -DestinationPath $dest -Force
+          $unarc = Get-ChildItem -Path $dest -Recurse -Filter 'unarc.exe' | Select-Object -First 1
+          if (-not $unarc) { throw 'unarc.exe not found in FreeArc archive' }
+          New-Item -ItemType Directory -Path 'assets\bin' -Force | Out-Null
+          Copy-Item $unarc.FullName 'assets\bin\unarc.exe' -Force
+          Write-Host "Installed unarc.exe to assets\bin\"
+
+      - name: Build and publish release artifacts
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.PUBLIC_RELEASES_REPO_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: .
+          tauriScript: pnpm tauri
+          args: --bundles nsis
+          owner: zemu-uk
+          repo: zemu-launcher-releases
+          releaseCommitish: main
+          tagName: ${{ github.ref_name }}
+          releaseName: Zemu Launcher ${{ github.ref_name }}
+          releaseDraft: false
+          prerelease: false
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true

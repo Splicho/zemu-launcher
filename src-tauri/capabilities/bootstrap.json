@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "bootstrap",
+  "description": "enables updater access on the bootstrap window",
+  "windows": [
+    "bootstrap"
+  ],
+  "permissions": [
+    "core:default",
+    "updater:default"
+  ]
+}

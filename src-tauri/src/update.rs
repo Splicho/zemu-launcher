@@ -1,0 +1,1276 @@
+use crate::debug_log;
+use crate::models::{
+    CommandResult, FileProgress, FileUpdateItem, FolderManifestEntry, FolderProgress,
+    UpdateCheckResult, UpdateStatus, VersionManifest,
+};
+use crate::state::AppState;
+use crate::storage::{detect_public_update_base_url, save_version_cache};
+use anyhow::{anyhow, Context, Result};
+use futures_util::StreamExt;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::fs;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::Instant;
+use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
+use walkdir::WalkDir;
+
+const TEMP_DIR_NAME: &str = "zemu-updates";
+
+#[derive(Clone)]
+struct UpdateClient {
+    base_url: String,
+    http: reqwest::Client,
+}
+
+impl UpdateClient {
+    fn new(base_url: String) -> Self {
+        Self {
+            base_url: base_url.trim_end_matches('/').to_string(),
+            http: reqwest::Client::new(),
+        }
+    }
+
+    async fn get_version_manifest(&self) -> Result<VersionManifest> {
+        let url = format!("{}/version.json", self.base_url);
+        let response = self.http.get(url).send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "failed fetching version manifest: {}",
+                response.status()
+            ));
+        }
+
+        let manifest = response.json::<VersionManifest>().await?;
+        Ok(manifest)
+    }
+
+    fn folder_download_path(&self, folder_name: &str, version: &str) -> String {
+        format!("{}/{folder_name}-{version}.arc", folder_name)
+    }
+
+    fn file_download_path(&self, file_path: &str) -> String {
+        format!("{file_path}.arc")
+    }
+
+    async fn download(
+        &self,
+        relative_path: &str,
+        mut on_progress: impl FnMut(u64, u64, Option<f64>),
+        cancel_check: impl Fn() -> bool,
+    ) -> Result<Vec<u8>> {
+        let clean_path = relative_path.trim_start_matches('/');
+        let url = format!("{}/{}", self.base_url, clean_path);
+
+        let response = self.http.get(url).send().await?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(anyhow!("not found: {}", relative_path));
+        }
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "download failed for {relative_path}: {}",
+                response.status()
+            ));
+        }
+
+        let total = response.content_length().unwrap_or(0);
+        let mut stream = response.bytes_stream();
+        let mut buffer = Vec::new();
+        let mut loaded = 0_u64;
+        let started_at = Instant::now();
+
+        while let Some(next) = stream.next().await {
+            if cancel_check() {
+                return Err(anyhow!("Update cancelled by user"));
+            }
+
+            let chunk = next?;
+            loaded += chunk.len() as u64;
+            buffer.extend_from_slice(&chunk);
+
+            let elapsed = started_at.elapsed().as_secs_f64();
+            let speed = if elapsed > 0.0 {
+                Some((loaded as f64) / elapsed)
+            } else {
+                None
+            };
+
+            on_progress(loaded, total, speed);
+        }
+
+        Ok(buffer)
+    }
+}
+
+pub async fn check_for_updates(
+    app: &AppHandle,
+    game_directory: String,
+) -> Result<UpdateCheckResult> {
+    if game_directory.trim().is_empty() {
+        return Err(anyhow!("Game directory is required to check for updates"));
+    }
+    let _ = debug_log::append(
+        app,
+        "update",
+        &format!("check_for_updates start game_directory={game_directory}"),
+    );
+
+    let base_url = detect_public_update_base_url(app)?.ok_or_else(|| {
+        anyhow!("Update service is not configured. Set updateBaseUrl in update-config.json.")
+    })?;
+    let _ = debug_log::append(
+        app,
+        "update",
+        &format!("check_for_updates base_url={base_url}"),
+    );
+    let client = UpdateClient::new(base_url);
+    let remote_manifest = match client.get_version_manifest().await {
+        Ok(manifest) => manifest,
+        Err(err) => {
+            let _ = debug_log::append(
+                app,
+                "update",
+                &format!("check_for_updates manifest_fetch_error={err}"),
+            );
+            return Err(err);
+        }
+    };
+
+    let is_file_level = uses_file_level_manifest(&remote_manifest);
+    let local_version = load_local_manifest(&game_directory)?;
+    let _ = debug_log::append(
+        app,
+        "update",
+        &format!(
+            "check_for_updates manifest version={} build={} folders={} file_level={} local_manifest_present={}",
+            remote_manifest.version,
+            remote_manifest.build,
+            remote_manifest.folders.len(),
+            is_file_level,
+            local_version.is_some()
+        ),
+    );
+
+    if local_version.is_none() {
+        if is_file_level {
+            let _ = debug_log::append(
+                app,
+                "update",
+                "check_for_updates local_manifest_missing=true verify_on_disk=true",
+            );
+
+            let files = get_files_to_update(&remote_manifest, None, &game_directory, true)?;
+
+            if files.is_empty() {
+                if let Err(error) =
+                    persist_installed_manifest(app, &game_directory, &remote_manifest)
+                {
+                    let _ = debug_log::append(
+                        app,
+                        "update",
+                        &format!(
+                            "check_for_updates persist_manifest_on_match_failed error={error}"
+                        ),
+                    );
+                } else {
+                    let _ = debug_log::append(
+                        app,
+                        "update",
+                        "check_for_updates persisted_manifest_on_full_match=true",
+                    );
+                }
+            }
+
+            let result = UpdateCheckResult {
+                has_update: !files.is_empty(),
+                current_version: None,
+                latest_version: Some(remote_manifest.version.clone()),
+                folders_to_update: None,
+                files_to_update: Some(files),
+                is_file_level: Some(true),
+            };
+            let _ = debug_log::append(
+                app,
+                "update",
+                &format!(
+                    "check_for_updates result has_update={} files_to_update={}",
+                    result.has_update,
+                    result
+                        .files_to_update
+                        .as_ref()
+                        .map(|items| items.len())
+                        .unwrap_or(0)
+                ),
+            );
+            return Ok(result);
+        }
+
+        let result = UpdateCheckResult {
+            has_update: true,
+            current_version: None,
+            latest_version: Some(remote_manifest.version.clone()),
+            folders_to_update: Some(remote_manifest.folders.keys().cloned().collect()),
+            files_to_update: None,
+            is_file_level: Some(false),
+        };
+        let _ = debug_log::append(
+            app,
+            "update",
+            &format!(
+                "check_for_updates result has_update={} folders_to_update={}",
+                result.has_update,
+                result
+                    .folders_to_update
+                    .as_ref()
+                    .map(|items| items.len())
+                    .unwrap_or(0)
+            ),
+        );
+        return Ok(result);
+    }
+
+    let local_version = local_version.expect("local version checked above");
+
+    if is_file_level {
+        let files_to_update = get_files_to_update(
+            &remote_manifest,
+            Some(&local_version),
+            &game_directory,
+            false,
+        )?;
+        let result = UpdateCheckResult {
+            has_update: !files_to_update.is_empty(),
+            current_version: Some(local_version.version),
+            latest_version: Some(remote_manifest.version.clone()),
+            folders_to_update: None,
+            files_to_update: Some(files_to_update),
+            is_file_level: Some(true),
+        };
+        let _ = debug_log::append(
+            app,
+            "update",
+            &format!(
+                "check_for_updates result has_update={} files_to_update={}",
+                result.has_update,
+                result
+                    .files_to_update
+                    .as_ref()
+                    .map(|items| items.len())
+                    .unwrap_or(0)
+            ),
+        );
+        return Ok(result);
+    }
+
+    let version_comparison = compare_versions(&local_version.version, &remote_manifest.version);
+    if version_comparison >= 0 {
+        let result = UpdateCheckResult {
+            has_update: false,
+            current_version: Some(local_version.version),
+            latest_version: Some(remote_manifest.version.clone()),
+            folders_to_update: None,
+            files_to_update: None,
+            is_file_level: Some(false),
+        };
+        let _ = debug_log::append(
+            app,
+            "update",
+            &format!(
+                "check_for_updates result has_update=false local_version={} remote_version={}",
+                result.current_version.as_deref().unwrap_or(""),
+                result.latest_version.as_deref().unwrap_or("")
+            ),
+        );
+        return Ok(result);
+    }
+
+    let mut folders_to_update = Vec::new();
+    for (folder_name, folder_info) in &remote_manifest.folders {
+        let local_folder = local_version.folders.get(folder_name);
+        if folder_needs_update(local_folder, folder_info) {
+            folders_to_update.push(folder_name.clone());
+        }
+    }
+    let result = UpdateCheckResult {
+        has_update: !folders_to_update.is_empty(),
+        current_version: Some(local_version.version),
+        latest_version: Some(remote_manifest.version.clone()),
+        folders_to_update: Some(folders_to_update),
+        files_to_update: None,
+        is_file_level: Some(false),
+    };
+    let _ = debug_log::append(
+        app,
+        "update",
+        &format!(
+            "check_for_updates result has_update={} folders_to_update={}",
+            result.has_update,
+            result
+                .folders_to_update
+                .as_ref()
+                .map(|items| items.len())
+                .unwrap_or(0)
+        ),
+    );
+    Ok(result)
+}
+
+pub fn get_update_status(state: &AppState) -> Option<UpdateStatus> {
+    let guard = state.update_runtime.lock().ok()?;
+    guard.status.clone()
+}
+
+pub fn cancel_update(state: &AppState) {
+    if let Ok(mut runtime) = state.update_runtime.lock() {
+        runtime.cancel_requested = true;
+    }
+}
+
+pub async fn start_download_and_install(
+    app: AppHandle,
+    state: AppState,
+    game_directory: String,
+) -> CommandResult {
+    let start = (|| -> Result<()> {
+        if !PathBuf::from(&game_directory).exists() {
+            return Err(anyhow!("Game directory does not exist: {game_directory}"));
+        }
+
+        let mut runtime = state
+            .update_runtime
+            .lock()
+            .map_err(|_| anyhow!("failed to lock update runtime"))?;
+        if runtime.is_updating {
+            return Err(anyhow!("Update is already running"));
+        }
+
+        runtime.is_updating = true;
+        runtime.cancel_requested = false;
+        runtime.status = Some(UpdateStatus::default());
+        Ok(())
+    })();
+
+    if let Err(err) = start {
+        let _ = debug_log::append(
+            &app,
+            "update",
+            &format!("start_download_and_install start_error={err}"),
+        );
+        return CommandResult::err(err.to_string());
+    }
+    let _ = debug_log::append(
+        &app,
+        "update",
+        &format!("start_download_and_install started game_directory={game_directory}"),
+    );
+
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = download_and_install(&app_handle, &state, &game_directory).await;
+        if let Err(err) = result {
+            let mut status = state
+                .update_runtime
+                .lock()
+                .ok()
+                .and_then(|runtime| runtime.status.clone())
+                .unwrap_or_default();
+            status.is_updating = false;
+            status.error = Some(err.to_string());
+            update_runtime_status(&state, &status, false);
+            emit_status(&app_handle, &status);
+            let _ = debug_log::append(
+                &app_handle,
+                "update",
+                &format!("download_and_install failed error={err}"),
+            );
+        } else {
+            let _ = debug_log::append(&app_handle, "update", "download_and_install completed");
+        }
+    });
+
+    CommandResult::ok()
+}
+
+async fn download_and_install(
+    app: &AppHandle,
+    state: &AppState,
+    game_directory: &str,
+) -> Result<()> {
+    let _ = debug_log::append(
+        app,
+        "update",
+        &format!("download_and_install start game_directory={game_directory}"),
+    );
+    let base_url = detect_public_update_base_url(app)?.ok_or_else(|| {
+        anyhow!("Update service is not configured. Set updateBaseUrl in update-config.json.")
+    })?;
+    let _ = debug_log::append(
+        app,
+        "update",
+        &format!("download_and_install base_url={base_url}"),
+    );
+    let client = UpdateClient::new(base_url);
+    let remote_manifest = client.get_version_manifest().await?;
+
+    let local_version = load_local_manifest(game_directory)?;
+    let is_file_level = uses_file_level_manifest(&remote_manifest);
+    let _ = debug_log::append(
+        app,
+        "update",
+        &format!(
+            "download_and_install manifest version={} folders={} file_level={} local_manifest_present={}",
+            remote_manifest.version,
+            remote_manifest.folders.len(),
+            is_file_level,
+            local_version.is_some()
+        ),
+    );
+
+    let temp_dir = std::env::temp_dir().join(TEMP_DIR_NAME);
+    fs::create_dir_all(&temp_dir)?;
+
+    if is_file_level {
+        let verify_on_disk = local_version.is_none();
+        if verify_on_disk {
+            let _ = debug_log::append(
+                app,
+                "update",
+                "download_and_install local_manifest_missing=true verify_on_disk=true",
+            );
+        }
+        let files_to_update = get_files_to_update(
+            &remote_manifest,
+            local_version.as_ref(),
+            game_directory,
+            verify_on_disk,
+        )?;
+        let _ = debug_log::append(
+            app,
+            "update",
+            &format!(
+                "download_and_install files_to_update={}",
+                files_to_update.len()
+            ),
+        );
+
+        if files_to_update.is_empty() {
+            let status = UpdateStatus {
+                is_updating: false,
+                overall_progress: 100.0,
+                ..UpdateStatus::default()
+            };
+            update_runtime_status(state, &status, false);
+            emit_status(app, &status);
+            return Ok(());
+        }
+
+        let mut status = UpdateStatus {
+            is_updating: true,
+            total_files: files_to_update.len(),
+            files: Some(
+                files_to_update
+                    .iter()
+                    .map(|file| FileProgress {
+                        file_path: file.file_path.clone(),
+                        stage: "downloading".to_string(),
+                        progress: 0.0,
+                        downloaded: 0,
+                        total: file.entry.compressed_size,
+                        speed: Some(0.0),
+                    })
+                    .collect(),
+            ),
+            ..UpdateStatus::default()
+        };
+
+        update_runtime_status(state, &status, true);
+        emit_status(app, &status);
+
+        for (index, file_item) in files_to_update.iter().enumerate() {
+            ensure_not_cancelled(state)?;
+
+            status.current_file = Some(file_item.file_path.clone());
+            status.completed_files = index;
+            update_runtime_status(state, &status, true);
+            emit_status(app, &status);
+
+            update_single_file(
+                app,
+                state,
+                &client,
+                game_directory,
+                &temp_dir,
+                &remote_manifest,
+                file_item,
+                &mut status,
+                index,
+            )
+            .await?;
+
+            status.completed_files = index + 1;
+            status.overall_progress = calculate_overall_progress(&status);
+            update_runtime_status(state, &status, true);
+            emit_status(app, &status);
+        }
+
+        persist_installed_manifest(app, game_directory, &remote_manifest)?;
+
+        status.is_updating = false;
+        status.overall_progress = 100.0;
+        update_runtime_status(state, &status, false);
+        emit_status(app, &status);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+        return Ok(());
+    }
+
+    let folders_to_update = get_folders_to_update(&remote_manifest, local_version.as_ref());
+    let _ = debug_log::append(
+        app,
+        "update",
+        &format!(
+            "download_and_install folders_to_update={}",
+            folders_to_update.len()
+        ),
+    );
+    if folders_to_update.is_empty() {
+        let status = UpdateStatus {
+            is_updating: false,
+            overall_progress: 100.0,
+            ..UpdateStatus::default()
+        };
+        update_runtime_status(state, &status, false);
+        emit_status(app, &status);
+        return Ok(());
+    }
+
+    let mut status = UpdateStatus {
+        is_updating: true,
+        total_folders: folders_to_update.len(),
+        folders: folders_to_update
+            .iter()
+            .map(|folder| FolderProgress {
+                folder_name: folder.clone(),
+                stage: "downloading".to_string(),
+                progress: 0.0,
+                downloaded: 0,
+                total: remote_manifest
+                    .folders
+                    .get(folder)
+                    .and_then(|item| item.compressed_size)
+                    .unwrap_or(0),
+                speed: Some(0.0),
+            })
+            .collect(),
+        ..UpdateStatus::default()
+    };
+
+    update_runtime_status(state, &status, true);
+    emit_status(app, &status);
+
+    for (index, folder_name) in folders_to_update.iter().enumerate() {
+        ensure_not_cancelled(state)?;
+
+        status.current_folder = Some(folder_name.clone());
+        status.completed_folders = index;
+        update_runtime_status(state, &status, true);
+        emit_status(app, &status);
+
+        update_single_folder(
+            app,
+            state,
+            &client,
+            game_directory,
+            &temp_dir,
+            &remote_manifest,
+            folder_name,
+            &mut status,
+            index,
+        )
+        .await?;
+
+        status.completed_folders = index + 1;
+        status.overall_progress = calculate_overall_progress(&status);
+        update_runtime_status(state, &status, true);
+        emit_status(app, &status);
+    }
+
+    persist_installed_manifest(app, game_directory, &remote_manifest)?;
+
+    status.is_updating = false;
+    status.overall_progress = 100.0;
+    update_runtime_status(state, &status, false);
+    emit_status(app, &status);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn update_single_folder(
+    app: &AppHandle,
+    state: &AppState,
+    client: &UpdateClient,
+    game_directory: &str,
+    temp_dir: &Path,
+    remote_manifest: &VersionManifest,
+    folder_name: &str,
+    status: &mut UpdateStatus,
+    folder_index: usize,
+) -> Result<()> {
+    let folder_info = remote_manifest
+        .folders
+        .get(folder_name)
+        .ok_or_else(|| anyhow!("Folder not found in manifest: {folder_name}"))?;
+
+    let download_path = client.folder_download_path(folder_name, &remote_manifest.version);
+    let _ = debug_log::append(
+        app,
+        "update",
+        &format!("update_single_folder start folder={folder_name} path={download_path}"),
+    );
+    let temp_file = temp_dir.join(format!("{folder_name}-{}.arc", remote_manifest.version));
+    let target_folder = PathBuf::from(game_directory).join(folder_name);
+
+    let data = client
+        .download(
+            &download_path,
+            |loaded, total, speed| {
+                if let Some(folder) = status.folders.get_mut(folder_index) {
+                    folder.stage = "downloading".to_string();
+                    folder.progress = if total > 0 {
+                        (loaded as f64 / total as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+                    folder.downloaded = loaded;
+                    folder.total = total;
+                    folder.speed = speed;
+                }
+                status.overall_progress = calculate_overall_progress(status);
+                update_runtime_status(state, status, true);
+                emit_status(app, status);
+            },
+            || is_cancelled(state),
+        )
+        .await?;
+
+    fs::write(&temp_file, &data)?;
+
+    if let Some(expected_checksum) = normalize_checksum_opt(folder_info.checksum.as_deref()) {
+        let actual_checksum = calculate_checksum(&data);
+        if actual_checksum != expected_checksum {
+            return Err(anyhow!("Checksum mismatch for folder {folder_name}"));
+        }
+    } else {
+        let _ = debug_log::append(
+            app,
+            "update",
+            &format!("update_single_folder checksum_missing folder={folder_name}"),
+        );
+    }
+
+    if let Some(folder) = status.folders.get_mut(folder_index) {
+        folder.stage = "decompressing".to_string();
+        folder.progress = 60.0;
+        let compressed_size = folder_info.compressed_size.unwrap_or(data.len() as u64);
+        folder.downloaded = compressed_size;
+        folder.total = compressed_size;
+        folder.speed = None;
+    }
+    status.overall_progress = calculate_overall_progress(status);
+    update_runtime_status(state, status, true);
+    emit_status(app, status);
+
+    extract_archive(app, &temp_file, &target_folder, false)?;
+
+    if let Some(folder) = status.folders.get_mut(folder_index) {
+        folder.stage = "complete".to_string();
+        folder.progress = 100.0;
+        folder.speed = None;
+    }
+    status.overall_progress = calculate_overall_progress(status);
+    update_runtime_status(state, status, true);
+    emit_status(app, status);
+
+    let _ = fs::remove_file(temp_file);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn update_single_file(
+    app: &AppHandle,
+    state: &AppState,
+    client: &UpdateClient,
+    game_directory: &str,
+    temp_dir: &Path,
+    _remote_manifest: &VersionManifest,
+    file_item: &FileUpdateItem,
+    status: &mut UpdateStatus,
+    file_index: usize,
+) -> Result<()> {
+    let download_path = client.file_download_path(&file_item.file_path);
+    let temp_file = temp_dir.join(format!("{}.arc", file_item.file_path.replace('/', "_")));
+    let target_file = PathBuf::from(game_directory).join(&file_item.file_path);
+
+    if let Some(parent) = target_file.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let data = client
+        .download(
+            &download_path,
+            |loaded, total, speed| {
+                if let Some(files) = status.files.as_mut() {
+                    if let Some(file) = files.get_mut(file_index) {
+                        file.stage = "downloading".to_string();
+                        file.progress = if total > 0 {
+                            (loaded as f64 / total as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+                        file.downloaded = loaded;
+                        file.total = total;
+                        file.speed = speed;
+                    }
+                }
+
+                status.overall_progress = calculate_overall_progress(status);
+                update_runtime_status(state, status, true);
+                emit_status(app, status);
+            },
+            || is_cancelled(state),
+        )
+        .await?;
+
+    fs::write(&temp_file, &data)?;
+
+    if let Some(files) = status.files.as_mut() {
+        if let Some(file) = files.get_mut(file_index) {
+            file.stage = "decompressing".to_string();
+            file.progress = 50.0;
+            file.downloaded = file_item.entry.compressed_size;
+            file.total = file_item.entry.compressed_size;
+            file.speed = None;
+        }
+    }
+    status.overall_progress = calculate_overall_progress(status);
+    update_runtime_status(state, status, true);
+    emit_status(app, status);
+
+    let extract_dir = temp_dir.join(format!("extract_{}", file_index));
+    fs::create_dir_all(&extract_dir)?;
+    extract_archive(app, &temp_file, &extract_dir, true)?;
+
+    let target_name = target_file
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow!("invalid target file name"))?;
+
+    let extracted_file = find_extracted_file(&extract_dir, target_name)
+        .ok_or_else(|| anyhow!("Extracted file not found for {}", file_item.file_path))?;
+
+    fs::copy(&extracted_file, &target_file)?;
+
+    let decompressed = fs::read(&target_file)?;
+    if decompressed.len() as u64 != file_item.entry.size {
+        return Err(anyhow!(
+            "Size mismatch for {}: expected {}, got {}",
+            file_item.file_path,
+            file_item.entry.size,
+            decompressed.len()
+        ));
+    }
+
+    let actual_checksum = calculate_checksum(&decompressed);
+    let expected_checksum = normalize_checksum(&file_item.entry.checksum);
+    if actual_checksum != expected_checksum {
+        return Err(anyhow!(
+            "Checksum mismatch for {}: expected {}, got {}",
+            file_item.file_path,
+            expected_checksum,
+            actual_checksum
+        ));
+    }
+
+    if let Some(files) = status.files.as_mut() {
+        if let Some(file) = files.get_mut(file_index) {
+            file.stage = "complete".to_string();
+            file.progress = 100.0;
+            file.downloaded = file_item.entry.compressed_size;
+            file.total = file_item.entry.compressed_size;
+            file.speed = None;
+        }
+    }
+
+    status.overall_progress = calculate_overall_progress(status);
+    update_runtime_status(state, status, true);
+    emit_status(app, status);
+
+    let _ = fs::remove_file(&temp_file);
+    let _ = fs::remove_dir_all(&extract_dir);
+    Ok(())
+}
+
+/// Invokes the bundled FreeArc `unarc.exe` to extract an `.arc` archive.
+///
+/// Format: `unarc.exe x <archive> -dp<destination> -o+`
+/// `-o+` overwrites existing files. `-dp` is the destination path.
+fn extract_archive(
+    app: &AppHandle,
+    archive_file: &Path,
+    destination: &Path,
+    _single_file_mode: bool,
+) -> Result<()> {
+    fs::create_dir_all(destination)?;
+
+    let unarc = resolve_unarc_path(app)?;
+
+    let args = vec![
+        "x".to_string(),
+        archive_file.to_string_lossy().to_string(),
+        format!("-dp{}", destination.to_string_lossy()),
+        "-o+".to_string(),
+    ];
+
+    let mut command = Command::new(&unarc);
+    command.args(args);
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = command
+        .output()
+        .with_context(|| format!("Failed to spawn FreeArc at {}", unarc.display()))?;
+
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "FreeArc extraction failed (code {:?}):\nstdout: {}\nstderr: {}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    Ok(())
+}
+
+/// Walks a wide candidate list so FreeArc resolves correctly in dev, in
+/// the bundled installer (`resources/`), and under the NSIS updater layout
+/// (`_up_/`).
+fn resolve_unarc_path(app: &AppHandle) -> Result<PathBuf> {
+    let mut candidates = vec![
+        PathBuf::from("unarc.exe"),
+        PathBuf::from("assets/bin/unarc.exe"),
+        PathBuf::from("_up_/unarc.exe"),
+        PathBuf::from("_up_/assets/bin/unarc.exe"),
+        PathBuf::from("../unarc.exe"),
+        PathBuf::from("../assets/bin/unarc.exe"),
+        PathBuf::from("../../assets/bin/unarc.exe"),
+    ];
+
+    if let Ok(path) = app.path().resolve("unarc.exe", BaseDirectory::Resource) {
+        candidates.push(path);
+    }
+    if let Ok(path) = app
+        .path()
+        .resolve("_up_/unarc.exe", BaseDirectory::Resource)
+    {
+        candidates.push(path);
+    }
+    if let Ok(path) = app
+        .path()
+        .resolve("assets/bin/unarc.exe", BaseDirectory::Resource)
+    {
+        candidates.push(path);
+    }
+    if let Ok(path) = app
+        .path()
+        .resolve("_up_/assets/bin/unarc.exe", BaseDirectory::Resource)
+    {
+        candidates.push(path);
+    }
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("unarc.exe"));
+        candidates.push(resource_dir.join("_up_").join("unarc.exe"));
+        candidates.push(resource_dir.join("assets").join("bin").join("unarc.exe"));
+        candidates.push(
+            resource_dir
+                .join("_up_")
+                .join("assets")
+                .join("bin")
+                .join("unarc.exe"),
+        );
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            candidates.push(parent.join("unarc.exe"));
+            candidates.push(parent.join("_up_").join("unarc.exe"));
+            candidates.push(parent.join("assets/bin/unarc.exe"));
+            candidates.push(
+                parent
+                    .join("_up_")
+                    .join("assets")
+                    .join("bin")
+                    .join("unarc.exe"),
+            );
+            candidates.push(parent.join("resources").join("unarc.exe"));
+            candidates.push(
+                parent
+                    .join("resources")
+                    .join("assets")
+                    .join("bin")
+                    .join("unarc.exe"),
+            );
+            candidates.push(parent.join("resources").join("_up_").join("unarc.exe"));
+            candidates.push(
+                parent
+                    .join("resources")
+                    .join("_up_")
+                    .join("assets")
+                    .join("bin")
+                    .join("unarc.exe"),
+            );
+        }
+    }
+
+    for candidate in &candidates {
+        if candidate.exists() {
+            return Ok(candidate.clone());
+        }
+    }
+
+    let checked_paths = candidates
+        .iter()
+        .map(|path| path.to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        .join(" | ");
+
+    Err(anyhow!(
+        "FreeArc executable not found. Ensure unarc.exe is bundled as a resource. checked_paths={checked_paths}"
+    ))
+}
+
+fn find_extracted_file(root: &Path, target_name: &str) -> Option<PathBuf> {
+    let mut files = Vec::new();
+
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry.path().to_path_buf();
+        if path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.eq_ignore_ascii_case(target_name))
+            .unwrap_or(false)
+        {
+            return Some(path);
+        }
+        files.push(path);
+    }
+
+    if files.len() == 1 {
+        return files.into_iter().next();
+    }
+
+    None
+}
+
+fn persist_installed_manifest(
+    app: &AppHandle,
+    game_directory: &str,
+    manifest: &VersionManifest,
+) -> Result<()> {
+    save_version_cache(app, manifest)?;
+
+    let version_path = PathBuf::from(game_directory).join("version.json");
+    let raw = serde_json::to_string_pretty(manifest)?;
+    fs::write(version_path, raw)?;
+    Ok(())
+}
+
+fn uses_file_level_manifest(manifest: &VersionManifest) -> bool {
+    manifest
+        .folders
+        .values()
+        .any(|folder| !folder.files.is_empty())
+}
+
+fn get_folders_to_update(remote: &VersionManifest, local: Option<&VersionManifest>) -> Vec<String> {
+    if local.is_none() {
+        return remote.folders.keys().cloned().collect();
+    }
+
+    let local = local.expect("checked above");
+    let mut result = Vec::new();
+
+    for (folder_name, folder_info) in &remote.folders {
+        let local_folder = local.folders.get(folder_name);
+        if folder_needs_update(local_folder, folder_info) {
+            result.push(folder_name.clone());
+        }
+    }
+
+    result
+}
+
+fn get_files_to_update(
+    remote: &VersionManifest,
+    local: Option<&VersionManifest>,
+    game_directory: &str,
+    verify_on_disk: bool,
+) -> Result<Vec<FileUpdateItem>> {
+    let mut files_to_update = Vec::new();
+    let local_folders: HashMap<String, FolderManifestEntry> = local
+        .map(|manifest| manifest.folders.clone())
+        .unwrap_or_default();
+
+    for (folder_name, folder_info) in &remote.folders {
+        if folder_info.files.is_empty() {
+            continue;
+        }
+
+        let local_folder = local_folders.get(folder_name);
+        let has_local_file_info = local_folder
+            .map(|entry| !entry.files.is_empty())
+            .unwrap_or(false);
+
+        for (file_key, file_entry) in &folder_info.files {
+            let relative_path = if file_entry.path.starts_with(&format!("{folder_name}/")) {
+                file_entry.path.clone()
+            } else {
+                format!("{folder_name}/{}", file_entry.path)
+            };
+            let absolute_path = PathBuf::from(game_directory).join(&relative_path);
+            let expected_checksum = normalize_checksum(&file_entry.checksum);
+
+            let mut needs_update = true;
+
+            if has_local_file_info {
+                if let Some(local_file) = local_folder.and_then(|folder| folder.files.get(file_key))
+                {
+                    let local_checksum = normalize_checksum(&local_file.checksum);
+                    if local_checksum == expected_checksum && absolute_path.exists() {
+                        if verify_on_disk {
+                            let on_disk = fs::read(&absolute_path).ok();
+                            if let Some(bytes) = on_disk {
+                                let disk_checksum = calculate_checksum(&bytes);
+                                if disk_checksum == expected_checksum {
+                                    needs_update = false;
+                                }
+                            }
+                        } else if let Ok(metadata) = fs::metadata(&absolute_path) {
+                            // Fast path: trust local manifest if checksum matches and file size matches.
+                            if metadata.len() == file_entry.size {
+                                needs_update = false;
+                            }
+                        }
+                    }
+                }
+            } else if absolute_path.exists() {
+                if verify_on_disk {
+                    if let Ok(bytes) = fs::read(&absolute_path) {
+                        if calculate_checksum(&bytes) == expected_checksum {
+                            needs_update = false;
+                        }
+                    }
+                } else if let Ok(metadata) = fs::metadata(&absolute_path) {
+                    // Fast path when local manifest has no per-file entries.
+                    if metadata.len() == file_entry.size {
+                        needs_update = false;
+                    }
+                }
+            }
+
+            if needs_update {
+                files_to_update.push(FileUpdateItem {
+                    folder_name: folder_name.clone(),
+                    file_path: relative_path,
+                    entry: file_entry.clone(),
+                });
+            }
+        }
+    }
+
+    Ok(files_to_update)
+}
+
+fn load_local_manifest(game_directory: &str) -> Result<Option<VersionManifest>> {
+    let path = PathBuf::from(game_directory).join("version.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path)?;
+    match serde_json::from_str::<VersionManifest>(&raw) {
+        Ok(manifest) => Ok(Some(manifest)),
+        Err(_) => Ok(None),
+    }
+}
+
+fn compare_versions(v1: &str, v2: &str) -> i32 {
+    let parts1: Vec<u32> = v1
+        .split('.')
+        .map(|item| item.parse::<u32>().unwrap_or(0))
+        .collect();
+    let parts2: Vec<u32> = v2
+        .split('.')
+        .map(|item| item.parse::<u32>().unwrap_or(0))
+        .collect();
+
+    let max_len = std::cmp::max(parts1.len(), parts2.len());
+    for idx in 0..max_len {
+        let part1 = *parts1.get(idx).unwrap_or(&0);
+        let part2 = *parts2.get(idx).unwrap_or(&0);
+
+        if part1 < part2 {
+            return -1;
+        }
+        if part1 > part2 {
+            return 1;
+        }
+    }
+
+    0
+}
+
+fn normalize_checksum(value: &str) -> String {
+    value.trim().trim_start_matches("sha256:").to_lowercase()
+}
+
+fn normalize_checksum_opt(value: Option<&str>) -> Option<String> {
+    value
+        .map(normalize_checksum)
+        .filter(|checksum| !checksum.is_empty())
+}
+
+fn folder_needs_update(
+    local_folder: Option<&FolderManifestEntry>,
+    remote_folder: &FolderManifestEntry,
+) -> bool {
+    let Some(local_folder) = local_folder else {
+        return true;
+    };
+
+    let local_checksum = normalize_checksum_opt(local_folder.checksum.as_deref());
+    let remote_checksum = normalize_checksum_opt(remote_folder.checksum.as_deref());
+
+    if let (Some(local), Some(remote)) = (local_checksum.as_ref(), remote_checksum.as_ref()) {
+        return local != remote;
+    }
+
+    let mut compared_any = false;
+
+    if let Some(remote_size) = remote_folder.size {
+        compared_any = true;
+        if local_folder.size != Some(remote_size) {
+            return true;
+        }
+    }
+
+    if let Some(remote_compressed_size) = remote_folder.compressed_size {
+        compared_any = true;
+        if local_folder.compressed_size != Some(remote_compressed_size) {
+            return true;
+        }
+    }
+
+    if remote_folder.file_count > 0 {
+        compared_any = true;
+        if local_folder.file_count != remote_folder.file_count {
+            return true;
+        }
+    }
+
+    if !remote_folder.files.is_empty() {
+        compared_any = true;
+        if local_folder.files.len() != remote_folder.files.len() {
+            return true;
+        }
+
+        for (file_key, remote_file) in &remote_folder.files {
+            let Some(local_file) = local_folder.files.get(file_key) else {
+                return true;
+            };
+
+            if normalize_checksum(&local_file.checksum) != normalize_checksum(&remote_file.checksum)
+            {
+                return true;
+            }
+
+            if local_file.size != remote_file.size
+                || local_file.compressed_size != remote_file.compressed_size
+            {
+                return true;
+            }
+        }
+    }
+
+    !compared_any
+}
+
+fn calculate_checksum(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex::encode(hasher.finalize())
+}
+
+fn calculate_overall_progress(status: &UpdateStatus) -> f64 {
+    if let Some(files) = &status.files {
+        if files.is_empty() {
+            return 0.0;
+        }
+        let total: f64 = files.iter().map(|file| file.progress).sum();
+        return total / files.len() as f64;
+    }
+
+    if status.folders.is_empty() {
+        return 0.0;
+    }
+
+    let total: f64 = status.folders.iter().map(|folder| folder.progress).sum();
+    total / status.folders.len() as f64
+}
+
+fn emit_status(app: &AppHandle, status: &UpdateStatus) {
+    let _ = app.emit("update-progress", status);
+}
+
+fn update_runtime_status(state: &AppState, status: &UpdateStatus, is_updating: bool) {
+    if let Ok(mut runtime) = state.update_runtime.lock() {
+        runtime.status = Some(status.clone());
+        runtime.is_updating = is_updating;
+        if !is_updating {
+            runtime.cancel_requested = false;
+        }
+    }
+}
+
+fn is_cancelled(state: &AppState) -> bool {
+    state
+        .update_runtime
+        .lock()
+        .ok()
+        .map(|runtime| runtime.cancel_requested)
+        .unwrap_or(false)
+}
+
+fn ensure_not_cancelled(state: &AppState) -> Result<()> {
+    if is_cancelled(state) {
+        return Err(anyhow!("Update cancelled by user"));
+    }
+    Ok(())
+}
