@@ -123,7 +123,7 @@ function AuthedApp() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
-      <MainLayout backgroundSrc={route.page === 'play' ? '/background/kotk_bg.jpg' : undefined} routeKey={hash}>
+      <MainLayout backgroundSrc={route.page === 'play' ? '/background/kotk_bg.webp' : undefined} routeKey={hash ?? ''}>
         {route.page === 'news' && <NewsPage />}
         {route.page === 'news-slug' && route.params && <NewsSlugPage slug={route.params.slug} />}
         {route.page === 'play' && <PlayPage />}

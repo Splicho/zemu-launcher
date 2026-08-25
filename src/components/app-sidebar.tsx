@@ -63,6 +63,19 @@ function useHashRoute() {
 }
 
 
+function NavLink({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) {
+  return (
+    <motion.a
+      href={href}
+      className={className}
+      whileTap={{ scale: 0.97 }}
+      transition={{ duration: 0.1 }}
+    >
+      {children}
+    </motion.a>
+  )
+}
+
 export function AppSidebar() {
   const [socialOpen, setSocialOpen] = React.useState(false)
   const hash = useHashRoute()
@@ -91,22 +104,22 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem className="space-y-px">
                 <SidebarMenuButton asChild isActive={isActive('/')} size="lg" className="px-4">
-                  <a href="#/">
+                  <NavLink href="#/">
                     <Home className="size-5!" />
                     <span>Home</span>
-                  </a>
+                  </NavLink>
                 </SidebarMenuButton>
                 <SidebarMenuButton asChild isActive={isActive('/news')} size="lg" className="px-4">
-                  <a href="#/news">
+                  <NavLink href="#/news">
                     <News className="size-5!" />
                     <span>News</span>
-                  </a>
+                  </NavLink>
                 </SidebarMenuButton>
                 <SidebarMenuButton asChild isActive={isActive('/leaderboard')} size="lg" className="px-4">
-                  <a href="#/leaderboard">
+                  <NavLink href="#/leaderboard">
                     <Leaderboard className="size-5!" />
                     <span>Leaderboard</span>
-                  </a>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -120,14 +133,14 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={isActive('/play')} size="lg" className="px-4">
-                  <a href="#/play">
+                  <NavLink href="#/play">
                     <img
                       src="../assets/icon/app-icon.png"
                       alt=""
                       className="size-5 shrink-0 "
                     />
                     <span>ZEmu: King of the Kill</span>
-                  </a>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
