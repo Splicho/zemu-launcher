@@ -21,6 +21,8 @@ export const LAUNCHER_CONFIG = {
   // zemu-website/apps/api (defaults to port 3002 — see
   // `apps/api/src/main.ts`).
   newsApiBaseUrl: 'https://api.zemu.uk/v1/news',
+  // Stats API for leaderboards and player data.
+  statsApiBaseUrl: 'https://api.zemu.uk/v1/stats',
   // Deep-link scheme registered with the OS so the OAuth callback can hand
   // control back to the running launcher.
   oauthCallbackProtocol: 'zemu-launcher://',

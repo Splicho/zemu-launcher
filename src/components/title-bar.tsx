@@ -46,7 +46,7 @@ export function TitleBar() {
         className="flex h-full flex-1 items-center gap-2 pl-3"
       >
         <img
-          src="./assets/icon/app-icon.ico"
+          src="../assets/icon/app-icon.ico"
           alt={LAUNCHER_CONFIG.name}
           className="pointer-events-none h-4 w-4"
         />

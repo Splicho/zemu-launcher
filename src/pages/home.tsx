@@ -1,4 +1,5 @@
 import { NewsSlider } from '@/components/news-slider'
+import { LeaderboardCard } from '@/components/leaderboard-card'
 import { useHash } from '@/hooks/use-hash'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
@@ -8,7 +9,7 @@ import { NewsSlugPage } from '@/pages/news-slug'
  *
  * Rendered inside `<MainLayout>` (title bar + sidebar + header) and
  * routed via the hash:
- *   - `#/`                 → default home content (news slider)
+ *   - `#/`                 → default home content (news slider + leaderboard)
  *   - `#/news`             → full news grid (NewsPage)
  *   - `#/news/:slug`       → single post (NewsSlugPage)
  *
@@ -25,5 +26,10 @@ export function HomePage() {
 
   if (hash === '/news') return <NewsPage />
 
-  return <NewsSlider />
+  return (
+    <div className="flex flex-col gap-6 px-8 py-6">
+      <NewsSlider />
+      <LeaderboardCard />
+    </div>
+  )
 }
