@@ -6,6 +6,7 @@ import { MainLayout } from '@/components/main-layout'
 import { BootstrapPage } from '@/pages/bootstrap'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
+import { PlayPage } from '@/pages/play'
 import { useAuthContext } from '@/contexts/auth-context'
 import { useHash } from '@/hooks/use-hash'
 
@@ -18,6 +19,7 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
   if (newsMatch) return { page: 'news-slug', params: { slug: newsMatch[1] } }
 
   if (hash === '/news') return { page: 'news' }
+  if (hash === '/play') return { page: 'play' }
 
   return { page: 'home' }
 }
@@ -124,6 +126,7 @@ function AuthedApp() {
       <MainLayout>
         {route.page === 'news' && <NewsPage />}
         {route.page === 'news-slug' && route.params && <NewsSlugPage slug={route.params.slug} />}
+        {route.page === 'play' && <PlayPage />}
         {route.page === 'home' && <HomePage />}
       </MainLayout>
     </div>

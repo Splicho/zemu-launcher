@@ -62,32 +62,7 @@ function useHashRoute() {
   return hash
 }
 
-/**
- * App sidebar — the navigation rail on the left of the home window.
- *
- * Top-level structure (top → bottom):
- *   - Logo block  → centered app logo above the nav groups
- *   - Menu        → top-level navigation (Home)
- *   - Servers     → launcher-managed emulators / game shortcuts
- *
- * Top-level Menu entries link to the launcher's hash router
- * (`#/<route>`); Games entries are server-titled shortcuts that link
- * out to per-server launch flows (e.g. `#/games/king-of-the-kill`).
- * "Test Server" is rendered disabled until its launch flow is wired
- * up — the `disabled` prop on `SidebarMenuButton` handles the
- * visual + `aria-disabled` treatment for us.
- *
- * Rendered with `collapsible="none"` because the launcher's main
- * window is fixed at 1280×800 (see `tauri.conf.json`) — there's no
- * mobile breakpoint and no need for an icon-collapsed mode. That
- * drops all the offcanvas/icon scaffolding built into the shadcn
- * Sidebar primitive.
- *
- * This component assumes it's already inside a `<SidebarProvider>`
- * (which the home page provides so it can wrap header + sidebar +
- * main together — that's the shadcn convention for the
- * offcanvas/collapsible variants).
- */
+
 export function AppSidebar() {
   const [socialOpen, setSocialOpen] = React.useState(false)
   const hash = useHashRoute()
@@ -144,8 +119,8 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={isActive('/games/king-of-the-kill')} size="lg" className="px-4">
-                  <a href="#/games/king-of-the-kill">
+                <SidebarMenuButton asChild isActive={isActive('/play')} size="lg" className="px-4">
+                  <a href="#/play">
                     <img
                       src="../assets/icon/app-icon.png"
                       alt=""
