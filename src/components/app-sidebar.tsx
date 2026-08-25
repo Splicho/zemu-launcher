@@ -1,5 +1,4 @@
 import * as React from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -62,20 +61,6 @@ function useHashRoute() {
   return hash
 }
 
-
-function NavLink({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) {
-  return (
-    <motion.a
-      href={href}
-      className={className}
-      whileTap={{ scale: 0.97 }}
-      transition={{ duration: 0.1 }}
-    >
-      {children}
-    </motion.a>
-  )
-}
-
 export function AppSidebar() {
   const [socialOpen, setSocialOpen] = React.useState(false)
   const hash = useHashRoute()
@@ -104,22 +89,22 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem className="space-y-px">
                 <SidebarMenuButton asChild isActive={isActive('/')} size="lg" className="px-4">
-                  <NavLink href="#/">
+                  <a href="#/">
                     <Home className="size-5!" />
                     <span>Home</span>
-                  </NavLink>
+                  </a>
                 </SidebarMenuButton>
                 <SidebarMenuButton asChild isActive={isActive('/news')} size="lg" className="px-4">
-                  <NavLink href="#/news">
+                  <a href="#/news">
                     <News className="size-5!" />
                     <span>News</span>
-                  </NavLink>
+                  </a>
                 </SidebarMenuButton>
                 <SidebarMenuButton asChild isActive={isActive('/leaderboard')} size="lg" className="px-4">
-                  <NavLink href="#/leaderboard">
+                  <a href="#/leaderboard">
                     <Leaderboard className="size-5!" />
                     <span>Leaderboard</span>
-                  </NavLink>
+                  </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -133,14 +118,14 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={isActive('/play')} size="lg" className="px-4">
-                  <NavLink href="#/play">
+                  <a href="#/play">
                     <img
                       src="../assets/icon/app-icon.png"
                       alt=""
                       className="size-5 shrink-0 "
                     />
                     <span>ZEmu: King of the Kill</span>
-                  </NavLink>
+                  </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
