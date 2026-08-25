@@ -79,7 +79,6 @@ export function DownloadProgressDialog({
         </DialogClose>
 
         <motion.p
-          key={message}
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.15 }}

@@ -26,7 +26,7 @@ interface GameActionButtonProps {
 }
 
 const BUTTON_TEXT: Record<string, string> = {
-  NEEDS_DESTINATION: 'Select Destination',
+  NEEDS_DESTINATION: 'Install',
   CHECKING_FOR_UPDATE: 'Checking...',
   DOWNLOADING_DEPOT: 'Downloading from Steam...',
   APPLYING_PATCH: 'Applying Patch...',
@@ -54,6 +54,7 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     gameDirectory,
     depotProgress,
     startUpdate,
+    selectDirectory,
   } = useGameStateContext()
 
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
@@ -85,20 +86,24 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     }
   }, [depotProgress?.phase, downloadDialogOpen])
 
-  // Track previous values to detect the transition from false → true.
+  // Track previous values to detect the false → true transition so the
+  // dialog isn't re-opened on every render while login (or the subsequent
+  // download, which leaves loginSubmitting=true until `finally`) is in flight.
+  const prevLoginSubmittingRef = useRef(false)
   const prevAwaitingRef = useRef(false)
 
   // Trigger the download dialog when the user submits credentials. The
   // dialog stays open through Steam auth + ownership check + manifest fetch
   // and closes once the first file/chunk event arrives (see the effect
-  // above).
+  // above). Fires only on the false → true edge.
   useEffect(() => {
-    if (loginSubmitting && !downloadDialogOpen) {
+    if (loginSubmitting && !prevLoginSubmittingRef.current) {
       zLog('loginSubmitting -> open download dialog')
       setLoginDialogOpen(false)
       setDownloadDialogOpen(true)
     }
-  }, [loginSubmitting, downloadDialogOpen])
+    prevLoginSubmittingRef.current = loginSubmitting
+  }, [loginSubmitting])
 
   // If awaitingMobileApproval flips on (the Steam mobile-app push), make sure
   // the dialog is open even if the parent didn't transition via loginSubmitting.
@@ -162,7 +167,7 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     if (state.type === 'APPLYING_PATCH') {
       return 'Applying Patch...'
     }
-    return BUTTON_TEXT[state.type] || 'Select Destination'
+    return BUTTON_TEXT[state.type] || 'Install'
   }, [state])
 
   const isDisabled = useMemo(
@@ -290,6 +295,27 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     [downloadDepot, gameDirectory, saveSteamCredentials]
   )
 
+  const handlePrimaryAction = useCallback(async () => {
+    // First-time install: no destination folder yet — open the system
+    // folder picker, then chain straight into the Steam login dialog once
+    // a directory is selected. Cancelling the picker leaves the user on
+    // the same screen (state stays NEEDS_DESTINATION).
+    if (state.type === 'NEEDS_DESTINATION') {
+      zLog('no destination -> open folder picker')
+      const picked = await selectDirectory()
+      if (picked) {
+        zLog('destination selected -> open login dialog')
+        openLoginDialog()
+      }
+      return
+    }
+    if (state.type === 'UPDATE_AVAILABLE') {
+      startUpdate()
+      return
+    }
+    openLoginDialog()
+  }, [state.type, selectDirectory, startUpdate, openLoginDialog])
+
   return (
     <>
       <div className="flex items-center gap-3">
@@ -297,7 +323,7 @@ export function GameActionButton({ className }: GameActionButtonProps) {
           size="lg"
           className={`rounded-lg min-w-[200px] p-6 text-lg px-10 ${className || ''}`}
           variant="gradient"
-          onClick={state.type === 'UPDATE_AVAILABLE' ? startUpdate : openLoginDialog}
+          onClick={handlePrimaryAction}
           disabled={isDisabled}
         >
           <AnimatePresence mode="wait">

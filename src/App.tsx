@@ -14,7 +14,12 @@ import { useHash } from '@/hooks/use-hash'
 import { UpdateProvider } from '@/contexts/update-context'
 import { GameStateProvider } from '@/contexts/game-state-context'
 import { Toaster } from '@/components/ui/sonner'
-import { DownloadSpeedGraph } from '@/components/download-speed-graph'
+import { useDownloadSpeedToast } from '@/hooks/use-download-speed-toast'
+
+function DownloadSpeedToast() {
+  useDownloadSpeedToast()
+  return null
+}
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
@@ -81,7 +86,7 @@ export default function App() {
     <UpdateProvider>
       <GameStateProvider>
         <AuthedApp />
-        <DownloadSpeedGraph />
+        <DownloadSpeedToast />
         <Toaster />
       </GameStateProvider>
     </UpdateProvider>
