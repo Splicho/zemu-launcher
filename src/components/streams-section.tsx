@@ -1,88 +1,87 @@
+import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useState } from 'react'
+import useEmblaCarousel from 'embla-carousel-react'
 import { Button } from '@/components/ui/button'
+import { Eye } from '@/components/icons'
+import { Badge } from '@/components/ui/badge'
+import { fetchStreams, StreamInfo } from '@/api/streams'
 
-const mockStreams = [
-  {
-    id: 1,
-    thumbnail: 'https://picsum.photos/seed/stream1/400/225',
-    streamer: 'PlayerOne',
-    viewers: '12.5K',
-  },
-  {
-    id: 2,
-    thumbnail: 'https://picsum.photos/seed/stream2/400/225',
-    streamer: 'ProGamer99',
-    viewers: '8.2K',
-  },
-  {
-    id: 3,
-    thumbnail: 'https://picsum.photos/seed/stream3/400/225',
-    streamer: 'ZEmuOfficial',
-    viewers: '45.1K',
-  },
-  {
-    id: 4,
-    thumbnail: 'https://picsum.photos/seed/stream4/400/225',
-    streamer: 'NightOwl',
-    viewers: '3.7K',
-  },
-  {
-    id: 5,
-    thumbnail: 'https://picsum.photos/seed/stream5/400/225',
-    streamer: 'NewbieGamer',
-    viewers: '1.2K',
-  },
-]
+function formatViewers(count: number): string {
+  if (count >= 1000) {
+    return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}K`
+  }
+  return String(count)
+}
 
 export function StreamsSection() {
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const visibleCount = 3
+  const [streams, setStreams] = useState<StreamInfo[]>([])
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false, align: 'start', skipSnaps: true })
 
-  const goPrev = () => {
-    setCurrentIndex((prev) => (prev === 0 ? mockStreams.length - visibleCount : prev - 1))
+  useEffect(() => {
+    fetchStreams()
+      .then((data) => setStreams([...data.twitch, ...data.kick]))
+      .catch(console.error)
+  }, [])
+
+  const scrollPrev = () => emblaApi?.scrollPrev()
+  const scrollNext = () => emblaApi?.scrollNext()
+
+  if (streams.length === 0) {
+    return (
+      <section className="px-8">
+        <h2 className="text-xl font-semibold">Streams</h2>
+        <p className="mt-4 text-sm text-muted-foreground">No live streams</p>
+      </section>
+    )
   }
-
-  const goNext = () => {
-    setCurrentIndex((prev) => (prev >= mockStreams.length - visibleCount ? 0 : prev + 1))
-  }
-
-  const visibleStreams = mockStreams.slice(currentIndex, currentIndex + visibleCount)
 
   return (
     <section className="px-8">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Streams</h2>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={goPrev} className="rounded-full">
+          <Button variant="outline" size="icon" onClick={scrollPrev} className="rounded-full">
             <ChevronLeft className="size-5" />
           </Button>
-          <Button variant="outline" size="icon" onClick={goNext} className="rounded-full">
+          <Button variant="outline" size="icon" onClick={scrollNext} className="rounded-full">
             <ChevronRight className="size-5" />
           </Button>
         </div>
       </div>
 
-      <div className="mt-4 overflow-hidden">
-        <div className="flex gap-4 transition-transform duration-300">
-          {visibleStreams.map((stream) => (
-            <div
+      <div ref={emblaRef} className="mt-4 overflow-hidden">
+        <div className="flex gap-4">
+          {streams.map((stream) => (
+            <a
               key={stream.id}
-              className="relative min-w-0 flex-1 overflow-hidden rounded-xl"
+              href={stream.stream_url ?? '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group relative min-w-0 flex-[0_0_calc(100%_/_3_-_8px)] overflow-hidden rounded-xl"
             >
               <img
-                src={stream.thumbnail}
-                alt={`${stream.streamer}'s stream`}
-                className="aspect-video w-full object-cover"
+                src={stream.thumbnail_url}
+                alt={stream.title}
+                className="aspect-video w-full object-cover transition-[filter,transform] duration-300 group-hover:brightness-110"
               />
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3">
-                <p className="truncate text-sm font-medium text-white">{stream.streamer}</p>
-                <span className="text-xs text-white/80">{stream.viewers} viewers</span>
+                <p className="flex items-center gap-2 truncate text-sm font-medium text-white">
+                  <img
+                    src={stream.profile_image_url}
+                    alt={stream.user_name}
+                    className="size-6 rounded-full bg-muted"
+                  />
+                  <span className="truncate">{stream.user_name}</span>
+                  <Badge variant="secondary" className="ml-auto shrink-0 gap-1 text-xs">
+                    <Eye size={12} />
+                    {formatViewers(stream.viewer_count)}
+                  </Badge>
+                </p>
               </div>
               <span className="absolute left-2 top-2 rounded bg-red-500 px-1.5 py-0.5 text-xs font-medium text-white">
                 LIVE
               </span>
-            </div>
+            </a>
           ))}
         </div>
       </div>

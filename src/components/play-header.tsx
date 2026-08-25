@@ -1,4 +1,4 @@
-import { Box } from '@/components/icons'
+import { Box, Play } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 
 export function PlayHeader() {
@@ -16,6 +16,7 @@ export function PlayHeader() {
         </p>
         <div className="mt-6 flex items-center gap-6">
           <Button size="lg" className="rounded-lg min-w-[200px] p-6 text-lg px-10" variant="gradient">
+            <Play className="size-5" />
             Play
           </Button>
           <div className="flex items-center gap-2 text-muted-foreground">
