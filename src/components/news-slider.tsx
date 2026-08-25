@@ -6,17 +6,22 @@ import { useHashRouter } from '@/hooks/use-hash'
 import { ArrowRight } from './icons'
 
 const SWIPE_THRESHOLD = 60
+const AUTO_PLAY_INTERVAL = 6000
 
 export function NewsSlider() {
   const { navigate } = useHashRouter()
   const [items, setItems] = useState<NewsListItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [index, setIndex] = useState(0)
+  const [prevIndex, setPrevIndex] = useState<number | null>(null)
+  const [progress, setProgress] = useState(0)
 
-  // Drag state
   const dragStartX = useRef<number | null>(null)
   const [dragOffset, setDragOffset] = useState(0)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isTransitioning = prevIndex !== null
 
   useEffect(() => {
     let cancelled = false
@@ -34,16 +39,60 @@ export function NewsSlider() {
     }
   }, [])
 
+  const goToIndex = useCallback((newIndex: number) => {
+    setPrevIndex(index)
+    setIndex(newIndex)
+    setProgress(0)
+    setTimeout(() => {
+      setPrevIndex(null)
+    }, 800)
+  }, [index])
+
   const advance = useCallback(
     (delta: 1 | -1) => {
       setItems((current) => {
         if (!current || current.length === 0) return current
-        setIndex((i) => (i + delta + current.length) % current.length)
+        const newIndex = (index + delta + current.length) % current.length
+        goToIndex(newIndex)
         return current
       })
     },
-    [],
+    [index, goToIndex],
   )
+
+  // Auto-play with progress
+  useEffect(() => {
+    if (!items || items.length <= 1) return
+
+    const startProgress = () => {
+      setProgress(0)
+      progressRef.current = setInterval(() => {
+        setProgress((p) => {
+          if (p >= 100) return 0
+          return p + (100 / (AUTO_PLAY_INTERVAL / 50))
+        })
+      }, 50)
+    }
+
+    const startAutoPlay = () => {
+      startProgress()
+      autoPlayRef.current = setInterval(() => {
+        setItems((current) => {
+          if (!current || current.length <= 1) return current
+          const newIndex = (index + 1) % current.length
+          goToIndex(newIndex)
+          return current
+        })
+      }, AUTO_PLAY_INTERVAL)
+    }
+
+    startAutoPlay()
+
+    return () => {
+      if (autoPlayRef.current) clearInterval(autoPlayRef.current)
+      if (progressRef.current) clearInterval(progressRef.current)
+    }
+  }, [items, index, goToIndex])
 
   // Keyboard navigation
   useEffect(() => {
@@ -62,12 +111,7 @@ export function NewsSlider() {
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
-    // Don't capture if clicking on a pill (navigation dots)
-    if ((e.target as HTMLElement).closest('[data-pills]')) {
-      console.log('[NewsSlider] PointerDown on pill - NOT capturing')
-      return
-    }
-    console.log('[NewsSlider] PointerDown', { target: e.target, clientX: e.clientX })
+    if ((e.target as HTMLElement).closest('[data-pills]')) return
     ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
     dragStartX.current = e.clientX
     setDragOffset(0)
@@ -76,26 +120,19 @@ export function NewsSlider() {
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragStartX.current === null) return
     const offset = e.clientX - dragStartX.current
-    console.log('[NewsSlider] PointerMove', { offset })
     setDragOffset(offset)
   }
 
   const onPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (dragStartX.current === null) {
-      console.log('[NewsSlider] PointerEnd - no drag started')
-      return
-    }
+    if (dragStartX.current === null) return
     const offset = e.clientX - dragStartX.current
-    console.log('[NewsSlider] PointerEnd', { offset, threshold: SWIPE_THRESHOLD })
     dragStartX.current = null
     setDragOffset(0)
     if (Math.abs(offset) > SWIPE_THRESHOLD) {
-      console.log('[NewsSlider] Advancing by', offset < 0 ? 1 : -1)
       advance(offset < 0 ? 1 : -1)
     }
   }
 
-  // Horizontal mousewheel navigation
   const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return
     if (Math.abs(e.deltaX) < 10) return
@@ -107,6 +144,7 @@ export function NewsSlider() {
   }
 
   const current = items[index]
+  const prevItem = prevIndex !== null ? items[prevIndex] : null
   const dragPx = dragOffset
   const isDragging = dragStartX.current !== null
 
@@ -114,7 +152,7 @@ export function NewsSlider() {
     <div
       ref={containerRef}
       tabIndex={0}
-      className="news-carousel relative w-full select-none overflow-hidden focus:outline-none rounded-xl"
+      className="news-carousel group relative w-full select-none overflow-hidden focus:outline-none rounded-xl"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
@@ -130,17 +168,43 @@ export function NewsSlider() {
         }}
         className="group relative flex h-80 w-full cursor-pointer items-center overflow-hidden"
       >
-        <img
-          src={current.coverImageUrl ?? ''}
-          alt={current.coverImageAlt}
-          loading="lazy"
-          draggable={false}
-          className="absolute inset-0 size-full object-cover transition-[filter,transform] duration-300 group-hover:brightness-110"
+        {/* Previous cover (fading out) */}
+        {prevItem && (
+          <div
+            className="absolute inset-0 transition-opacity duration-500 opacity-0"
+            style={{ animation: 'fadeOut 500ms ease-out forwards' }}
+          >
+            <img
+              src={prevItem.coverImageUrl ?? ''}
+              alt={prevItem.coverImageAlt}
+              loading="lazy"
+              draggable={false}
+              className="size-full object-cover"
+            />
+          </div>
+        )}
+
+        {/* Current cover */}
+        <div
+          className="absolute inset-0 transition-opacity duration-500"
           style={{
-            transform: `translateX(${dragPx}px)`,
-            transition: isDragging ? 'none' : undefined,
+            animation: isTransitioning ? 'fadeIn 500ms ease-out forwards' : undefined,
+            opacity: isTransitioning ? 0 : 1,
           }}
-        />
+        >
+          <img
+            src={current.coverImageUrl ?? ''}
+            alt={current.coverImageAlt}
+            loading="lazy"
+            draggable={false}
+            className="size-full object-cover transition-[filter,transform] duration-300 group-hover:brightness-110"
+            style={{
+              transform: `translateX(${dragPx}px)`,
+              transition: isDragging ? 'none' : undefined,
+            }}
+          />
+        </div>
+
         <div
           className="pointer-events-none absolute inset-0"
           style={{
@@ -148,11 +212,14 @@ export function NewsSlider() {
               'linear-gradient(to right, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 50%, rgba(0,0,0,0) 100%)',
           }}
         />
+
+        {/* Content with fade animation */}
         <div
           className="relative z-10 flex max-w-xl flex-col gap-3 px-12 py-8 text-left"
           style={{
-            transform: `translateX(${dragPx}px)`,
-            transition: isDragging ? 'none' : undefined,
+            opacity: isTransitioning ? 0 : 1,
+            transform: `translateX(${dragPx}px) translateY(${isTransitioning ? '8px' : '0px'})`,
+            transition: isDragging ? 'none' : 'opacity 500ms ease, transform 500ms ease',
           }}
         >
           <div className="flex items-center gap-2 text-xs text-white/60">
@@ -180,7 +247,7 @@ export function NewsSlider() {
         </div>
       </button>
 
-      {/* Pill navigation - outside button to avoid pointer capture interference */}
+      {/* Pill navigation with progress */}
       {items.length > 1 && (
         <div
           data-pills
@@ -190,24 +257,27 @@ export function NewsSlider() {
             transition: isDragging ? 'none' : undefined,
           }}
         >
-          {items.map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              aria-label={`Show article ${i + 1}`}
-              aria-current={i === index ? 'true' : undefined}
-              onClick={(e) => {
-                console.log('[NewsSlider] Pill clicked', { index: i, target: e.target })
-                e.stopPropagation()
-                setIndex(i)
-              }}
-              className={`h-1.5 w-8 cursor-pointer rounded-full transition-colors ${
-                i === index
-                  ? 'bg-white'
-                  : 'bg-white/30 hover:bg-white/55'
-              }`}
-            />
-          ))}
+          {items.map((_, i) => {
+            const isActive = i === index
+            return (
+              <button
+                key={i}
+                type="button"
+                aria-label={`Show article ${i + 1}`}
+                aria-current={isActive ? 'true' : undefined}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (i !== index) goToIndex(i)
+                }}
+                className="relative h-1.5 w-8 cursor-pointer rounded-full overflow-hidden bg-white/30 hover:bg-white/55 transition-colors"
+              >
+                <div
+                  className="absolute inset-y-0 left-0 bg-white rounded-full"
+                  style={{ width: isActive ? `${progress}%` : '0%' }}
+                />
+              </button>
+            )
+          })}
         </div>
       )}
     </div>

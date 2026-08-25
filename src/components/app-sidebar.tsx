@@ -1,6 +1,6 @@
 import * as React from 'react'
-
 import { ChevronRight } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   DiscordFilled,
   Home,
@@ -24,7 +24,6 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
 } from '@/components/ui/sidebar'
-import { cn } from '@/lib/utils'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 const SOCIAL_LINKS = [
@@ -83,7 +82,7 @@ export function AppSidebar() {
       <SidebarContent className="flex flex-col">
         <div className="flex justify-center px-5 pt-6 pb-4">
           <img
-            src="./assets/icon/zemu-logo.png"
+            src="../assets/icon/zemu-logo.png"
             alt={LAUNCHER_CONFIG.name}
             className="w-full max-w-32"
           />
@@ -127,7 +126,7 @@ export function AppSidebar() {
                 <SidebarMenuButton asChild size="lg" className="px-4">
                   <a href="#/games/king-of-the-kill">
                     <img
-                      src="./assets/icon/app-icon.png"
+                      src="../assets/icon/app-icon.png"
                       alt=""
                       className="size-5 shrink-0 "
                     />
@@ -152,25 +151,42 @@ export function AppSidebar() {
             >
               <Socialize className="size-5!" />
               <span>Socialize</span>
-              <ChevronRight
-                className={cn(
-                  'ml-auto size-4 shrink-0 transition-transform duration-200',
-                  socialOpen ? 'rotate-90' : 'rotate-0'
-                )}
-              />
+              <motion.div
+                animate={{ rotate: socialOpen ? 90 : 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ChevronRight className="ml-auto size-4 shrink-0" />
+              </motion.div>
             </SidebarMenuButton>
-            {socialOpen && (
-              <SidebarMenuSub>
-                {SOCIAL_LINKS.map(({ label, href, Icon }) => (
-                  <SidebarMenuSubButton key={href} asChild>
-                    <a href={href} target="_blank" rel="noopener noreferrer">
-                      <Icon className="size-4" />
-                      <span>{label}</span>
-                    </a>
-                  </SidebarMenuSubButton>
-                ))}
-              </SidebarMenuSub>
-            )}
+            <AnimatePresence>
+              {socialOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.25, ease: 'easeInOut' }}
+                  className="overflow-hidden"
+                >
+                  <SidebarMenuSub>
+                    {SOCIAL_LINKS.map(({ label, href, Icon }, idx) => (
+                      <motion.div
+                        key={href}
+                        initial={{ x: -10, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        transition={{ delay: idx * 0.05, duration: 0.15 }}
+                      >
+                        <SidebarMenuSubButton asChild>
+                          <a href={href} target="_blank" rel="noopener noreferrer">
+                            <Icon className="size-4" />
+                            <span>{label}</span>
+                          </a>
+                        </SidebarMenuSubButton>
+                      </motion.div>
+                    ))}
+                  </SidebarMenuSub>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </SidebarMenuItem>
         </SidebarMenu>
       </div>
