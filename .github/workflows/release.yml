@@ -81,5 +81,5 @@ jobs:
           releaseName: Zemu Launcher ${{ github.ref_name }}
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: true
+          includeUpdaterJson: true
           updaterJsonPreferNsis: true

@@ -13,7 +13,7 @@ for login, and pulls game assets down as FreeArc `.arc` archives.
 | Self-update (Tauri updater + `version.json`/`unarc.exe`) | ✅ scaffolded |
 | GitHub Actions release pipeline (NSIS + updater JSON) | ✅ scaffolded |
 | Discord Rich Presence | ✅ scaffolded (placeholder client ID) |
-| Auth.js / OAuth integration with zemu-website | ✅ scaffolded (generic OAuth flow) |
+| Auth.js / OAuth integration with zemu-website | ✅ wired (Discord / Steam hosted + JSON credentials login) |
 | Frontend UI (login, install, settings, news, play) | ⏳ not started — coming next |
 
 This commit ships the **backend + release plumbing** so the frontend can be
@@ -27,8 +27,12 @@ built on top of a working IPC surface.
   `tauri-plugin-deep-link` + `tauri-plugin-updater`
 - **Update extractor**: FreeArc (`unarc.exe`) — same `x <archive> -dp<dest> -o+`
   invocation as the abyssal-gate launcher
-- **Auth**: bearer token exchange with `auth.zemu.uk/api/launcher/user`
-  (Auth.js providers on the website — Discord / Steam / email+password)
+- **Auth**: bearer-token exchange with `id.zemu.uk/api/launcher/*`
+  (Auth.js Discord / Steam providers on the website, plus a JSON
+  credentials endpoint the launcher's React login form POSTs to). The
+  launcher calls `auth_open_oauth("discord"|"steam", ...)` to open the
+  hosted flow, or POSTs directly to `/api/launcher/auth/login` for
+  email+password.
 - **Discord**: `discord-rich-presence` crate, runs in a background worker
   thread with auto-reconnect
 
@@ -121,6 +125,35 @@ export const LAUNCHER_CONFIG = {
 - `updateBaseUrl` → `update-config.json` (bundled as a Tauri resource)
 
 Always edit `src/config/launcher.ts` — never the synced files directly.
+
+## Auth flow
+
+The launcher's login screen has three buttons: **Discord**, **Steam**, and
+**Email + password**. The Rust backend (`src-tauri/src/auth.rs`,
+`src-tauri/src/commands.rs`) drives the flow:
+
+1. **Discord / Steam** — `auth_open_oauth(provider)` opens the user's browser
+   to `https://id.zemu.uk/api/launcher/oauth/initiate?provider=<provider>&state=<csrf>&callback=zemu-launcher://oauth/callback`.
+   The auth app 302s to Auth.js's `/api/auth/signin/<provider>`, the user
+   signs in, Auth.js redirects back to `/api/launcher/oauth/complete` with
+   the session cookie set, the auth app mints a 24h HS256 JWT signed with
+   `LAUNCHER_TOKEN_SECRET`, and 302s to `zemu-launcher://oauth/callback?token=<jwt>&state=<csrf>`.
+2. **Email + password** — the launcher's React form POSTs
+   `{email, password}` to `https://id.zemu.uk/api/launcher/auth/login`,
+   which mirrors the website's `signInAction` checks (email verification,
+   bcrypt) but skips Turnstile. The response is `{token, expiresAt, user}`.
+3. **Token exchange** — `auth_complete_oauth_token(token)` calls
+   `GET https://id.zemu.uk/api/launcher/user` with `Authorization: Bearer <token>`
+   to populate the full `AuthToken` record cached in `auth-store.json`.
+4. **Startup check** — on every launch, `auth_get_token` reads the cached
+   token and (optionally) calls `GET /api/launcher/oauth/introspect` to
+   validate it before showing the home screen.
+
+The bearer JWT is HS256-signed with `LAUNCHER_TOKEN_SECRET` (distinct from
+the website's `AUTH_SECRET`), scoped to the `zemu-launcher` audience and
+the `id.zemu.uk` issuer, and embeds the same role + permission set the
+website's session JWT callback reads off the cookie. 24h TTL means a
+normal gaming session doesn't get interrupted by re-auth.
 
 ## GitHub Actions
 

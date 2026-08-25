@@ -10,7 +10,7 @@ use rand::RngCore;
 use tauri::{AppHandle, Emitter, Manager};
 use url::Url;
 
-const API_BASE_URL_FALLBACK: &str = "https://auth.zemu.uk";
+const API_BASE_URL_FALLBACK: &str = "https://id.zemu.uk";
 const OAUTH_STATE_TTL_MS: i64 = 10 * 60 * 1000;
 
 fn resolve_api_base_url(app: &AppHandle) -> String {
@@ -266,7 +266,7 @@ pub fn open_oauth(app: &AppHandle, provider: String, is_dev_runtime: bool) -> Co
         "auth",
         &format!("open_oauth provider={provider} is_dev_runtime={is_dev_runtime}"),
     );
-    let result = (|| -> Result<()> {
+    let result = (|| -> Result<String> {
         let state = generate_oauth_state(app, provider.clone())?;
 
         let api_base_url = if is_dev_runtime {
@@ -306,11 +306,11 @@ pub fn open_oauth(app: &AppHandle, provider: String, is_dev_runtime: bool) -> Co
 
         webbrowser::open(oauth_url.as_str()).map_err(|e| anyhow!(e.to_string()))?;
         let _ = debug_log::append(app, "auth", "open_oauth browser_opened=true");
-        Ok(())
+        Ok(state)
     })();
 
     match result {
-        Ok(_) => CommandResult::ok(),
+        Ok(state) => CommandResult::ok_with_state(state),
         Err(err) => {
             let _ = debug_log::append(app, "auth", &format!("open_oauth error={err}"));
             CommandResult::err(err.to_string())
@@ -459,7 +459,7 @@ fn emit_oauth_callback(
         }
     }
 
-    app.emit("auth:oauth-callback", payload)
+    app.emit("oauth-callback", payload)
         .map_err(|e| anyhow!(e.to_string()))?;
     let _ = debug_log::append(app, "auth", "emit_oauth_callback emitted_event=true");
     Ok(())

@@ -224,6 +224,11 @@ pub struct CommandResult {
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Optional state echoed back to the renderer. Currently used by
+    /// `auth_open_oauth` so the renderer can correlate the eventual
+    /// `oauth-callback` event with the flow it kicked off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
 }
 
 impl CommandResult {
@@ -231,6 +236,7 @@ impl CommandResult {
         Self {
             success: true,
             error: None,
+            state: None,
         }
     }
 
@@ -238,6 +244,17 @@ impl CommandResult {
         Self {
             success: false,
             error: Some(message.into()),
+            state: None,
+        }
+    }
+
+    /// Convenience constructor for commands that need to return data to
+    /// the renderer in addition to the success flag.
+    pub fn ok_with_state(state: impl Into<String>) -> Self {
+        Self {
+            success: true,
+            error: None,
+            state: Some(state.into()),
         }
     }
 }

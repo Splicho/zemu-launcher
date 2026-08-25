@@ -5,7 +5,7 @@ use anyhow::{anyhow, Result};
 use tauri::AppHandle;
 use url::Url;
 
-const API_BASE_URL_FALLBACK: &str = "https://auth.zemu.uk";
+const API_BASE_URL_FALLBACK: &str = "https://id.zemu.uk";
 
 fn resolve_api_base_url(app: &AppHandle) -> String {
     detect_api_base_url(app)

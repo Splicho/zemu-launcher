@@ -1,0 +1,94 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Zemu Launcher",
+  "version": "0.1.0",
+  "identifier": "uk.zemu.launcher",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "pnpm dev:vite",
+    "beforeBuildCommand": "pnpm build:vite"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "create": false,
+        "title": "Zemu Launcher",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "resizable": true,
+        "maximizable": true,
+        "minimizable": true,
+        "closable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "center": true,
+        "visible": false
+      },
+      {
+        "label": "bootstrap",
+        "title": "Zemu Launcher Updater",
+        "url": "index.html#/bootstrap",
+        "width": 460,
+        "height": 430,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "shadow": false,
+        "transparent": true,
+        "center": true,
+        "alwaysOnTop": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": "all",
+    "resources": [
+      "../update-config.json",
+      "../assets/bin/unarc.exe"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_TAURI_SIGNING_PUBLIC_KEY",
+      "endpoints": [
+        "https://github.com/zemu-uk/zemu-launcher-releases/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "zemu-launcher"
+        ]
+      }
+    }
+  }
+}
