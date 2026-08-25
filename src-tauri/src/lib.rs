@@ -45,7 +45,12 @@ pub fn run() {
             // the bootstrap route (`#/bootstrap`) unset. The React app
             // would then render the main route in a 460×430 transparent
             // window and never invoke `launcher_finish_bootstrap`.
-            match WebviewWindowBuilder::new(app, "bootstrap", WebviewUrl::App("index.html#/bootstrap".into()))
+            // Tauri 2 silently treats relative paths in WebviewUrl::App as
+            // "no frontend bundle found" and resolves to `about:blank`. The
+            // path MUST start with a leading slash. We pass `/#/bootstrap`
+            // (root document + hash route) because `index.html` is the
+            // default entry and the React router dispatches on the hash.
+            match WebviewWindowBuilder::new(app, "bootstrap", WebviewUrl::App("/#/bootstrap".into()))
                 .title("Zemu Launcher Updater")
                 .inner_size(460.0, 430.0)
                 .resizable(false)
@@ -60,12 +65,29 @@ pub fn run() {
                 .build()
             {
                 Ok(window) => {
+                    let resolved = window.url().ok();
+                    let path = resolved
+                        .as_ref()
+                        .and_then(|u| u.path_segments().and_then(|mut s| s.next().map(|x| x.to_string())));
+                    let hash = resolved.as_ref().and_then(|u| u.fragment().map(|f| f.to_string()));
+                    if path.as_deref() != Some("index.html") || hash.as_deref() != Some("bootstrap") {
+                        let _ = debug_log::append(
+                            app.handle(),
+                            "bootstrap",
+                            &format!(
+                                "BOOTSTRAP_URL_MISMATCH resolved={:?} expected=/index.html#bootstrap — frontend will not load",
+                                resolved,
+                            ),
+                        );
+                    }
                     let _ = debug_log::append(
                         app.handle(),
                         "bootstrap",
                         &format!(
-                            "created bootstrap window url={:?} visible={}",
-                            window.url(),
+                            "created bootstrap window resolved_url={:?} path={:?} fragment={:?} visible={}",
+                            resolved,
+                            path,
+                            hash,
                             window.is_visible().unwrap_or(false),
                         ),
                     );
