@@ -21,14 +21,16 @@
  *        - src-tauri/tauri.conf.json
  *        - src/config/launcher.ts
  *   4. Commits as "chore(release): v<X.Y.Z>" and pushes to origin/main.
- *   5. Pushes the tag.
- *   6. Triggers the release workflow via `gh workflow run release.yml`.
+ *   5. Pushes the tag. The tag push alone triggers the release workflow
+ *      (configured for `push: tags: 'v*'` in `.github/workflows/release.yml`)
+ *      so we deliberately do NOT also dispatch the workflow manually —
+ *      doing so starts a second, redundant run.
  *
  * Idempotent: if the version files already match the target, the commit
- * is skipped (but the tag + workflow run still happen).
+ * is skipped (but the tag push still happens).
  */
 
-const { execFileSync, spawnSync } = require('node:child_process')
+const { execFileSync } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
 const readline = require('node:readline')
@@ -113,12 +115,17 @@ function ensureCleanTree() {
   const status = runCapture('git', ['status', '--porcelain'])
   if (!status) return
 
-  // Allow only files we're about to edit (or already-modified version files).
+  // Allow only files we're about to edit (or already-modified version files
+  // + the lockfile that gets refreshed in step 5b).
+  const allowed = new Set([
+    ...FILES.map((f) => f.path.replace(/\\/g, '/')),
+    'src-tauri/Cargo.lock',
+  ])
   const offenders = status
     .split('\n')
     .map((l) => l.slice(3))
     .filter(Boolean)
-    .filter((f) => !FILES.some((file) => path.posix.normalize(f) === file.path.replace(/\\/g, '/')))
+    .filter((f) => !allowed.has(path.posix.normalize(f)))
 
   if (offenders.length > 0) {
     console.error(paint('red', '\nWorking tree has uncommitted changes:'))
@@ -126,7 +133,7 @@ function ensureCleanTree() {
     console.error(
       paint(
         'yellow',
-        '\nCommit or stash these before releasing. (Only the version files are touched by this script.)',
+        '\nCommit or stash these before releasing. (Only the version files and Cargo.lock are touched by this script.)',
       ),
     )
     process.exit(1)
@@ -321,12 +328,46 @@ async function main() {
     console.log(paint('dim', '\n  (no version changes to commit)'))
   }
 
+  // 5b. Refresh Cargo.lock to match the bumped Cargo.toml.
+  //     Without this, `cargo build --release --locked` (used by CI to
+  //     warm the Rust cache and by `tauri-action` for the actual build)
+  //     fails with "cannot update the lock file because --locked was
+  //     passed". `cargo check --release` is enough to update the
+  //     lockfile and is much faster than a full `cargo build`.
+  console.log('')
+  console.log('  Refreshing Cargo.lock...')
+  try {
+    run('cargo', ['check', '--manifest-path', 'src-tauri/Cargo.toml', '--release'])
+    // If `cargo check` updated Cargo.lock, fold the change into the
+    // version-bump commit so we ship a single self-consistent commit.
+    const lockStatus = runCapture('git', ['status', '--porcelain', '--', 'src-tauri/Cargo.lock'])
+    if (lockStatus) {
+      run('git', ['add', 'src-tauri/Cargo.lock'])
+      if (anyChanged) {
+        run('git', ['commit', '--amend', '--no-edit'])
+      } else {
+        run('git', ['commit', '-m', `chore(release): refresh Cargo.lock for ${target}`])
+      }
+    }
+  } catch (err) {
+    console.warn(
+      paint(
+        'yellow',
+        `  Warning: cargo check failed: ${err.message}\n` +
+          '  Continuing without refreshing Cargo.lock. The CI/release build may fail with --locked.',
+      ),
+    )
+  }
+
   // 6. Push main.
   console.log('')
   console.log('  Pushing main...')
   run('git', ['push', 'origin', 'main'])
 
   // 7. Push tag (delete-and-recreate to be idempotent on retry).
+  //    The release workflow is configured to start on `push: tags: 'v*'`,
+  //    so pushing the tag is what kicks off the build. Do NOT also
+  //    `gh workflow run` it here — that starts a duplicate run.
   console.log('  Pushing tag...')
   const remoteTagExists = runOrNull('git', ['ls-remote', '--tags', 'origin', target])
   if (remoteTagExists) {
@@ -336,26 +377,9 @@ async function main() {
   run('git', ['tag', '-f', target])
   run('git', ['push', 'origin', target])
 
-  // 8. Trigger the workflow.
+  // 8. Print the URL of the tag-triggered run (the one we just started).
   console.log('')
-  console.log(`  Triggering release workflow for ${paint('bold', target)}...`)
-  const ghResult = spawnSync(
-    'gh',
-    ['workflow', 'run', 'release.yml', '-f', `tag=${target}`],
-    { cwd: rootDir, stdio: 'inherit' },
-  )
-  if (ghResult.status !== 0) {
-    console.error(
-      paint(
-        'yellow',
-        '\n  `gh workflow run` did not exit cleanly. Make sure the GitHub CLI is authenticated and the workflow exists.',
-      ),
-    )
-    process.exit(ghResult.status ?? 1)
-  }
-
-  console.log('')
-  console.log(paint('green', `  ✓ Release ${target} triggered.`))
+  console.log(paint('green', `  ✓ Release ${target} triggered (via tag push).`))
   console.log(
     paint(
       'dim',
