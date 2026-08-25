@@ -104,7 +104,7 @@ jobs:
           projectPath: .
           tauriScript: pnpm tauri
           args: --bundles nsis
-          owner: zemu-uk
+          owner: Splicho
           repo: zemu-launcher-releases
           releaseCommitish: main
           tagName: ${{ github.ref_name }}
