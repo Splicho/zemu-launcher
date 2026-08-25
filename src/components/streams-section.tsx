@@ -3,7 +3,7 @@ import useEmblaCarousel from 'embla-carousel-react'
 import { Button } from '@/components/ui/button'
 import { Eye } from '@/components/icons'
 import { Badge } from '@/components/ui/badge'
-import { fetchStreams, StreamInfo } from '@/api/streams'
+import { fetchStreams } from '@/api/streams'
 import { useQuery } from '@tanstack/react-query'
 
 function formatViewers(count: number): string {

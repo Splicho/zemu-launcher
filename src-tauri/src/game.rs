@@ -365,7 +365,7 @@ pub fn download_steam_depot(
                 }
             }
         } else if let Err(err) = result {
-            let _ = crate::steam::emit_progress(
+            crate::steam::emit_progress(
                 &app_handle,
                 crate::models::DepotProgress::failed(err.to_string()),
             );

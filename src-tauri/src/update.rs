@@ -1099,10 +1099,13 @@ fn get_files_to_update(
             .unwrap_or(false);
 
         for (file_key, file_entry) in &folder_info.files {
-            // If the folder is "root", extract files to game directory root, not a subfolder
-            let relative_path = if folder_name == "root" {
-                file_entry.path.clone()
-            } else if file_entry.path.starts_with(&format!("{folder_name}/")) {
+            // If the folder is "root", extract files to game directory root, not a subfolder.
+            // For nested folders, use the path as-is when it's already prefixed with the
+            // folder name (legacy / canonical layout) and otherwise prepend it so the file
+            // lands in the right subdirectory.
+            let relative_path = if folder_name == "root"
+                || file_entry.path.starts_with(&format!("{folder_name}/"))
+            {
                 file_entry.path.clone()
             } else {
                 format!("{folder_name}/{}", file_entry.path)

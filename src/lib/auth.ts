@@ -73,6 +73,12 @@ export interface IntrospectResponse {
   user?: LauncherUser
   expiresAt?: number
   secondsUntilExpiry?: number
+  /**
+   * Present on failure responses synthesized by the renderer (network
+   * unreachable, non-2xx HTTP status, non-JSON body). The server's own
+   * success/deny responses do not include it.
+   */
+  reason?: string
 }
 
 const TOKEN_STORAGE_KEY = 'zemu-launcher.auth'

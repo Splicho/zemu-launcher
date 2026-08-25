@@ -173,6 +173,7 @@ export function useAuth(): UseAuthResult {
     // loop introspect → setToken → introspect. The bearer is
     // immutable for the lifetime of a session — it only changes on
     // login/logout, which is exactly when we *want* to re-introspect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token?.token])
 
   const login = useCallback(async (email: string, password: string) => {

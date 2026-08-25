@@ -10,7 +10,6 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
   return <GameStateContext.Provider value={store}>{children}</GameStateContext.Provider>
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useGameStateContext(): GameStateStore {
   const ctx = useContext(GameStateContext)
   if (!ctx) {
