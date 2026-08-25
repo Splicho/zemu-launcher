@@ -4,7 +4,17 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.vscode/**'
+      - '.cursor/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.vscode/**'
+      - '.cursor/**'
   workflow_dispatch:
 
 permissions:
