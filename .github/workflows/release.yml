@@ -1,6 +1,28 @@
 name: Release Launcher
 
+# Releases are produced either manually or by pushing a release tag.
+#
+# Manual trigger:
+#   1. GitHub UI: Actions -> Release Launcher -> Run workflow.
+#      A `tag` input is required.
+#   2. CLI:
+#        gh workflow run release.yml -f tag=v0.1.3
+#
+# Tag trigger:
+#   Pushing a tag matching `v*` (e.g. `git push origin v0.1.3`) starts the
+#   workflow with that tag. `github.ref_name` carries the tag name in that
+#   case, so the rest of the workflow reads it the same way.
+#
+# The `tag` input / `github.ref_name` is propagated to downstream steps
+# (`assert-release-tag.cjs`, `tauri-action`) so both trigger paths behave
+# identically.
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.3)'
+        required: true
+        type: string
   push:
     tags:
       - 'v*'
@@ -43,7 +65,9 @@ jobs:
         run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Verify tag matches launcher version
-        run: node scripts/assert-release-tag.cjs "${{ github.ref_name }}"
+        env:
+          GITHUB_REF_NAME: ${{ inputs.tag || github.ref_name }}
+        run: node scripts/assert-release-tag.cjs "${{ inputs.tag || github.ref_name }}"
 
       - name: Sync generated launcher metadata
         run: pnpm run sync:launcher-config
@@ -108,8 +132,8 @@ jobs:
           owner: Splicho
           repo: zemu-launcher-releases
           releaseCommitish: main
-          tagName: ${{ github.ref_name }}
-          releaseName: Zemu Launcher ${{ github.ref_name }}
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: Zemu Launcher ${{ inputs.tag || github.ref_name }}
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
