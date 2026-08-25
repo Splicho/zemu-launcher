@@ -1,10 +1,12 @@
 use crate::debug_log;
 use crate::discord;
 use crate::models::CommandResult;
+use crate::models::SteamCredentials;
 use crate::state::AppState;
+use crate::steam::{self, DepotRequest, H1Z1_APP_ID, H1Z1_DEFAULT_DEPOT_ID, H1Z1_DEFAULT_MANIFEST_ID};
 use crate::storage::{
     detect_game_executable, load_launcher_config, load_version_cache, normalize_callback_protocol,
-    save_launcher_config,
+    save_launcher_config, save_steam_credentials,
 };
 use anyhow::{anyhow, Result};
 #[cfg(target_os = "windows")]
@@ -307,6 +309,85 @@ pub fn get_local_version(app: &AppHandle) -> Result<Option<crate::models::Versio
             Ok(Some(manifest))
         }
         Err(_) => load_version_cache(app),
+    }
+}
+
+/// Kicks off the self-contained Steam depot download pipeline (no Steam
+/// client required). The actual work happens on a Tokio task; this command
+/// returns `CommandResult::ok()` immediately and progress is streamed back
+/// via the `depot-progress` Tauri event.
+///
+/// If `manifest_id` or `depot_id` are empty the canonical H1Z1 values from
+/// [`crate::steam`] are used. Credentials are saved (refresh token
+/// rotation) before returning.
+pub fn download_steam_depot(
+    app: &AppHandle,
+    credentials: SteamCredentials,
+    manifest_id: String,
+    depot_id: String,
+    output_path: String,
+) -> CommandResult {
+    let output_path_buf = PathBuf::from(output_path);
+
+    let request = DepotRequest {
+        app_id: H1Z1_APP_ID,
+        depot_id: parse_depot_id(&depot_id),
+        manifest_id: parse_manifest_id(&manifest_id),
+        output_dir: output_path_buf.clone(),
+    };
+
+    let _ = debug_log::append(
+        app,
+        "game.steam",
+        &format!(
+            "download_steam_depot output={} depot={} manifest={}",
+            output_path_buf.display(),
+            request.depot_id,
+            request.manifest_id
+        ),
+    );
+
+    let app_handle = app.clone();
+
+    // Run the pipeline on a Tokio task so this command returns immediately
+    // and the renderer can subscribe to `depot-progress` events.
+    tauri::async_runtime::spawn(async move {
+        let result = steam::download_depot(app_handle.clone(), credentials, request).await;
+
+        if let Ok(outcome) = result {
+            if let Some(updated) = outcome.saved_credentials {
+                if let Err(err) = save_steam_credentials(&app_handle, &updated) {
+                    let _ = debug_log::append(
+                        &app_handle,
+                        "game.steam",
+                        &format!("save_steam_credentials failed: {err}"),
+                    );
+                }
+            }
+        } else if let Err(err) = result {
+            let _ = crate::steam::emit_progress(
+                &app_handle,
+                crate::models::DepotProgress::failed(err.to_string()),
+            );
+        }
+    });
+
+    CommandResult::ok()
+}
+
+fn parse_depot_id(value: &str) -> u32 {
+    if value.trim().is_empty() {
+        H1Z1_DEFAULT_DEPOT_ID
+    } else {
+        value.trim().parse().unwrap_or(H1Z1_DEFAULT_DEPOT_ID)
+    }
+}
+
+fn parse_manifest_id(value: &str) -> u64 {
+    if value.trim().is_empty() {
+        H1Z1_DEFAULT_MANIFEST_ID
+    } else {
+        value.trim().parse().unwrap_or(H1Z1_DEFAULT_MANIFEST_ID)
     }
 }
 

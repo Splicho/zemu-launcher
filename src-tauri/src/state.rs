@@ -26,6 +26,7 @@ pub struct AppState {
     pub oauth_server_started: Arc<AtomicBool>,
     pub pending_oauth_callback: Arc<Mutex<Option<OAuthCallbackPayload>>>,
     pub processed_oauth_states: Arc<Mutex<HashMap<String, i64>>>,
+    pub runtime_update_url: Arc<Mutex<Option<String>>>,
 }
 
 impl AppState {
@@ -134,5 +135,20 @@ impl AppState {
         guard.active_pid = None;
 
         Some(GameLaunchState::default())
+    }
+
+    pub fn set_runtime_update_url(&self, url: String) {
+        let trimmed = url.trim().trim_end_matches('/').to_string();
+        if let Ok(mut guard) = self.runtime_update_url.lock() {
+            *guard = if trimmed.is_empty() { None } else { Some(trimmed) };
+        }
+    }
+
+    pub fn get_runtime_update_url(&self) -> Option<String> {
+        self.runtime_update_url.lock().ok().and_then(|g| g.clone())
+    }
+
+    pub fn get_update_base_url(&self) -> Option<String> {
+        self.get_runtime_update_url()
     }
 }

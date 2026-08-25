@@ -4,7 +4,7 @@ use crate::models::{
     UpdateCheckResult, UpdateStatus, VersionManifest,
 };
 use crate::state::AppState;
-use crate::storage::{detect_public_update_base_url, save_version_cache};
+use crate::storage::save_version_cache;
 use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
@@ -62,12 +62,13 @@ impl UpdateClient {
         mut on_progress: impl FnMut(u64, u64, Option<f64>),
         cancel_check: impl Fn() -> bool,
     ) -> Result<Vec<u8>> {
-        let clean_path = relative_path.trim_start_matches('/');
+        let clean_path = relative_path.trim_start_matches('/').trim_start_matches("root/");
         let url = format!("{}/{}", self.base_url, clean_path);
+        eprintln!("[RUST_DEBUG] DOWNLOAD: url={}", url);
 
-        let response = self.http.get(url).send().await?;
+        let response = self.http.get(&url).send().await?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(anyhow!("not found: {}", relative_path));
+            return Err(anyhow!("not found: {} -> {}", relative_path, url));
         }
         if !response.status().is_success() {
             return Err(anyhow!(
@@ -107,6 +108,7 @@ impl UpdateClient {
 
 pub async fn check_for_updates(
     app: &AppHandle,
+    state: &AppState,
     game_directory: String,
 ) -> Result<UpdateCheckResult> {
     if game_directory.trim().is_empty() {
@@ -118,9 +120,21 @@ pub async fn check_for_updates(
         &format!("check_for_updates start game_directory={game_directory}"),
     );
 
-    let base_url = detect_public_update_base_url(app)?.ok_or_else(|| {
-        anyhow!("Update service is not configured. Set updateBaseUrl in update-config.json.")
-    })?;
+    let base_url = match state.get_update_base_url() {
+        Some(url) => url,
+        None => {
+            let _ = debug_log::append(app, "update", "check_for_updates no_update_url_configured");
+            return Ok(UpdateCheckResult {
+                has_update: false,
+                cdn_available: false,
+                current_version: None,
+                latest_version: None,
+                folders_to_update: None,
+                files_to_update: None,
+                is_file_level: None,
+            });
+        }
+    };
     let _ = debug_log::append(
         app,
         "update",
@@ -135,7 +149,16 @@ pub async fn check_for_updates(
                 "update",
                 &format!("check_for_updates manifest_fetch_error={err}"),
             );
-            return Err(err);
+            // CDN unavailable - return result indicating that
+            return Ok(UpdateCheckResult {
+                has_update: false,
+                cdn_available: false,
+                current_version: None,
+                latest_version: None,
+                folders_to_update: None,
+                files_to_update: None,
+                is_file_level: None,
+            });
         }
     };
 
@@ -186,6 +209,7 @@ pub async fn check_for_updates(
 
             let result = UpdateCheckResult {
                 has_update: !files.is_empty(),
+                cdn_available: true,
                 current_version: None,
                 latest_version: Some(remote_manifest.version.clone()),
                 folders_to_update: None,
@@ -210,6 +234,7 @@ pub async fn check_for_updates(
 
         let result = UpdateCheckResult {
             has_update: true,
+            cdn_available: true,
             current_version: None,
             latest_version: Some(remote_manifest.version.clone()),
             folders_to_update: Some(remote_manifest.folders.keys().cloned().collect()),
@@ -243,6 +268,7 @@ pub async fn check_for_updates(
         )?;
         let result = UpdateCheckResult {
             has_update: !files_to_update.is_empty(),
+            cdn_available: true,
             current_version: Some(local_version.version),
             latest_version: Some(remote_manifest.version.clone()),
             folders_to_update: None,
@@ -269,6 +295,7 @@ pub async fn check_for_updates(
     if version_comparison >= 0 {
         let result = UpdateCheckResult {
             has_update: false,
+            cdn_available: true,
             current_version: Some(local_version.version),
             latest_version: Some(remote_manifest.version.clone()),
             folders_to_update: None,
@@ -296,6 +323,7 @@ pub async fn check_for_updates(
     }
     let result = UpdateCheckResult {
         has_update: !folders_to_update.is_empty(),
+        cdn_available: true,
         current_version: Some(local_version.version),
         latest_version: Some(remote_manifest.version.clone()),
         folders_to_update: Some(folders_to_update),
@@ -367,27 +395,47 @@ pub async fn start_download_and_install(
         &format!("start_download_and_install started game_directory={game_directory}"),
     );
 
+    let _ = debug_log::append(
+        &app,
+        "update",
+        &format!("start_download_and_install runtime.lock acquired, is_updating={}", {
+            let r = state.update_runtime.lock().ok();
+            r.map(|g| g.is_updating).unwrap_or(false)
+        }),
+    );
+
     let app_handle = app.clone();
+    let _ = debug_log::append(&app, "update", "start_download_and_install spawning async task...");
+    eprintln!("[RUST_DEBUG] About to spawn async task");
     tauri::async_runtime::spawn(async move {
+        eprintln!("[RUST_DEBUG] ASYNC_TASK: started");
+        let _ = debug_log::append(&app_handle, "update", "ASYNC_TASK: started");
         let result = download_and_install(&app_handle, &state, &game_directory).await;
-        if let Err(err) = result {
-            let mut status = state
-                .update_runtime
-                .lock()
-                .ok()
-                .and_then(|runtime| runtime.status.clone())
-                .unwrap_or_default();
-            status.is_updating = false;
-            status.error = Some(err.to_string());
-            update_runtime_status(&state, &status, false);
-            emit_status(&app_handle, &status);
-            let _ = debug_log::append(
-                &app_handle,
-                "update",
-                &format!("download_and_install failed error={err}"),
-            );
-        } else {
-            let _ = debug_log::append(&app_handle, "update", "download_and_install completed");
+        eprintln!("[RUST_DEBUG] ASYNC_TASK: download_and_install returned");
+        let _ = debug_log::append(&app_handle, "update", "ASYNC_TASK: download_and_install returned");
+        match result {
+            Ok(()) => {
+                eprintln!("[RUST_DEBUG] ASYNC_TASK: result is Ok, completed");
+                let _ = debug_log::append(&app_handle, "update", "download_and_install completed");
+            }
+            Err(err) => {
+                eprintln!("[RUST_DEBUG] ASYNC_TASK: result is Err: {}", err);
+                let mut status = state
+                    .update_runtime
+                    .lock()
+                    .ok()
+                    .and_then(|runtime| runtime.status.clone())
+                    .unwrap_or_default();
+                status.is_updating = false;
+                status.error = Some(err.to_string());
+                update_runtime_status(&state, &status, false);
+                emit_status(&app_handle, &status);
+                let _ = debug_log::append(
+                    &app_handle,
+                    "update",
+                    &format!("download_and_install failed error={err}"),
+                );
+            }
         }
     });
 
@@ -404,8 +452,8 @@ async fn download_and_install(
         "update",
         &format!("download_and_install start game_directory={game_directory}"),
     );
-    let base_url = detect_public_update_base_url(app)?.ok_or_else(|| {
-        anyhow!("Update service is not configured. Set updateBaseUrl in update-config.json.")
+    let base_url = state.get_update_base_url().ok_or_else(|| {
+        anyhow!("Update service is not configured. Call launcher_set_runtime_update_url first.")
     })?;
     let _ = debug_log::append(
         app,
@@ -413,18 +461,26 @@ async fn download_and_install(
         &format!("download_and_install base_url={base_url}"),
     );
     let client = UpdateClient::new(base_url);
+    let _ = debug_log::append(app, "update", "download_and_install fetching manifest...");
     let remote_manifest = client.get_version_manifest().await?;
+    let _ = debug_log::append(
+        app,
+        "update",
+        &format!("download_and_install manifest received version={}", remote_manifest.version),
+    );
 
     let local_version = load_local_manifest(game_directory)?;
     let is_file_level = uses_file_level_manifest(&remote_manifest);
+    let has_folders = !remote_manifest.folders.is_empty();
     let _ = debug_log::append(
         app,
         "update",
         &format!(
-            "download_and_install manifest version={} folders={} file_level={} local_manifest_present={}",
+            "download_and_install manifest version={} folders={} file_level={} has_folders={} local_manifest_present={}",
             remote_manifest.version,
             remote_manifest.folders.len(),
             is_file_level,
+            has_folders,
             local_version.is_some()
         ),
     );
@@ -432,6 +488,10 @@ async fn download_and_install(
     let temp_dir = std::env::temp_dir().join(TEMP_DIR_NAME);
     fs::create_dir_all(&temp_dir)?;
 
+    // Always load local manifest for checking file needs
+    let local_version = load_local_manifest(game_directory)?;
+
+    // PART 1: Download base game files (file-level content)
     if is_file_level {
         let verify_on_disk = local_version.is_none();
         if verify_on_disk {
@@ -456,77 +516,59 @@ async fn download_and_install(
             ),
         );
 
-        if files_to_update.is_empty() {
-            let status = UpdateStatus {
-                is_updating: false,
-                overall_progress: 100.0,
+        if !files_to_update.is_empty() {
+            let mut status = UpdateStatus {
+                is_updating: true,
+                total_files: files_to_update.len(),
+                files: Some(
+                    files_to_update
+                        .iter()
+                        .map(|file| FileProgress {
+                            file_path: file.file_path.clone(),
+                            stage: "downloading".to_string(),
+                            progress: 0.0,
+                            downloaded: 0,
+                            total: file.entry.compressed_size,
+                            speed: Some(0.0),
+                        })
+                        .collect(),
+                ),
                 ..UpdateStatus::default()
             };
-            update_runtime_status(state, &status, false);
-            emit_status(app, &status);
-            return Ok(());
-        }
 
-        let mut status = UpdateStatus {
-            is_updating: true,
-            total_files: files_to_update.len(),
-            files: Some(
-                files_to_update
-                    .iter()
-                    .map(|file| FileProgress {
-                        file_path: file.file_path.clone(),
-                        stage: "downloading".to_string(),
-                        progress: 0.0,
-                        downloaded: 0,
-                        total: file.entry.compressed_size,
-                        speed: Some(0.0),
-                    })
-                    .collect(),
-            ),
-            ..UpdateStatus::default()
-        };
-
-        update_runtime_status(state, &status, true);
-        emit_status(app, &status);
-
-        for (index, file_item) in files_to_update.iter().enumerate() {
-            ensure_not_cancelled(state)?;
-
-            status.current_file = Some(file_item.file_path.clone());
-            status.completed_files = index;
             update_runtime_status(state, &status, true);
             emit_status(app, &status);
 
-            update_single_file(
-                app,
-                state,
-                &client,
-                game_directory,
-                &temp_dir,
-                &remote_manifest,
-                file_item,
-                &mut status,
-                index,
-            )
-            .await?;
+            for (index, file_item) in files_to_update.iter().enumerate() {
+                ensure_not_cancelled(state)?;
 
-            status.completed_files = index + 1;
-            status.overall_progress = calculate_overall_progress(&status);
-            update_runtime_status(state, &status, true);
-            emit_status(app, &status);
+                status.current_file = Some(file_item.file_path.clone());
+                status.completed_files = index;
+                update_runtime_status(state, &status, true);
+                emit_status(app, &status);
+
+                update_single_file(
+                    app,
+                    state,
+                    &client,
+                    game_directory,
+                    &temp_dir,
+                    &remote_manifest,
+                    file_item,
+                    &mut status,
+                    index,
+                )
+                .await?;
+
+                status.completed_files = index + 1;
+                status.overall_progress = calculate_overall_progress(&status);
+                update_runtime_status(state, &status, true);
+                emit_status(app, &status);
+            }
         }
-
-        persist_installed_manifest(app, game_directory, &remote_manifest)?;
-
-        status.is_updating = false;
-        status.overall_progress = 100.0;
-        update_runtime_status(state, &status, false);
-        emit_status(app, &status);
-
-        let _ = fs::remove_dir_all(&temp_dir);
-        return Ok(());
     }
 
+    // PART 2: Download patches/folders
     let folders_to_update = get_folders_to_update(&remote_manifest, local_version.as_ref());
     let _ = debug_log::append(
         app,
@@ -537,6 +579,7 @@ async fn download_and_install(
         ),
     );
     if folders_to_update.is_empty() {
+        // No files or folders to update - we're done
         let status = UpdateStatus {
             is_updating: false,
             overall_progress: 100.0,
@@ -544,6 +587,13 @@ async fn download_and_install(
         };
         update_runtime_status(state, &status, false);
         emit_status(app, &status);
+
+        // Persist manifest if we downloaded files (even if no folders)
+        if is_file_level && local_version.is_none() {
+            let _ = persist_installed_manifest(app, game_directory, &remote_manifest);
+        }
+
+        let _ = fs::remove_dir_all(&temp_dir);
         return Ok(());
     }
 
@@ -1049,7 +1099,10 @@ fn get_files_to_update(
             .unwrap_or(false);
 
         for (file_key, file_entry) in &folder_info.files {
-            let relative_path = if file_entry.path.starts_with(&format!("{folder_name}/")) {
+            // If the folder is "root", extract files to game directory root, not a subfolder
+            let relative_path = if folder_name == "root" {
+                file_entry.path.clone()
+            } else if file_entry.path.starts_with(&format!("{folder_name}/")) {
                 file_entry.path.clone()
             } else {
                 format!("{folder_name}/{}", file_entry.path)

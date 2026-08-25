@@ -55,7 +55,6 @@
     "createUpdaterArtifacts": true,
     "targets": "all",
     "resources": [
-      "../update-config.json",
       "../assets/bin/unarc.exe"
     ],
     "icon": [

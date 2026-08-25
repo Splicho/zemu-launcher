@@ -1,10 +1,7 @@
-import { Box, Play } from '@/components/icons'
-import { Button } from '@/components/ui/button'
-import { useUpdate } from '@/contexts/update-context'
+import { Box } from '@/components/icons'
+import { GameActionButton } from '@/components/game-action-button'
 
 export function PlayHeader() {
-  const { startDemo } = useUpdate()
-
   return (
     <div className="flex h-full flex-col items-start justify-end pb-8 pl-8">
       <img
@@ -18,15 +15,7 @@ export function PlayHeader() {
           ZEmu: King of the Kill is a fast-paced, competitive battle royale shooter. Parachute in and search for weapons, ammo, vehicles and supplies to stay alive. As toxic gas compresses the map, develop a winning strategy and prepare for the final showdown.
         </p>
         <div className="mt-6 flex items-center gap-6">
-          <Button
-            size="lg"
-            className="rounded-lg min-w-[200px] p-6 text-lg px-10"
-            variant="gradient"
-            onClick={startDemo}
-          >
-            <Play className="size-5" />
-            Play
-          </Button>
+          <GameActionButton />
           <div className="flex items-center gap-2 text-muted-foreground">
             <Box className="size-5" />
             <span className="text-sm">15GB</span>

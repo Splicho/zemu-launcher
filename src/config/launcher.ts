@@ -4,7 +4,7 @@ export const LAUNCHER_CONFIG = {
   company: 'ZEmu',
   // Public URL the launcher hits to fetch version.json + .arc archives.
   // Bundled into update-config.json by scripts/sync-launcher-config.cjs.
-  updateBaseUrl: 'https://cdn.zemu.uk',
+  updateBaseUrl: 'https://assets.zemu.uk',
   // Auth.js (Next.js) on id.zemu.uk. The web-session cookie is scoped to
   // .zemu.uk in production, so the launcher exchanges the bearer token it
   // receives from /api/launcher/oauth/initiate via the standard Auth.js flow.

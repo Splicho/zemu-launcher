@@ -1,15 +1,15 @@
-use crate::models::{AuthStore, LauncherConfig, VersionManifest};
+use crate::models::{AuthStore, LauncherConfig, SteamCredentials, VersionManifest};
 use anyhow::{anyhow, Context, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{path::BaseDirectory, AppHandle, Manager};
+use tauri::{AppHandle, Manager};
 
 const CONFIG_FILE: &str = "launcher-config.json";
 const VERSION_FILE: &str = "game-version.json";
 const AUTH_STORE_FILE: &str = "auth-store.json";
-const UPDATE_CONFIG_FILE: &str = "update-config.json";
+const STEAM_CREDS_FILE: &str = "steam-creds.json";
 
 pub fn ensure_app_data_dir(app: &AppHandle) -> Result<PathBuf> {
     let dir = app
@@ -45,6 +45,10 @@ pub fn version_cache_path(app: &AppHandle) -> Result<PathBuf> {
 
 pub fn auth_store_path(app: &AppHandle) -> Result<PathBuf> {
     Ok(ensure_app_data_dir(app)?.join(AUTH_STORE_FILE))
+}
+
+pub fn steam_creds_path(app: &AppHandle) -> Result<PathBuf> {
+    Ok(ensure_app_data_dir(app)?.join(STEAM_CREDS_FILE))
 }
 
 pub fn load_launcher_config(app: &AppHandle) -> Result<LauncherConfig> {
@@ -98,39 +102,34 @@ pub fn save_auth_store(app: &AppHandle, store: &AuthStore) -> Result<()> {
     write_json(&path, store)
 }
 
-pub fn detect_public_update_base_url(app: &AppHandle) -> Result<Option<String>> {
-    let launcher_config = load_launcher_config(app)?;
-    if let Some(url) = launcher_config.update_base_url {
-        let trimmed = trim_base_url(&url);
-        if !trimmed.is_empty() {
-            return Ok(Some(trimmed));
-        }
+/// Load the persisted Steam credentials (refresh token + username) from
+/// `steam-creds.json`. Returns `None` if the file doesn't exist or is
+/// malformed; the caller treats this as "user has never signed in".
+pub fn load_steam_credentials(app: &AppHandle) -> Result<Option<SteamCredentials>> {
+    let path = steam_creds_path(app)?;
+    if !path.exists() {
+        return Ok(None);
     }
-
-    for candidate in update_config_candidates(app) {
-        if !candidate.exists() {
-            continue;
-        }
-
-        let parsed: serde_json::Value = match read_json(&candidate) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-
-        if let Some(url) = parsed
-            .get("updateBaseUrl")
-            .and_then(|v| v.as_str())
-            .or_else(|| parsed.get("publicUpdateBaseUrl").and_then(|v| v.as_str()))
-            .or_else(|| parsed.get("baseUrl").and_then(|v| v.as_str()))
-        {
-            let trimmed = trim_base_url(url);
-            if !trimmed.is_empty() {
-                return Ok(Some(trimmed));
-            }
-        }
+    match read_json::<SteamCredentials>(&path) {
+        Ok(creds) => Ok(Some(creds)),
+        Err(_) => Ok(None),
     }
+}
 
-    Ok(None)
+/// Persist Steam credentials so subsequent launches can silently re-auth
+/// without prompting the user. The file lives in the launcher data dir and
+/// follows the same read-on-missing/fallback semantics as the auth store.
+pub fn save_steam_credentials(app: &AppHandle, credentials: &SteamCredentials) -> Result<()> {
+    let path = steam_creds_path(app)?;
+    write_json(&path, credentials)
+}
+
+pub fn clear_steam_credentials(app: &AppHandle) -> Result<()> {
+    let path = steam_creds_path(app)?;
+    if path.exists() {
+        fs::remove_file(&path).with_context(|| format!("failed removing {}", path.display()))?;
+    }
+    Ok(())
 }
 
 pub fn detect_oauth_callback_protocol(app: &AppHandle) -> Result<Option<String>> {
@@ -195,39 +194,6 @@ pub fn normalize_callback_protocol(value: &str) -> Option<String> {
     }
 
     Some(format!("{scheme}://"))
-}
-
-fn update_config_candidates(app: &AppHandle) -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-
-    paths.push(PathBuf::from(UPDATE_CONFIG_FILE));
-    paths.push(PathBuf::from("..").join(UPDATE_CONFIG_FILE));
-
-    if let Ok(resource_path) = app
-        .path()
-        .resolve(UPDATE_CONFIG_FILE, BaseDirectory::Resource)
-    {
-        paths.push(resource_path);
-    }
-    if let Ok(resource_path) = app.path().resolve(
-        format!("_up_/{UPDATE_CONFIG_FILE}"),
-        BaseDirectory::Resource,
-    ) {
-        paths.push(resource_path);
-    }
-    if let Ok(resource_dir) = app.path().resource_dir() {
-        paths.push(resource_dir.join(UPDATE_CONFIG_FILE));
-        paths.push(resource_dir.join("_up_").join(UPDATE_CONFIG_FILE));
-    }
-
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            paths.push(parent.join(UPDATE_CONFIG_FILE));
-            paths.push(parent.join("_up_").join(UPDATE_CONFIG_FILE));
-        }
-    }
-
-    paths
 }
 
 pub fn is_packaged() -> bool {

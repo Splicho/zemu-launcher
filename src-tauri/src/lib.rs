@@ -7,6 +7,7 @@ mod game;
 mod models;
 mod oauth_server;
 mod state;
+mod steam;
 mod storage;
 mod update;
 
@@ -40,6 +41,8 @@ pub fn run() {
                 app_state.mark_bootstrap_active();
             }
             discord::initialize(app.handle());
+            let log_path = debug_log::log_path_string(app.handle());
+            eprintln!("[startup] debug_log::log_path -> {log_path}");
             let _ = debug_log::append(
                 app.handle(),
                 "app",
@@ -53,7 +56,7 @@ pub fn run() {
             let _ = debug_log::append(
                 app.handle(),
                 "app",
-                &format!("log_path={}", debug_log::log_path_string(app.handle())),
+                &format!("log_path={log_path}"),
             );
             if let Err(error) = discord::set_in_launcher(app.handle()) {
                 let _ = debug_log::append(

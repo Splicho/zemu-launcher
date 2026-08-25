@@ -1,3 +1,5 @@
+import '@/lib/tauri-bridge'
+
 import { useEffect } from 'react'
 
 import { LoginPage } from '@/pages/login'
@@ -10,6 +12,10 @@ import { PlayPage } from '@/pages/play'
 import { useAuthContext } from '@/contexts/auth-context'
 import { useHash } from '@/hooks/use-hash'
 import { UpdateProvider } from '@/contexts/update-context'
+import { GameStateProvider } from '@/contexts/game-state-context'
+import { Toaster } from '@/components/ui/sonner'
+import { DownloadSpeedGraph } from '@/components/download-speed-graph'
+import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
 
@@ -59,6 +65,13 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
 export default function App() {
   const hash = useHash()
 
+  // Set the update URL in the backend on startup
+  useEffect(() => {
+    if (window.launcherAPI) {
+      void window.launcherAPI.setRuntimeUpdateUrl(LAUNCHER_CONFIG.updateBaseUrl)
+    }
+  }, [])
+
   // Bootstrap window — Tauri injects `index.html#/bootstrap` here.
   if (hash === '/bootstrap') {
     return <BootstrapPage />
@@ -66,7 +79,11 @@ export default function App() {
 
   return (
     <UpdateProvider>
-      <AuthedApp />
+      <GameStateProvider>
+        <AuthedApp />
+        <DownloadSpeedGraph />
+        <Toaster />
+      </GameStateProvider>
     </UpdateProvider>
   )
 }
