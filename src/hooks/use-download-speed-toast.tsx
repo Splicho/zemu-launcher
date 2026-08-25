@@ -1,17 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import { useGameStateContext } from '@/contexts/game-state-context'
-import type { UpdateProgressFile } from '@/lib/tauri-bridge'
+import { useDownloadSpeed } from '@/hooks/use-download-speed'
+import { useDownloadEta } from '@/hooks/use-download-eta'
 
-const SPEED_WINDOW_MS = 4000
-
-interface SpeedSample {
-  ts: number
-  bytes: number
-}
-
-function formatSpeed(bytesPerSecond: number | null): string {
-  if (bytesPerSecond === null || bytesPerSecond <= 0) return 'Calculating...'
+function formatSpeed(bytesPerSecond: number | null, stalled: boolean): string {
+  if (stalled) return 'Stalled'
+  if (bytesPerSecond === null || bytesPerSecond <= 0) return 'Calculating…'
   const mbps = bytesPerSecond / (1024 * 1024)
   if (mbps >= 1) return `${mbps.toFixed(1)} MB/s`
   return `${(bytesPerSecond / 1024).toFixed(0)} KB/s`
@@ -19,94 +14,69 @@ function formatSpeed(bytesPerSecond: number | null): string {
 
 /**
  * Shows a Sonner toast while any download is active (Steam depot or Zemu
- * patch). The toast uses the native `loading` variant so we get the shadcn
- * loader icon + chrome for free; speed and percent are passed as the
- * description and updated in-place via the shared toast id.
+ * patch). Speed is owned by `useDownloadSpeed` and ETA by `useDownloadEta`,
+ * both shared with the rest of the UI so we don't run duplicate smoothing
+ * loops.
+ *
+ * The toast uses the native `loading` variant for the shadcn loader chrome
+ * and is updated in-place via a stable toast id. The description combines
+ * speed + ETA:
+ *
+ *     5.4 MB/s · 54m 21s remaining
+ *
+ * Terminal handling: when the active toast closes, we don't show our own
+ * "complete" toast on cancel or failure — the depot branch already toasts
+ * "Base game downloaded" on success (via `use-game-state.ts`) and
+ * "Update failed" on backend error, and we don't want a duplicate (or a
+ * misleading "complete" after a cancel).
  */
 export function useDownloadSpeedToast() {
   const { isDownloadingDepot, depotProgress, isUpdating, updateStatus } =
     useGameStateContext()
+  const { kind, speed, stalled } = useDownloadSpeed()
+  const eta = useDownloadEta()
 
-  const samplesRef = useRef<SpeedSample[]>([])
-  const lastBytesRef = useRef<number | null>(null)
-  const lastTitleRef = useRef<'depot' | 'update' | null>(null)
-  const activeToastIdRef = useRef<string | number | null>(null)
-  const doneToastIdRef = useRef<string | number | null>(null)
-  const showForDepot =
-    isDownloadingDepot &&
-    depotProgress !== null &&
-    (depotProgress.phase === 'chunk_progress' ||
-      depotProgress.phase === 'file_started' ||
-      depotProgress.phase === 'file_completed')
-
-  const showForUpdate = isUpdating && updateStatus !== null && updateStatus.isUpdating
-  const isActive = showForDepot || showForUpdate
-  const kind: 'depot' | 'update' | null = showForDepot
-    ? 'depot'
-    : showForUpdate
-      ? 'update'
-      : null
-
-  // ── Speed derivation (depot only; updates carry their own per-file speed) ──
-  if (showForDepot && depotProgress) {
-    const bytes = depotProgress.completedBytes ?? 0
-    const now = performance.now()
-
-    if (lastBytesRef.current === null) {
-      lastBytesRef.current = bytes
-      samplesRef.current = [{ ts: now, bytes }]
-    } else if (bytes !== lastBytesRef.current) {
-      lastBytesRef.current = bytes
-      samplesRef.current.push({ ts: now, bytes })
-    }
-
-    const cutoff = now - SPEED_WINDOW_MS
-    while (
-      samplesRef.current.length > 2 &&
-      samplesRef.current[0].ts < cutoff
-    ) {
-      samplesRef.current.shift()
-    }
-  }
-
-  let bytesPerSecond: number | null = null
-  if (showForDepot && samplesRef.current.length >= 2) {
-    const first = samplesRef.current[0]
-    const last = samplesRef.current[samplesRef.current.length - 1]
-    const dt = (last.ts - first.ts) / 1000
-    const dBytes = last.bytes - first.bytes
-    if (dt > 0 && dBytes >= 0) bytesPerSecond = dBytes / dt
-  }
-
-  let patchSpeed: number | null = null
-  if (showForUpdate && updateStatus?.files) {
-    let total = 0
-    for (const f of updateStatus.files as UpdateProgressFile[]) {
-      if (f.stage === 'downloading' && typeof f.speed === 'number') {
-        total += f.speed
-      }
-    }
-    if (total > 0) patchSpeed = total
-  }
-
-  const activeSpeed = showForUpdate ? patchSpeed : bytesPerSecond
-
-  // ── Percent ────────────────────────────────────────────────────────────────
-  let percent: number | null = null
-  if (showForDepot && depotProgress) {
-    if (typeof depotProgress.percent === 'number') {
-      percent = depotProgress.percent
-    } else if ((depotProgress.totalBytes ?? 0) > 0) {
-      percent = ((depotProgress.completedBytes ?? 0) / depotProgress.totalBytes!) * 100
-    }
-  } else if (showForUpdate && updateStatus) {
-    percent = updateStatus.overallProgress
-  }
+  const isActive =
+    (isDownloadingDepot && kind === 'depot') ||
+    (isUpdating && kind === 'update')
 
   const title = kind === 'depot' ? 'Downloading KotK' : kind === 'update' ? 'Updating KotK' : ''
-  const description =
-    `${formatSpeed(activeSpeed)}` +
-    (percent !== null ? ` · ${Math.round(percent)}%` : '')
+  const description = useMemo(() => {
+    const speedText = formatSpeed(speed, stalled)
+    if (stalled) return speedText
+    if (eta) return `${speedText} · ${eta} remaining`
+    return speedText
+  }, [speed, stalled, eta])
+
+  // Snapshot the current terminal phase. Read directly from props in the
+  // close-time effect below so we don't miss the terminal event arriving
+  // *after* the active toast has already been dismissed by the optimistic
+  // cancel path.
+  const currentTerminalPhase: 'done' | 'cancelled' | 'failed' | null = (() => {
+    if (kind === 'depot' && depotProgress) {
+      if (depotProgress.phase === 'done') return 'done'
+      if (depotProgress.phase === 'cancelled') return 'cancelled'
+      if (depotProgress.phase === 'failed') return 'failed'
+    }
+    if (kind === 'update' && updateStatus?.error) {
+      return 'failed'
+    }
+    return null
+  })()
+
+  const activeToastIdRef = useRef<string | number | null>(null)
+  const lastTitleRef = useRef<'depot' | 'update' | null>(null)
+  // Last terminal phase we observed while the active toast was up. Used to
+  // decide what to show (if anything) when the active toast closes.
+  const lastTerminalPhaseRef = useRef<
+    'done' | 'cancelled' | 'failed' | null
+  >(null)
+
+  useEffect(() => {
+    if (isActive && currentTerminalPhase) {
+      lastTerminalPhaseRef.current = currentTerminalPhase
+    }
+  }, [isActive, currentTerminalPhase])
 
   // Show / update the active toast
   useEffect(() => {
@@ -128,7 +98,6 @@ export function useDownloadSpeedToast() {
         duration: Infinity,
       })
     } else {
-      // Same id → Sonner updates the description in-place
       toast.loading(title, {
         id: activeToastIdRef.current,
         description,
@@ -137,26 +106,30 @@ export function useDownloadSpeedToast() {
     }
   }, [isActive, kind, title, description])
 
-  // Replace with a success toast when the download finishes
+  // When the active toast closes, show a brief follow-up only for clean
+  // completions. Cancel/failure are deliberately silent here because the
+  // backend (or `use-game-state`) already shows its own terminal toast.
   useEffect(() => {
     if (isActive) return
 
     if (activeToastIdRef.current !== null) {
-      const previousKind = lastTitleRef.current
       const previousTitle =
-        previousKind === 'update' ? 'Updating KotK' : 'Downloading KotK'
+        lastTitleRef.current === 'update' ? 'Updating KotK' : 'Downloading KotK'
+      const terminal =
+        lastTerminalPhaseRef.current ?? currentTerminalPhase
 
-      // Clear samples so a re-triggered download starts fresh
-      samplesRef.current = []
-      lastBytesRef.current = null
       lastTitleRef.current = null
+      lastTerminalPhaseRef.current = null
 
-      doneToastIdRef.current = toast.success(`${previousTitle} complete`, {
-        id: '__download-speed-done__',
-        duration: 3000,
-      })
+      if (terminal === 'done') {
+        toast.success(`${previousTitle} complete`, {
+          id: '__download-speed-done__',
+          duration: 3000,
+        })
+      }
+
       toast.dismiss(activeToastIdRef.current)
       activeToastIdRef.current = null
     }
-  }, [isActive])
+  }, [isActive, currentTerminalPhase])
 }

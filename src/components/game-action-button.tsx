@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { SteamLoginDialog } from '@/components/steam-login-dialog'
 import { DownloadProgressDialog } from '@/components/download-progress-dialog'
 import { useGameStateContext } from '@/contexts/game-state-context'
+import { useDepotPercent } from '@/hooks/use-depot-percent'
 import { Cancel } from '@/components/icons'
 
 // Mirror-to-file helper: writes to console AND launcher-debug.log so we can
@@ -156,19 +157,26 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     }
   }, [])
 
+  // Depot download percent — held via a small derivation hook so it never
+  // falls back to 0 when the backend briefly emits an event without
+  // `percent` or `totalBytes` set (which happens at phase boundaries like
+  // `file_started` → first `chunk_progress`, or when the user cancels
+  // mid-download and `depotProgress` is cleared).
+  const depotPercentRounded = useDepotPercent()
+
   const buttonText = useMemo(() => {
     if (state.type === 'DOWNLOADING_DEPOT') {
-      return 'Downloading...'
+      return `Downloading...${depotPercentRounded}%`
     }
     if (state.type === 'DOWNLOADING_UPDATE' && 'updateStatus' in state && state.updateStatus) {
       const progress = state.updateStatus.overallProgress.toFixed(0)
-      return `Updating... (${progress}%)`
+      return `Updating...${progress}%`
     }
     if (state.type === 'APPLYING_PATCH') {
       return 'Applying Patch...'
     }
     return BUTTON_TEXT[state.type] || 'Install'
-  }, [state])
+  }, [state, depotPercentRounded])
 
   const isDisabled = useMemo(
     () =>
@@ -318,49 +326,65 @@ export function GameActionButton({ className }: GameActionButtonProps) {
 
   return (
     <>
-      <div className="flex items-center gap-3">
-        <Button
-          size="lg"
-          className={`rounded-lg min-w-[200px] p-6 text-lg px-10 ${className || ''}`}
-          variant="gradient"
-          onClick={handlePrimaryAction}
-          disabled={isDisabled}
-        >
-          <AnimatePresence mode="wait">
-            <motion.span
-              key={state.type}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              {buttonText}
-            </motion.span>
-          </AnimatePresence>
-        </Button>
-
-        <AnimatePresence>
-          {isCancellable ? (
-            <motion.div
-              key="cancel"
-              initial={{ opacity: 0, scale: 0.85 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.85 }}
-              transition={{ duration: 0.15 }}
-            >
-              <Button
-                size="icon-lg"
-                variant="destructive"
-                onClick={handleCancelDownload}
-                aria-label="Cancel download"
-                title="Cancel download"
-                className="size-12 rounded-lg"
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex items-center gap-3">
+          <Button
+            size="lg"
+            className={`rounded-lg min-w-[200px] p-6 text-lg px-10 ${className || ''}`}
+            variant="gradient"
+            onClick={handlePrimaryAction}
+            disabled={isDisabled}
+          >
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={state.type}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
               >
-                <Cancel className="size-5" />
-              </Button>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
+                {buttonText}
+              </motion.span>
+            </AnimatePresence>
+          </Button>
+
+          <AnimatePresence>
+            {isCancellable ? (
+              <motion.div
+                key="cancel"
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ duration: 0.15 }}
+              >
+                <Button
+                  size="icon-lg"
+                  variant="destructive"
+                  onClick={handleCancelDownload}
+                  aria-label="Cancel download"
+                  title="Cancel download"
+                  className="size-12 rounded-lg"
+                >
+                  <Cancel className="size-5" />
+                </Button>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </div>
+
+        {state.type === 'NEEDS_DESTINATION' ? (
+          <p className="text-sm text-muted-foreground">
+            Already installed?{' '}
+            <button
+              type="button"
+              onClick={handlePrimaryAction}
+              disabled={isDisabled}
+              className="text-primary underline underline-offset-4 hover:text-primary/80 disabled:pointer-events-none disabled:opacity-50"
+            >
+              Locate folder
+            </button>
+          </p>
+        ) : null}
       </div>
 
       <SteamLoginDialog

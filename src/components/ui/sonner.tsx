@@ -2,7 +2,8 @@
 
 import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
-import { CheckCircle, Info, AlertTriangle, XCircle, Loader } from "lucide-react"
+import { CheckCircle, Info, AlertTriangle, XCircle } from "lucide-react"
+import { Spinner } from "./spinner"
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
@@ -16,7 +17,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         info: <Info className="size-4" />,
         warning: <AlertTriangle className="size-4" />,
         error: <XCircle className="size-4" />,
-        loading: <Loader className="size-4 animate-spin" />,
+        loading: <Spinner className="size-4" />,
       }}
       style={
         {
