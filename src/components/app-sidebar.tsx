@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -49,6 +50,18 @@ const SOCIAL_LINKS = [
   },
 ] as const
 
+function useHashRoute() {
+  const [hash, setHash] = React.useState(() => window.location.hash)
+
+  React.useEffect(() => {
+    const handler = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', handler)
+    return () => window.removeEventListener('hashchange', handler)
+  }, [])
+
+  return hash
+}
+
 /**
  * App sidebar — the navigation rail on the left of the home window.
  *
@@ -77,6 +90,14 @@ const SOCIAL_LINKS = [
  */
 export function AppSidebar() {
   const [socialOpen, setSocialOpen] = React.useState(false)
+  const hash = useHashRoute()
+
+  const isActive = (path: string) => {
+    const basePath = hash.replace(/#/, '') || '/'
+    if (path === '/') return basePath === '/' || basePath === ''
+    return basePath.startsWith(path)
+  }
+
   return (
     <Sidebar collapsible="none" className="w-62 shrink-0 bg-transparent">
       <SidebarContent className="flex flex-col">
@@ -94,20 +115,20 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem className="space-y-px">
-                <SidebarMenuButton asChild isActive size="lg" className="px-4">
+                <SidebarMenuButton asChild isActive={isActive('/')} size="lg" className="px-4">
                   <a href="#/">
                     <Home className="size-5!" />
                     <span>Home</span>
                   </a>
                 </SidebarMenuButton>
-                <SidebarMenuButton asChild size="lg" className="px-4">
+                <SidebarMenuButton asChild isActive={isActive('/news')} size="lg" className="px-4">
                   <a href="#/news">
                     <News className="size-5!" />
                     <span>News</span>
                   </a>
                 </SidebarMenuButton>
-                <SidebarMenuButton asChild size="lg" className="px-4">
-                  <a href="#/news">
+                <SidebarMenuButton asChild isActive={isActive('/leaderboard')} size="lg" className="px-4">
+                  <a href="#/leaderboard">
                     <Leaderboard className="size-5!" />
                     <span>Leaderboard</span>
                   </a>
@@ -123,7 +144,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild size="lg" className="px-4">
+                <SidebarMenuButton asChild isActive={isActive('/games/king-of-the-kill')} size="lg" className="px-4">
                   <a href="#/games/king-of-the-kill">
                     <img
                       src="../assets/icon/app-icon.png"

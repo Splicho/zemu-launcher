@@ -63,11 +63,11 @@ export function NewsPage() {
         )}
 
         {items === null && !error && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="h-64 animate-pulse rounded-xl bg-muted/40"
+                className="h-72 animate-pulse rounded-xl bg-muted/40"
                 aria-hidden="true"
               />
             ))}
@@ -81,7 +81,7 @@ export function NewsPage() {
         )}
 
         {items && items.length > 0 && (
-          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             {items.map((item) => (
               <li key={item.slug}>
                 <NewsCard
@@ -92,7 +92,6 @@ export function NewsPage() {
                   publishedAt={item.publishedAt}
                   title={item.title}
                   excerpt={item.excerpt}
-                  compact
                 />
               </li>
             ))}

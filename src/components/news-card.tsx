@@ -53,11 +53,11 @@ export function NewsCard({
           loading="eager"
           className={[
             'relative z-10 w-full rounded-2xl object-cover transition duration-300 group-hover:brightness-125',
-            compact ? 'h-36' : 'h-64 rounded-3xl',
+            compact ? 'h-36' : 'h-48',
           ].join(' ')}
         />
       ) : (
-        <div className={compact ? 'flex h-36 items-center justify-center rounded-2xl bg-muted/40 text-sm' : 'flex h-64 w-full items-center justify-center overflow-hidden rounded-3xl bg-muted/40 text-sm'}>
+        <div className={compact ? 'flex h-36 items-center justify-center rounded-2xl bg-muted/40 text-sm' : 'flex h-48 w-full items-center justify-center overflow-hidden rounded-3xl bg-muted/40 text-sm'}>
           No cover image
         </div>
       )}
