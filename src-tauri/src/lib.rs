@@ -12,7 +12,7 @@ mod storage;
 mod update;
 
 use state::AppState;
-use tauri::Manager;
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_deep_link::DeepLinkExt;
 use url::Url;
 
@@ -37,8 +37,47 @@ pub fn run() {
         .manage(app_state.clone())
         .invoke_handler(commands::register_commands())
         .setup(move |app| {
-            if app.get_webview_window("bootstrap").is_some() {
-                app_state.mark_bootstrap_active();
+            // The bootstrap window is created programmatically rather than
+            // declared in `tauri.conf.json`. The reason: in Tauri 2 the
+            // static `windows[]` config does not support a `url` field —
+            // Tauri 2 routes window URLs via `WebviewUrl::App(...)` on the
+            // builder, and any `url` in JSON is silently ignored, leaving
+            // the bootstrap route (`#/bootstrap`) unset. The React app
+            // would then render the main route in a 460×430 transparent
+            // window and never invoke `launcher_finish_bootstrap`.
+            match WebviewWindowBuilder::new(app, "bootstrap", WebviewUrl::App("index.html#/bootstrap".into()))
+                .title("Zemu Launcher Updater")
+                .inner_size(460.0, 430.0)
+                .resizable(false)
+                .maximizable(false)
+                .minimizable(false)
+                .closable(false)
+                .decorations(false)
+                .shadow(false)
+                .transparent(true)
+                .always_on_top(true)
+                .center()
+                .build()
+            {
+                Ok(window) => {
+                    let _ = debug_log::append(
+                        app.handle(),
+                        "bootstrap",
+                        &format!(
+                            "created bootstrap window url={:?} visible={}",
+                            window.url(),
+                            window.is_visible().unwrap_or(false),
+                        ),
+                    );
+                    app_state.mark_bootstrap_active();
+                }
+                Err(error) => {
+                    let _ = debug_log::append(
+                        app.handle(),
+                        "bootstrap",
+                        &format!("failed to create bootstrap window: {error}"),
+                    );
+                }
             }
             discord::initialize(app.handle());
             let log_path = debug_log::log_path_string(app.handle());
