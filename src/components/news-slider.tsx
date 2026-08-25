@@ -1,20 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 import { Button } from '@/components/ui/button'
-import { fetchNewsList, formatNewsDate, type NewsListItem } from '@/lib/news'
+import { fetchNewsList, formatNewsDate } from '@/lib/news'
 import { useHashRouter } from '@/hooks/use-hash'
 import { ArrowRight } from './icons'
 
 const SWIPE_THRESHOLD = 60
 const AUTO_PLAY_INTERVAL = 6000
 
+function NewsSliderSkeleton() {
+  return (
+    <div className="news-carousel group relative w-full select-none overflow-hidden focus:outline-none rounded-xl h-80">
+      <div className="flex h-full w-full items-center overflow-hidden">
+        <div className="h-full w-full bg-muted/30 animate-pulse" />
+      </div>
+      <div className="absolute left-12 bottom-4 z-20 flex gap-2">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="h-1.5 w-8 rounded-full bg-white/30 animate-pulse"
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function NewsSlider() {
   const { navigate } = useHashRouter()
-  const [items, setItems] = useState<NewsListItem[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [index, setIndex] = useState(0)
   const [prevIndex, setPrevIndex] = useState<number | null>(null)
   const [progress, setProgress] = useState(0)
+
+  const { data: items, error } = useQuery({
+    queryKey: ['news'],
+    queryFn: fetchNewsList,
+  })
 
   const dragStartX = useRef<number | null>(null)
   const [dragOffset, setDragOffset] = useState(0)
@@ -22,22 +44,6 @@ export function NewsSlider() {
   const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isTransitioning = prevIndex !== null
-
-  useEffect(() => {
-    let cancelled = false
-    fetchNewsList()
-      .then((list) => {
-        if (!cancelled) setItems(list)
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load news')
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const goToIndex = useCallback((newIndex: number) => {
     setPrevIndex(index)
@@ -50,14 +56,11 @@ export function NewsSlider() {
 
   const advance = useCallback(
     (delta: 1 | -1) => {
-      setItems((current) => {
-        if (!current || current.length === 0) return current
-        const newIndex = (index + delta + current.length) % current.length
-        goToIndex(newIndex)
-        return current
-      })
+      if (!items || items.length === 0) return
+      const newIndex = (index + delta + items.length) % items.length
+      goToIndex(newIndex)
     },
-    [index, goToIndex],
+    [index, goToIndex, items],
   )
 
   // Auto-play with progress
@@ -77,12 +80,9 @@ export function NewsSlider() {
     const startAutoPlay = () => {
       startProgress()
       autoPlayRef.current = setInterval(() => {
-        setItems((current) => {
-          if (!current || current.length <= 1) return current
-          const newIndex = (index + 1) % current.length
-          goToIndex(newIndex)
-          return current
-        })
+        if (!items || items.length <= 1) return
+        const newIndex = (index + 1) % items.length
+        goToIndex(newIndex)
       }, AUTO_PLAY_INTERVAL)
     }
 
@@ -139,8 +139,12 @@ export function NewsSlider() {
     advance(e.deltaX > 0 ? 1 : -1)
   }
 
-  if (error || items === null || items.length === 0) {
+  if (error) {
     return null
+  }
+
+  if (!items || items.length === 0) {
+    return <NewsSliderSkeleton />
   }
 
   const current = items[index]

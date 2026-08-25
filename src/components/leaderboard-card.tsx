@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   Table,
   TableHeader,
@@ -20,7 +21,7 @@ import {
   CardTitle,
   CardContent,
 } from '@/components/ui/card'
-import { fetchTopLeaderboard, type LeaderboardEntry, type LeaderboardTier, TIER_COLORS } from '@/lib/leaderboard'
+import { fetchTopLeaderboard, type LeaderboardTier } from '@/lib/leaderboard'
 
 const RANK_ASSETS: Record<LeaderboardTier, { smudge: string; medal: string }> = {
   bronze: { smudge: '/images/assets/ranks/bronze/smudge.png', medal: '/images/assets/ranks/bronze/medal.png' },
@@ -54,28 +55,21 @@ function SkeletonRow() {
     <TableRow>
       <TableCell><div className="h-8 w-8 mx-auto bg-muted/40 animate-pulse rounded" /></TableCell>
       <TableCell><div className="h-8 w-32 bg-muted/40 animate-pulse rounded" /></TableCell>
-      <TableCell><div className="h-8 w-16 mx-auto bg-muted/40 animate-pulse rounded" /></TableCell>
+      <TableCell><div className="h-8 w-20 bg-muted/40 animate-pulse rounded" /></TableCell>
       <TableCell><div className="h-8 w-24 ml-auto bg-muted/40 animate-pulse rounded" /></TableCell>
     </TableRow>
   )
 }
 
 export function LeaderboardCard() {
-  const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [tierFilter, setTierFilter] = useState('all')
   const [region, setRegion] = useState('EU')
   const [teamMode, setTeamMode] = useState('Solo')
 
-  useEffect(() => {
-    let cancelled = false
-    fetchTopLeaderboard(5)
-      .then((data) => { if (!cancelled) setEntries(data) })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load')
-      })
-    return () => { cancelled = true }
-  }, [])
+  const { data: entries, error } = useQuery({
+    queryKey: ['leaderboard', { region, teamMode }],
+    queryFn: () => fetchTopLeaderboard(5),
+  })
 
   const filteredEntries = entries?.filter((entry) => {
     const matchesTier = tierFilter === 'all' || entry.tier === tierFilter
@@ -140,12 +134,12 @@ export function LeaderboardCard() {
             {error && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
-                  {error}
+                  {error.message}
                 </TableCell>
               </TableRow>
             )}
 
-            {entries === null && !error && (
+            {entries === undefined && !error && (
               <>
                 <SkeletonRow />
                 <SkeletonRow />

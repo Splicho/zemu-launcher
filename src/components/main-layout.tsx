@@ -37,7 +37,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
             <AppSidebar />
             <div className="flex flex-1 flex-col overflow-hidden">
               <Header />
-              <main className="flex flex-1 flex-col overflow-y-auto px-8 py-5">
+              <main className="flex flex-1 flex-col overflow-y-auto px-8">
                 {children}
               </main>
             </div>

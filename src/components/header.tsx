@@ -14,7 +14,7 @@ import { AccountDropdown } from '@/components/account-dropdown'
  */
 export function Header() {
   return (
-    <header className="flex shrink-0 items-center justify-end px-8 py-5">
+    <header className="flex shrink-0 items-center justify-end px-8 py-3">
       <AccountDropdown />
     </header>
   )
