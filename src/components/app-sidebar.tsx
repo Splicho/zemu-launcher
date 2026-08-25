@@ -80,7 +80,7 @@ export function AppSidebar() {
   const [socialOpen, setSocialOpen] = React.useState(false)
   return (
     <Sidebar collapsible="none" className="w-62 shrink-0 bg-transparent">
-      <SidebarContent>
+      <SidebarContent className="flex flex-col">
         <div className="flex justify-center px-5 pt-6 pb-4">
           <img
             src="./assets/icon/zemu-logo.png"
@@ -114,35 +114,6 @@ export function AppSidebar() {
                   </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                  <SidebarMenuButton
-                    size="lg"
-                    className="px-4 cursor-pointer"
-                    onClick={() => setSocialOpen((o) => !o)}
-                    aria-expanded={socialOpen}
-                  >
-                    <Socialize className="size-5!" />
-                    <span>Socialize</span>
-                    <ChevronRight
-                      className={cn(
-                        'ml-auto size-4 shrink-0 transition-transform duration-200',
-                        socialOpen ? 'rotate-90' : 'rotate-0'
-                      )}
-                    />
-                  </SidebarMenuButton>
-                  {socialOpen && (
-                    <SidebarMenuSub>
-                      {SOCIAL_LINKS.map(({ label, href, Icon }) => (
-                        <SidebarMenuSubButton key={href} asChild>
-                          <a href={href} target="_blank" rel="noopener noreferrer">
-                            <Icon className="size-4" />
-                            <span>{label}</span>
-                          </a>
-                        </SidebarMenuSubButton>
-                      ))}
-                    </SidebarMenuSub>
-                  )}
-                </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -164,11 +135,45 @@ export function AppSidebar() {
                   </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      {/* Socialize footer */}
+      <div className="mt-auto px-5 pb-6">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
+              className="px-4 cursor-pointer"
+              onClick={() => setSocialOpen((o) => !o)}
+              aria-expanded={socialOpen}
+            >
+              <Socialize className="size-5!" />
+              <span>Socialize</span>
+              <ChevronRight
+                className={cn(
+                  'ml-auto size-4 shrink-0 transition-transform duration-200',
+                  socialOpen ? 'rotate-90' : 'rotate-0'
+                )}
+              />
+            </SidebarMenuButton>
+            {socialOpen && (
+              <SidebarMenuSub>
+                {SOCIAL_LINKS.map(({ label, href, Icon }) => (
+                  <SidebarMenuSubButton key={href} asChild>
+                    <a href={href} target="_blank" rel="noopener noreferrer">
+                      <Icon className="size-4" />
+                      <span>{label}</span>
+                    </a>
+                  </SidebarMenuSubButton>
+                ))}
+              </SidebarMenuSub>
+            )}
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </div>
     </Sidebar>
   )
 }

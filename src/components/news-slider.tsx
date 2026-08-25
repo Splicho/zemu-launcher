@@ -62,6 +62,12 @@ export function NewsSlider() {
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
+    // Don't capture if clicking on a pill (navigation dots)
+    if ((e.target as HTMLElement).closest('[data-pills]')) {
+      console.log('[NewsSlider] PointerDown on pill - NOT capturing')
+      return
+    }
+    console.log('[NewsSlider] PointerDown', { target: e.target, clientX: e.clientX })
     ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
     dragStartX.current = e.clientX
     setDragOffset(0)
@@ -69,15 +75,22 @@ export function NewsSlider() {
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragStartX.current === null) return
-    setDragOffset(e.clientX - dragStartX.current)
+    const offset = e.clientX - dragStartX.current
+    console.log('[NewsSlider] PointerMove', { offset })
+    setDragOffset(offset)
   }
 
   const onPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (dragStartX.current === null) return
+    if (dragStartX.current === null) {
+      console.log('[NewsSlider] PointerEnd - no drag started')
+      return
+    }
     const offset = e.clientX - dragStartX.current
+    console.log('[NewsSlider] PointerEnd', { offset, threshold: SWIPE_THRESHOLD })
     dragStartX.current = null
     setDragOffset(0)
     if (Math.abs(offset) > SWIPE_THRESHOLD) {
+      console.log('[NewsSlider] Advancing by', offset < 0 ? 1 : -1)
       advance(offset < 0 ? 1 : -1)
     }
   }
@@ -170,6 +183,7 @@ export function NewsSlider() {
       {/* Pill navigation - outside button to avoid pointer capture interference */}
       {items.length > 1 && (
         <div
+          data-pills
           className="absolute left-12 bottom-4 z-20 flex gap-2"
           style={{
             transform: `translateX(${dragPx}px)`,
@@ -183,6 +197,7 @@ export function NewsSlider() {
               aria-label={`Show article ${i + 1}`}
               aria-current={i === index ? 'true' : undefined}
               onClick={(e) => {
+                console.log('[NewsSlider] Pill clicked', { index: i, target: e.target })
                 e.stopPropagation()
                 setIndex(i)
               }}
