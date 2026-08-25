@@ -1,4 +1,16 @@
-import { Home, News, Leaderboard } from '@/components/icons'
+import * as React from 'react'
+
+import { ChevronRight } from 'lucide-react'
+import {
+  DiscordFilled,
+  Home,
+  Leaderboard,
+  News,
+  Socialize,
+  Twitch,
+  Twitter,
+  YouTube,
+} from '@/components/icons'
 
 import {
   Sidebar,
@@ -9,8 +21,34 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
 } from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
+
+const SOCIAL_LINKS = [
+  {
+    label: 'Discord',
+    href: 'https://discord.gg/h1z1kotk',
+    Icon: DiscordFilled,
+  },
+  {
+    label: 'X',
+    href: 'https://x.com/H1Z1ZEMU',
+    Icon: Twitter,
+  },
+  {
+    label: 'YouTube',
+    href: 'https://www.youtube.com/@Ghostskappa',
+    Icon: YouTube,
+  },
+  {
+    label: 'Twitch',
+    href: 'https://www.twitch.tv/ZEmu_KotK',
+    Icon: Twitch,
+  },
+] as const
 
 /**
  * App sidebar — the navigation rail on the left of the home window.
@@ -39,6 +77,7 @@ import { LAUNCHER_CONFIG } from '@/config/launcher'
  * offcanvas/collapsible variants).
  */
 export function AppSidebar() {
+  const [socialOpen, setSocialOpen] = React.useState(false)
   return (
     <Sidebar collapsible="none" className="w-62 shrink-0 bg-transparent">
       <SidebarContent>
@@ -73,8 +112,37 @@ export function AppSidebar() {
                     <Leaderboard className="size-5!" />
                     <span>Leaderboard</span>
                   </a>
-                </SidebarMenuButton>                  
+                </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                  <SidebarMenuButton
+                    size="lg"
+                    className="px-4 cursor-pointer"
+                    onClick={() => setSocialOpen((o) => !o)}
+                    aria-expanded={socialOpen}
+                  >
+                    <Socialize className="size-5!" />
+                    <span>Socialize</span>
+                    <ChevronRight
+                      className={cn(
+                        'ml-auto size-4 shrink-0 transition-transform duration-200',
+                        socialOpen ? 'rotate-90' : 'rotate-0'
+                      )}
+                    />
+                  </SidebarMenuButton>
+                  {socialOpen && (
+                    <SidebarMenuSub>
+                      {SOCIAL_LINKS.map(({ label, href, Icon }) => (
+                        <SidebarMenuSubButton key={href} asChild>
+                          <a href={href} target="_blank" rel="noopener noreferrer">
+                            <Icon className="size-4" />
+                            <span>{label}</span>
+                          </a>
+                        </SidebarMenuSubButton>
+                      ))}
+                    </SidebarMenuSub>
+                  )}
+                </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

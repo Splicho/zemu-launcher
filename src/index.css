@@ -175,16 +175,7 @@
     height: 100%;
     margin: 0;
   }
-  /* Frameless + transparent window: the OS lets pixels outside the
-     window's rounded shape show through. To get CSS-only rounded
-     corners without Tauri's shadow flag (which on Win11 also adds a
-     1px frame and drop shadow), we paint `transparent` at the root
-     chain and let each window's React tree own its own background +
-     `border-radius` + `overflow-hidden` clipping.
 
-     Without this rule the body fills the whole OS surface with the
-     default white background, and any `border-radius` on the inner
-     content is wasted. */
   body {
     -webkit-font-smoothing: antialiased;
     background: transparent;
@@ -196,12 +187,7 @@
   [role='button']:not(:disabled) {
     cursor: pointer;
   }
-  /* OAuth button hover/active: any Button with data-variant="oauth" gets
-     its background darkened via the --oauth-hover CSS variable that the
-     button styles itself set. The Button component sets --oauth to the
-     brand color (Discord blurple, Steam navy, etc.); this rule just
-     computes the hover/active shade. Same convention as the abyssal-gate
-     launcher and the zemu-website auth app. */
+
   [data-variant='oauth']:hover {
     --oauth-hover: color-mix(in oklch, var(--oauth) 88%, black);
   }
@@ -213,68 +199,7 @@
   }
 }
 
-/*
- * News slider (see src/components/news-slider.tsx).
- *
- * Swiper ships its own visual default for nav buttons and pagination
- * dots that doesn't match the launcher's color tokens or visual
- * weight. We override them here:
- *
- *   - nav buttons: small circular chip, muted background, foreground
- *     chevron, sits inset within the slider so it doesn't crowd the
- *     cards. Disabled state matches muted-foreground opacity.
- *   - pagination bullets: small, muted foreground, primary on active.
- *
- * The chevron SVG inside swiper's default button is replaced via CSS
- * `background-image` so we don't need to render a custom React nav
- * component — swiper's `navigation: true` looks for these classes.
- */
-.news-slider .swiper-button-prev,
-.news-slider .swiper-button-next {
-  width: 32px;
-  height: 32px;
-  border-radius: 9999px;
-  background-color: var(--muted);
-  color: var(--foreground);
-}
 
-.news-slider .swiper-button-prev::after,
-.news-slider .swiper-button-next::after {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--foreground);
-}
-
-.news-slider .swiper-button-prev:hover,
-.news-slider .swiper-button-next:hover {
-  background-color: var(--accent);
-}
-
-.news-slider .swiper-button-prev.swiper-button-disabled,
-.news-slider .swiper-button-next.swiper-button-disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.news-slider .swiper-pagination-bullet {
-  background-color: var(--muted-foreground);
-  opacity: 0.4;
-}
-
-.news-slider .swiper-pagination-bullet-active {
-  background-color: var(--primary);
-  opacity: 1;
-}
-
-/*
- * News body content (src/pages/news-slug.tsx).
- *
- * `bodyHtml` comes from the public news API and is rendered through
- * `dangerouslySetInnerHTML`. Tailwind's `prose` plugin isn't bundled
- * here, so we hand-roll a minimal style set that matches the launcher's
- * typography: tight line-height, generous spacing between blocks, and
- * the theme's link color.
- */
 .news-body h1,
 .news-body h2,
 .news-body h3,

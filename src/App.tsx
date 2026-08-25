@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 
 import { LoginPage } from '@/pages/login'
 import { HomePage } from '@/pages/home'
+import { MainLayout } from '@/components/main-layout'
 import { BootstrapPage } from '@/pages/bootstrap'
 import { useAuthContext } from '@/contexts/auth-context'
 import { useHash } from '@/hooks/use-hash'
@@ -106,7 +107,9 @@ function AuthedApp() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
-      <HomePage />
+      <MainLayout>
+        <HomePage />
+      </MainLayout>
     </div>
   )
 }
