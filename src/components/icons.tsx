@@ -15,6 +15,14 @@ interface IconProps extends React.SVGAttributes<SVGSVGElement> {
   size?: number
 }
 
+export function Home({ size = 20, ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" {...props}>
+	<path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 11.99v2.51c0 3.3 0 4.95 1.025 5.975S6.7 21.5 10 21.5h4c3.3 0 4.95 0 5.975-1.025S21 17.8 21 14.5v-2.51c0-1.682 0-2.522-.356-3.25s-1.02-1.244-2.346-2.276l-2-1.555C14.233 3.303 13.2 2.5 12 2.5s-2.233.803-4.298 2.409l-2 1.555C4.375 7.496 3.712 8.012 3.356 8.74S3 10.308 3 11.99M16 17H8"></path>
+</svg>
+  )
+}
+
 export function DiscordFilled({ size = 20, ...props }: IconProps) {
   return (
 <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" {...props}>
@@ -51,6 +59,50 @@ export function AlertTriangle({ size = 20, ...props }: IconProps) {
 		<path d="M13.925 21h-3.85c-4.63 0-6.945 0-7.799-1.506c-.853-1.506.331-3.503 2.7-7.495L6.9 8.753C9.176 4.918 10.313 3 12 3s2.824 1.918 5.1 5.753L19.023 12c2.369 3.992 3.553 5.989 2.7 7.495C20.87 21 18.555 21 13.924 21M12 17v-4"></path>
 		<path d="M12 9.25h.125m.125 0a.25.25 0 1 0-.5 0a.25.25 0 0 0 .5 0"></path>
 	</g>
+</svg>
+  )
+}
+
+/**
+ * Window-chrome icons used by the custom title bar.
+ *
+ * Inline SVGs (instead of pulling in an icon pack) to match the
+ * abyssal-gate launcher's icon set verbatim — visual parity between
+ * the two launcher shells matters here.
+ *
+ * Only `WindowMinimize` and `WindowClose` are rendered today (the
+ * main window is locked at a fixed size; maximize is intentionally
+ * absent). `WindowMaximize` / `WindowRestore` are kept for parity so
+ * re-enabling maximize later is a one-line change.
+ */
+export function WindowMinimize({ size = 16, ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" {...props}>
+	<path fill="currentColor" d="M4 19h16v2H4z" strokeWidth={0.5} stroke="currentColor"></path>
+</svg>
+  )
+}
+
+export function WindowMaximize({ size = 16, ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" {...props}>
+	<path fill="none" stroke="currentColor" strokeWidth="2" d="M5 5h14v14H5z"></path>
+</svg>
+  )
+}
+
+export function WindowRestore({ size = 16, ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" {...props}>
+	<path fill="none" stroke="currentColor" strokeWidth="2" d="M8 4h10v10H4V4zm4 4v10h10V8"></path>
+</svg>
+  )
+}
+
+export function WindowClose({ size = 16, ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" {...props}>
+	<path fill="currentColor" d="M13.46 12L19 17.54V19h-1.46L12 13.46L6.46 19H5v-1.46L10.54 12L5 6.46V5h1.46L12 10.54L17.54 5H19v1.46z" strokeWidth={0.5} stroke="currentColor"></path>
 </svg>
   )
 }

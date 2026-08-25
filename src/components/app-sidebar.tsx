@@ -1,4 +1,4 @@
-import { Home } from 'lucide-react'
+import { Home } from '@/components/icons'
 
 import {
   Sidebar,
@@ -10,13 +10,15 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 /**
  * App sidebar — the navigation rail on the left of the home window.
  *
- * Top-level sections (each its own `<SidebarGroup>`):
- *   - Menu  → top-level navigation (Home)
- *   - Games → launcher-managed emulators / game shortcuts
+ * Top-level structure (top → bottom):
+ *   - Logo block  → centered app logo above the nav groups
+ *   - Menu        → top-level navigation (Home)
+ *   - Servers     → launcher-managed emulators / game shortcuts
  *
  * Top-level Menu entries link to the launcher's hash router
  * (`#/<route>`); Games entries are server-titled shortcuts that link
@@ -38,8 +40,15 @@ import {
  */
 export function AppSidebar() {
   return (
-    <Sidebar collapsible="none" className="w-56 shrink-0 bg-transparent">
+    <Sidebar collapsible="none" className="w-58 shrink-0 bg-transparent">
       <SidebarContent>
+        <div className="flex justify-center px-5 pt-6 pb-4">
+          <img
+            src="./assets/icon/zemu-logo.png"
+            alt={LAUNCHER_CONFIG.name}
+            className="w-full max-w-32"
+          />
+        </div>
         <SidebarGroup className="px-5 pt-5 pb-2">
           <SidebarGroupLabel className="uppercase tracking-wider pl-4">
             Menu
@@ -49,7 +58,7 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive size="lg">
                   <a href="#/">
-                    <Home />
+                    <Home className="size-5!" />
                     <span>Home</span>
                   </a>
                 </SidebarMenuButton>
@@ -59,7 +68,7 @@ export function AppSidebar() {
         </SidebarGroup>
         <SidebarGroup className="px-5 pb-2">
           <SidebarGroupLabel className="uppercase tracking-wider pl-4">
-            Servers
+            Play
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -69,26 +78,13 @@ export function AppSidebar() {
                     <img
                       src="./assets/icon/app-icon.png"
                       alt=""
-                      className="size-8 shrink-0 rounded-md"
+                      className="size-5 shrink-0 "
                     />
                     <span>ZEmu: King of the Kill</span>
                   </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  disabled
-                  size="lg"
-                  tooltip="This server isn't ready yet."
-                >
-                  <img
-                    src="./assets/icon/app-icon.png"
-                    alt=""
-                    className="size-8 shrink-0 rounded-md"
-                  />
-                  <span>ZEmu: Test Server</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

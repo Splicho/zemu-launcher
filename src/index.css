@@ -209,9 +209,22 @@
     height: 100%;
     margin: 0;
   }
+  /* Frameless + transparent window: the OS lets pixels outside the
+     window's rounded shape show through. To get CSS-only rounded
+     corners without Tauri's shadow flag (which on Win11 also adds a
+     1px frame and drop shadow), we paint `transparent` at the root
+     chain and let each window's React tree own its own background +
+     `border-radius` + `overflow-hidden` clipping.
+
+     Without this rule the body fills the whole OS surface with the
+     default white background, and any `border-radius` on the inner
+     content is wasted. */
   body {
-    @apply bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
+    background: transparent;
+  }
+  #root {
+    background: transparent;
   }
   button:not(:disabled),
   [role='button']:not(:disabled) {

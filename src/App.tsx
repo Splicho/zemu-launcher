@@ -98,14 +98,14 @@ function AuthedApp() {
 
   if (status !== 'authed' || !token) {
     return (
-      <div className="flex h-screen w-screen flex-col bg-background text-foreground">
+      <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
         <LoginPage />
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-background text-foreground">
+    <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
       <HomePage />
     </div>
   )
