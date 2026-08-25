@@ -53,6 +53,26 @@ function readInitialToken(): AuthToken | null {
   return readPersistedToken()
 }
 
+/**
+ * Reasons that mean "the introspect *transport* failed", not "the
+ * server rejected the token". When transport fails we keep the cached
+ * session and let the next protected request decide. Reasons we
+ * treat as transient:
+ *   - `unreachable` — fetch threw (DNS / connection refused / offline)
+ *   - `malformed`   — non-JSON body, e.g. an HTML error page from an
+ *                     upstream proxy or a Vite HMR redirect
+ *   - `http_5xx`    — server is up but unhappy
+ *   - `http_429`    — rate limited; better to wait than to sign out
+ * 401/403 + a meaningful reason (`expired`, `revoked`, `invalid`,
+ * …) are treated as definitive and trigger a real sign-out.
+ */
+function isTransientReason(reason: string | null): boolean {
+  if (!reason) return false
+  if (reason === 'unreachable' || reason === 'malformed') return true
+  if (/^http_(5\d\d|429)$/.test(reason)) return true
+  return false
+}
+
 export function useAuth(): UseAuthResult {
   // Initialise from localStorage synchronously (runs once, before the
   // first render). This avoids an effect that sets state for the
@@ -75,16 +95,20 @@ export function useAuth(): UseAuthResult {
   // introspect payload onto our stored token so the rest of the app
   // sees a single shape.
   //
-  // Failure handling: any introspect error (network, CORS, 5xx, invalid
-  // token) drops us to `'auth'`. An earlier version optimistically
-  // rendered the home page on introspect failure, but that left users
-  // stuck when the auth server was unreachable for a different reason
-  // (e.g. CORS misconfigured) — the home page would render but every
-  // protected call would 401, with no path back to the login screen
-  // short of restarting the app. Clearing the token on failure is the
-  // safer default; the user just has to log in again. A stale-token
-  // auto-resume can be added later behind a more conservative check
-  // (e.g. distinguish transient network failure from server rejection).
+  // Failure handling splits two ways:
+  //   - Definitive rejection — server returns `valid: false` with a
+  //     reason we don't recognise as transient, or HTTP 401/403.
+  //     The token is dead; clear it and drop to `'auth'`.
+  //   - Transient failure — network error, CORS preflight fail, 5xx,
+  //     non-JSON body. We *don't* clear the token. Optimistically
+  //     mark the session authed and let the next protected call
+  //     surface a real error if the server genuinely doesn't accept
+  //     it. The previous behaviour of clearing the token on every
+  //     failure bounced the user back to the login screen every time
+  //     they hit F5 during a dev-server reload or a flaky upstream
+  //     proxy — annoying on its own, but worse: it lost the cached
+  //     display name / avatar from localStorage so they had to log
+  //     back in from scratch.
   useEffect(() => {
     if (!token) return
 
@@ -107,37 +131,49 @@ export function useAuth(): UseAuthResult {
           })
           setStatus('authed')
           setError(null)
-        } else {
-          clearPersistedToken()
-          setToken(null)
-          setStatus('auth')
-          // `valid: false` with a `reason` is the server telling us the
-          // token was rejected (expired, revoked, signature mismatch).
-          // Surface it so the login page can explain why we're here.
-          const reason =
-            'reason' in result && typeof result.reason === 'string'
-              ? result.reason
-              : null
-          setError(reason ? `session_${reason}` : 'session_invalid')
+          return
         }
-      })
-      .catch((err) => {
-        if (cancelled) return
-        // Introspect call failed at the transport layer (network down,
-        // CORS preflight rejected, DNS error, etc.). We can't tell
-        // those apart from here — any of them means we can't confirm
-        // the token is good, so sign out rather than risk rendering
-        // HomePage with a token the server will reject on first use.
-        console.warn('[auth] introspect failed, signing out', err)
+
+        const reason =
+          'reason' in result && typeof result.reason === 'string'
+            ? result.reason
+            : null
+        if (isTransientReason(reason)) {
+          // Keep the token, render the home screen with whatever the
+          // cached AuthToken says. Next protected call will surface
+          // a real error if the server actually rejects the bearer.
+          setStatus('authed')
+          setError(null)
+          return
+        }
+        // Definitive rejection: clear and bounce to login.
         clearPersistedToken()
         setToken(null)
         setStatus('auth')
-        setError('session_unreachable')
+        setError(reason ? `session_${reason}` : 'session_invalid')
+      })
+      .catch((err) => {
+        if (cancelled) return
+        // introspectToken already normalises fetch/json errors into
+        // `{ valid: false, reason: ... }`, so a throw from inside the
+        // promise chain is genuinely unexpected — log it loudly and
+        // fall back to the optimistic-authed path so the user isn't
+        // bounced out on a dev-server hiccup.
+        console.warn('[auth] introspect threw unexpectedly', err)
+        setStatus('authed')
+        setError(null)
       })
     return () => {
       cancelled = true
     }
-  }, [token])
+    // Depend on the bearer string rather than the full `token` object.
+    // The `.then` block mutates the token in-place (refreshes
+    // expiresAt/roles/etc.) which produces a new object reference;
+    // depending on `token` would re-fire this effect every time and
+    // loop introspect → setToken → introspect. The bearer is
+    // immutable for the lifetime of a session — it only changes on
+    // login/logout, which is exactly when we *want* to re-introspect.
+  }, [token?.token])
 
   const login = useCallback(async (email: string, password: string) => {
     setError(null)

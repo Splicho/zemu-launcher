@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useAuth } from '@/hooks/use-auth'
+import { useAuthContext } from '@/contexts/auth-context'
 
 /**
  * Account dropdown anchored to the user's avatar.
@@ -27,7 +27,7 @@ import { useAuth } from '@/hooks/use-auth'
  * the credentials login path.
  */
 export function AccountDropdown() {
-  const { token, logout } = useAuth()
+  const { token, logout } = useAuthContext()
 
   const displayName =
     token?.displayName ?? token?.username ?? token?.email ?? '?'

@@ -59,7 +59,7 @@ export function AppSidebar() {
         </SidebarGroup>
         <SidebarGroup className="px-5 pb-2">
           <SidebarGroupLabel className="uppercase tracking-wider pl-4">
-            Games
+            Servers
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>

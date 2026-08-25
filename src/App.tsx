@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { LoginPage } from '@/pages/login'
 import { HomePage } from '@/pages/home'
 import { BootstrapPage } from '@/pages/bootstrap'
-import { useAuth } from '@/hooks/use-auth'
+import { useAuthContext } from '@/contexts/auth-context'
 import { useHash } from '@/hooks/use-hash'
 
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
@@ -51,7 +51,7 @@ export default function App() {
 }
 
 function AuthedApp() {
-  const { status, token } = useAuth()
+  const { status, token } = useAuthContext()
   const hash = useHash()
   const isDeepRoute = hash !== null && hash !== '/'
 
@@ -93,13 +93,7 @@ function AuthedApp() {
   }, [status])
 
   if (status === 'loading') {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background text-foreground">
-        <div className="rounded-lg border border-border bg-card p-8 text-center shadow-xl">
-          <p className="text-sm text-muted-foreground">Starting up…</p>
-        </div>
-      </div>
-    )
+    return null
   }
 
   if (status !== 'authed' || !token) {

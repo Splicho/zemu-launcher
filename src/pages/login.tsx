@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { AlertTriangle, DiscordFilled, Mail, Steam } from '@/components/icons'
-import { useAuth } from '@/hooks/use-auth'
+import { useAuthContext } from '@/contexts/auth-context'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 /**
@@ -30,7 +30,7 @@ import { LAUNCHER_CONFIG } from '@/config/launcher'
  * is set automatically via `--oauth`.
  */
 export function LoginPage() {
-  const { login, loginWithProvider } = useAuth()
+  const { login, loginWithProvider } = useAuthContext()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)

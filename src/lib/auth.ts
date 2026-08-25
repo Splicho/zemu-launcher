@@ -282,13 +282,35 @@ export async function awaitOAuthCallback(
 /**
  * GET /api/launcher/oauth/introspect. Cheap "is this token still
  * valid?" check. Used at startup before showing the home screen.
+ *
+ * Network failures and non-JSON responses are surfaced as a
+ * `{ valid: false, reason: 'unreachable' }` shape rather than thrown,
+ * so the caller can decide whether to sign the user out (definitively
+ * rejected) or just leave them on the cached session (transient
+ * blip). Throwing from this function used to bounce users back to the
+ * login screen on every F5 spam, dev-server HMR cycle, or 5xx from a
+ * flaky upstream proxy.
  */
 export async function introspectToken(
   token: string,
 ): Promise<IntrospectResponse> {
   const base = await getApiBaseUrl()
-  const response = await fetch(`${base}/api/launcher/oauth/introspect`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  return (await response.json()) as IntrospectResponse
+  let response: Response
+  try {
+    response = await fetch(`${base}/api/launcher/oauth/introspect`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  } catch (err) {
+    console.warn('[auth] introspect network error', err)
+    return { valid: false, reason: 'unreachable' }
+  }
+  if (!response.ok) {
+    return { valid: false, reason: `http_${response.status}` }
+  }
+  try {
+    return (await response.json()) as IntrospectResponse
+  } catch (err) {
+    console.warn('[auth] introspect returned non-JSON body', err)
+    return { valid: false, reason: 'malformed' }
+  }
 }
