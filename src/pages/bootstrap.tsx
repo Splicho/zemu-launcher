@@ -1,208 +1,371 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import { invoke } from '@tauri-apps/api/core'
-import { check, type DownloadEvent } from '@tauri-apps/plugin-updater'
+import { type DownloadEvent, check } from '@tauri-apps/plugin-updater'
 
 import { Button } from '@/components/ui/button'
-import { Spinner } from '@/components/ui/spinner'
-import { useHash } from '@/hooks/use-hash'
+import { Progress } from '@/components/ui/progress'
+import { LAUNCHER_CONFIG } from '@/config/launcher'
+
+type BootstrapPhase =
+  | 'checking'
+  | 'development'
+  | 'up-to-date'
+  | 'downloading'
+  | 'restarting'
+  | 'check-error'
+  | 'install-error'
+
+interface BootstrapState {
+  phase: BootstrapPhase
+  status: string
+  detail: string
+  error: string | null
+  currentVersion: string
+  latestVersion: string | null
+  downloadedBytes: number
+  totalBytes: number | null
+  progress: number | null
+}
+
+const INITIAL_STATE: BootstrapState = {
+  phase: 'checking',
+  status: 'Checking launcher updates',
+  detail: 'Looking for a newer launcher build before opening the app.',
+  error: null,
+  // Read from the bundled <meta> tag in index.html (kept in sync with
+  // src/config/launcher.ts via the sync-launcher-config script).
+  currentVersion: import.meta.env.VITE_APP_VERSION ?? '0.0.0',
+  latestVersion: null,
+  downloadedBytes: 0,
+  totalBytes: null,
+  progress: null,
+}
 
 /**
  * Bootstrap / updater screen.
  *
  * Loaded in Tauri's `bootstrap` window (a small, transparent, always-
- * on-top window defined in `src-tauri/tauri.conf.json` with
- * `url: "index.html#/bootstrap"`). The window auto-creates at app
- * launch and is the first thing the user sees.
+ * on-top window declared in `src-tauri/tauri.conf.json` with
+ * `url: "index.html#/bootstrap"`). Tauri auto-creates the window at
+ * app launch and the React hash router sends us here because of the
+ * `#/bootstrap` URL hash.
  *
  * Flow:
  *   1. `check()` from `@tauri-apps/plugin-updater` polls the
  *      `pubkey/endpoints` configured in `tauri.conf.json`.
  *   2. If an update is available: `downloadAndInstall()` with a
  *      progress callback that updates the on-screen bar. After the
- *      installer runs, Tauri restarts the app automatically and this
- *      window goes away.
+ *      installer runs, we tell Rust to restart the app.
  *   3. If no update is available (or `check()` errors out
  *      non-fatally), call `invoke('launcher_finish_bootstrap')`.
- *      Rust then closes this window and creates the main 1280×800
- *      launcher window.
+ *      Rust closes this window and creates the main 1280×800 one.
  *
  * The small window (460×430, frameless, transparent) is intentional
- * — it's only meant to show "Updating..." briefly at launch. The
- * real launcher UI is the main window.
+ * — it's only meant to show the launcher logo + status briefly at
+ * launch. The real launcher UI is the main window.
  *
  * Note: any error during update is surfaced as a small message + a
- * "Skip & continue" button so the user isn't trapped in the
- * bootstrap window if the update server is down. Same fallback the
- * abyssal-gate launcher uses.
+ * "Retry" / "Open launcher" / "Exit" button so the user isn't
+ * trapped in the bootstrap window if the update server is down.
  */
-type Status = 'checking' | 'downloading' | 'installing' | 'no-update' | 'error'
-
 export function BootstrapPage() {
-  const hash = useHash()
-  const [status, setStatus] = useState<Status>('checking')
-  const [progress, setProgress] = useState(0)
-  const [error, setError] = useState<string | null>(null)
-  const [downloadedBytes, setDownloadedBytes] = useState(0)
-  const [totalBytes, setTotalBytes] = useState<number | null>(null)
+  const [state, setState] = useState<BootstrapState>(INITIAL_STATE)
+  const mountedRef = useRef(true)
+  const startedRef = useRef(false)
 
-  // Run the update check once on mount. The hook is keyed on the
-  // current hash so navigating away (e.g. via devtools) doesn't
-  // re-trigger it.
   useEffect(() => {
-    if (hash !== '/bootstrap') return
-
-    let cancelled = false
-    void runUpdateCheck(cancelled)
+    document.documentElement.classList.add('bootstrap-window')
 
     return () => {
-      cancelled = true
+      document.documentElement.classList.remove('bootstrap-window')
+    }
+  }, [])
+
+  const updateState = useCallback((next: Partial<BootstrapState> | BootstrapState) => {
+    if (!mountedRef.current) {
+      return
     }
 
-    async function runUpdateCheck(cancelled: boolean) {
-      try {
-        const update = await check()
-        if (cancelled) return
+    setState((current) => ({
+      ...current,
+      ...next,
+    }))
+  }, [])
 
-        if (!update) {
-          await finishBootstrap()
-          return
-        }
+  const openLauncher = useCallback(async () => {
+    updateState({
+      status: 'Opening launcher',
+      detail: 'Bootstrapping complete.',
+      error: null,
+    })
 
-        // Update available — start the download. The download + install
-        // is a single API on the JS side; progress events flow through
-        // the callback.
-        setStatus('downloading')
-        const total = update.rawJson?.['size'] as number | undefined
-        if (typeof total === 'number') setTotalBytes(total)
-
-        await update.downloadAndInstall((event: DownloadEvent) => {
-          if (cancelled) return
-          switch (event.event) {
-            case 'Started':
-              setTotalBytes(event.data.contentLength ?? total ?? null)
-              break
-            case 'Progress': {
-              setDownloadedBytes((prev) => {
-                const next = prev + event.data.chunkLength
-                if (total && total > 0) {
-                  setProgress(Math.min(100, (next / total) * 100))
-                }
-                return next
-              })
-              break
-            }
-            case 'Finished':
-              setProgress(100)
-              setStatus('installing')
-              break
-          }
-        })
-        // downloadAndInstall doesn't resolve until the installer has
-        // been spawned. Tauri then restarts the app, so we never get
-        // to render past this point in the happy path.
-      } catch (err) {
-        if (cancelled) return
-        const message = err instanceof Error ? err.message : 'Update failed'
-        setError(message)
-        setStatus('error')
-      }
-    }
-  }, [hash])
-
-  const finishBootstrap = async () => {
-    setStatus('no-update')
     try {
       await invoke('launcher_finish_bootstrap')
-      // Rust will close this window and show the main one. No further
-      // state to set here — the React tree will be unmounted.
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to finish bootstrap'
-      setError(message)
-      setStatus('error')
+    } catch (error) {
+      updateState({
+        phase: 'check-error',
+        status: 'Could not open launcher',
+        detail: 'The main launcher window could not be created.',
+        error: formatError(error),
+      })
     }
+  }, [updateState])
+
+  const runBootstrap = useCallback(async () => {
+    updateState(INITIAL_STATE)
+
+    const packaged = await invoke<boolean>('app_is_packaged').catch(() => false)
+    if (!packaged) {
+      updateState({
+        phase: 'development',
+        status: 'Updater skipped in development',
+        detail: 'Development builds open the launcher directly.',
+        error: null,
+        latestVersion: null,
+        downloadedBytes: 0,
+        totalBytes: null,
+        progress: null,
+      })
+      await delay(350)
+      await openLauncher()
+      return
+    }
+
+    let checkFailed = false
+    const update = await check().catch((error) => {
+      checkFailed = true
+      updateState({
+        phase: 'check-error',
+        status: 'Could not check launcher updates',
+        detail: 'GitHub release metadata could not be fetched.',
+        error: formatError(error),
+        latestVersion: null,
+        downloadedBytes: 0,
+        totalBytes: null,
+        progress: null,
+      })
+      return null
+    })
+
+    if (checkFailed) {
+      return
+    }
+
+    if (!update) {
+      updateState({
+        phase: 'up-to-date',
+        status: 'Launcher is up to date',
+        detail: 'No newer launcher build is available.',
+        error: null,
+        latestVersion: null,
+        downloadedBytes: 0,
+        totalBytes: null,
+        progress: 100,
+      })
+      await delay(450)
+      await openLauncher()
+      return
+    }
+
+    updateState({
+      phase: 'downloading',
+      status: `Downloading launcher ${update.version}`,
+      detail: 'The launcher will restart automatically after the update finishes.',
+      error: null,
+      currentVersion: update.currentVersion,
+      latestVersion: update.version,
+      downloadedBytes: 0,
+      totalBytes: null,
+      progress: 0,
+    })
+
+    let downloadedBytes = 0
+    let totalBytes: number | null = null
+
+    try {
+      await update.downloadAndInstall((event) => {
+        applyDownloadEvent(event, {
+          onStart(contentLength) {
+            totalBytes = contentLength ?? null
+            updateState({
+              totalBytes,
+              progress: contentLength ? 0 : null,
+            })
+          },
+          onProgress(chunkLength) {
+            downloadedBytes += chunkLength
+            updateState({
+              downloadedBytes,
+              totalBytes,
+              progress: totalBytes
+                ? Math.max(1, Math.min(99, Math.round((downloadedBytes / totalBytes) * 100)))
+                : null,
+            })
+          },
+          onFinish() {
+            updateState({
+              downloadedBytes: totalBytes ?? downloadedBytes,
+              totalBytes,
+              progress: 100,
+            })
+          },
+        })
+      })
+
+      updateState({
+        phase: 'restarting',
+        status: 'Restarting launcher',
+        detail: 'Installing the new build and reopening the launcher.',
+        error: null,
+        progress: 100,
+      })
+
+      await invoke('launcher_restart_app')
+    } catch (error) {
+      updateState({
+        phase: 'install-error',
+        status: 'Launcher update failed',
+        detail: 'The update could not be downloaded or installed.',
+        error: formatError(error),
+        downloadedBytes,
+        totalBytes,
+      })
+    } finally {
+      await update.close().catch(() => undefined)
+    }
+  }, [openLauncher, updateState])
+
+  useEffect(() => {
+    mountedRef.current = true
+    if (!startedRef.current) {
+      startedRef.current = true
+      void runBootstrap()
+    }
+
+    return () => {
+      mountedRef.current = false
+    }
+  }, [runBootstrap])
+
+  function retry() {
+    void runBootstrap()
   }
 
+  function exitLauncher() {
+    void invoke('launcher_exit_app')
+  }
+
+  const showProgress = state.phase === 'downloading'
+  const hasCheckError = state.phase === 'check-error'
+  const hasInstallError = state.phase === 'install-error'
+  const hasError = hasCheckError || hasInstallError
+  const splashLabel =
+    state.phase === 'checking'
+      ? 'Checking for updates...'
+      : state.phase === 'development' ||
+          state.phase === 'up-to-date' ||
+          state.phase === 'restarting'
+        ? 'Starting...'
+        : null
+
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-transparent">
-      <div className="flex w-[380px] flex-col items-center gap-5 rounded-xl border border-border bg-card/95 p-8 text-center shadow-2xl backdrop-blur-sm">
-        <img
-          src="./assets/icon/app-icon.ico"
-          alt=""
-          aria-hidden="true"
-          className="h-14 w-14"
-          onError={(e) => {
-            // The icon path is bundle-relative — fall back to a
-            // neutral spinner if the file isn't present in dev. The
-            // production build includes it via Tauri's resource
-            // bundler.
-            ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-transparent px-4 py-4 text-foreground dark">
+      <div className="flex h-full max-h-[22.5rem] w-full max-w-[19.5rem] flex-col items-center justify-center overflow-hidden rounded-[22px] bg-background px-12 py-12 shadow-[0_12px_36px_rgba(0,0,0,0.28)]">
+        <motion.div
+          className="flex items-center justify-center"
+          animate={
+            hasError
+              ? { scale: 1, opacity: 1 }
+              : { scale: [1, 1.06, 1], opacity: [0.96, 1, 0.96] }
+          }
+          transition={{
+            duration: 2.4,
+            ease: 'easeInOut',
+            repeat: hasError ? 0 : Infinity,
           }}
-        />
+        >
+          <img
+            src="./assets/icon/app-icon.ico"
+            alt={LAUNCHER_CONFIG.name}
+            className="h-24 w-24 object-contain"
+          />
+        </motion.div>
 
-        <div className="space-y-1">
-          <h1 className="text-lg font-semibold text-foreground">Zemu Launcher</h1>
-          <p className="text-xs text-muted-foreground">{statusLabel(status, progress, totalBytes, downloadedBytes)}</p>
-        </div>
+        {splashLabel ? (
+          <p className="mt-6 text-center text-sm tracking-[0.08em] text-muted-foreground">
+            {splashLabel}
+          </p>
+        ) : null}
 
-        {/* Progress bar — only meaningful during downloading.
-            Hidden during checking / no-update / error. Uses the
-            zemu primary (warm red) as the fill color via Tailwind. */}
-        {status === 'downloading' && (
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full bg-primary transition-[width] duration-200 ease-out"
-              style={{ width: `${Math.max(2, progress)}%` }}
-            />
+        {showProgress ? (
+          <div className="mt-10 w-full">
+            <Progress className="h-1.5 bg-white/8" value={state.progress ?? undefined} />
           </div>
-        )}
+        ) : null}
 
-        {status === 'checking' && (
-          <Spinner className="size-5 text-muted-foreground" />
-        )}
-
-        {status === 'error' && (
-          <div className="flex w-full flex-col gap-3">
-            {error && (
-              <div className="rounded-md bg-destructive/10 px-3 py-2 text-left text-xs text-destructive">
-                {error}
-              </div>
-            )}
+        {hasCheckError ? (
+          <div className="mt-8 flex w-full gap-3">
+            <Button className="flex-1" size="lg" onClick={retry}>
+              Retry
+            </Button>
             <Button
-              variant="default"
-              size="sm"
-              onClick={() => void finishBootstrap()}
-              className="w-full"
+              className="flex-1"
+              size="lg"
+              variant="outline"
+              onClick={() => void openLauncher()}
             >
-              Skip &amp; continue
+              Open launcher
             </Button>
           </div>
-        )}
+        ) : null}
+
+        {hasInstallError ? (
+          <div className="mt-8 flex w-full gap-3">
+            <Button className="flex-1" size="lg" onClick={retry}>
+              Retry
+            </Button>
+            <Button className="flex-1" size="lg" variant="outline" onClick={exitLauncher}>
+              Exit
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   )
 }
 
-function statusLabel(
-  status: Status,
-  progress: number,
-  totalBytes: number | null,
-  downloadedBytes: number,
-): string {
-  switch (status) {
-    case 'checking':
-      return 'Checking for updates…'
-    case 'downloading': {
-      if (totalBytes && totalBytes > 0) {
-        const mb = (n: number) => (n / 1024 / 1024).toFixed(1)
-        return `Downloading update — ${mb(downloadedBytes)} / ${mb(totalBytes)} MB (${Math.round(progress)}%)`
-      }
-      return `Downloading update — ${Math.round(progress)}%`
-    }
-    case 'installing':
-      return 'Installing update…'
-    case 'no-update':
-      return 'Up to date — launching…'
-    case 'error':
-      return 'Update failed'
+function applyDownloadEvent(
+  event: DownloadEvent,
+  handlers: {
+    onStart: (contentLength?: number) => void
+    onProgress: (chunkLength: number) => void
+    onFinish: () => void
+  },
+) {
+  if (event.event === 'Started') {
+    handlers.onStart(event.data.contentLength)
+    return
   }
+
+  if (event.event === 'Progress') {
+    handlers.onProgress(event.data.chunkLength)
+    return
+  }
+
+  handlers.onFinish()
+}
+
+function formatError(error: unknown) {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message
+  }
+
+  return 'Unexpected updater error'
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
 }

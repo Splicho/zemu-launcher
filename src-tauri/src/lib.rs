@@ -12,7 +12,7 @@ mod storage;
 mod update;
 
 use state::AppState;
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
 use url::Url;
 
@@ -37,69 +37,20 @@ pub fn run() {
         .manage(app_state.clone())
         .invoke_handler(commands::register_commands())
         .setup(move |app| {
-            // The bootstrap window is created programmatically rather than
-            // declared in `tauri.conf.json`. The reason: in Tauri 2 the
-            // static `windows[]` config does not support a `url` field —
-            // Tauri 2 routes window URLs via `WebviewUrl::App(...)` on the
-            // builder, and any `url` in JSON is silently ignored, leaving
-            // the bootstrap route (`#/bootstrap`) unset. The React app
-            // would then render the main route in a 460×430 transparent
-            // window and never invoke `launcher_finish_bootstrap`.
-            // Tauri 2 silently treats relative paths in WebviewUrl::App as
-            // "no frontend bundle found" and resolves to `about:blank`. The
-            // path MUST start with a leading slash. We pass `/#/bootstrap`
-            // (root document + hash route) because `index.html` is the
-            // default entry and the React router dispatches on the hash.
-            match WebviewWindowBuilder::new(app, "bootstrap", WebviewUrl::App("/#/bootstrap".into()))
-                .title("Zemu Launcher Updater")
-                .inner_size(460.0, 430.0)
-                .resizable(false)
-                .maximizable(false)
-                .minimizable(false)
-                .closable(false)
-                .decorations(false)
-                .shadow(false)
-                .transparent(true)
-                .always_on_top(true)
-                .center()
-                .build()
-            {
-                Ok(window) => {
-                    let resolved = window.url().ok();
-                    let path = resolved
-                        .as_ref()
-                        .and_then(|u| u.path_segments().and_then(|mut s| s.next().map(|x| x.to_string())));
-                    let hash = resolved.as_ref().and_then(|u| u.fragment().map(|f| f.to_string()));
-                    if path.as_deref() != Some("index.html") || hash.as_deref() != Some("bootstrap") {
-                        let _ = debug_log::append(
-                            app.handle(),
-                            "bootstrap",
-                            &format!(
-                                "BOOTSTRAP_URL_MISMATCH resolved={:?} expected=/index.html#bootstrap — frontend will not load",
-                                resolved,
-                            ),
-                        );
-                    }
-                    let _ = debug_log::append(
-                        app.handle(),
-                        "bootstrap",
-                        &format!(
-                            "created bootstrap window resolved_url={:?} path={:?} fragment={:?} visible={}",
-                            resolved,
-                            path,
-                            hash,
-                            window.is_visible().unwrap_or(false),
-                        ),
-                    );
-                    app_state.mark_bootstrap_active();
-                }
-                Err(error) => {
-                    let _ = debug_log::append(
-                        app.handle(),
-                        "bootstrap",
-                        &format!("failed to create bootstrap window: {error}"),
-                    );
-                }
+            // The bootstrap window is declared statically in
+            // `tauri.conf.json` under `app.windows[]` with
+            // `url: "index.html#/bootstrap"`. Tauri 2 creates it
+            // automatically on startup, so all we need to do here is
+            // note that it's already active. (Earlier revisions built
+            // it programmatically with `WebviewWindowBuilder` —
+            // Tauri 2 silently dropped the URL fragment in
+            // `WebviewUrl::App("index.html#/bootstrap")` and resolved
+            // the window to `about:blank`, defeating the bootstrap
+            // screen. Routing via the URL hash from `tauri.conf.json`
+            // works because the framework's window-creation pipeline
+            // preserves it.)
+            if app.get_webview_window("bootstrap").is_some() {
+                app_state.mark_bootstrap_active();
             }
             discord::initialize(app.handle());
             let log_path = debug_log::log_path_string(app.handle());
