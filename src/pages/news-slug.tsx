@@ -3,6 +3,10 @@ import { ArrowLeft } from 'lucide-react'
 
 import { fetchNewsBySlug, formatNewsDate, type NewsFull } from '@/lib/news'
 import { useHashRouter } from '@/hooks/use-hash'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
+import { Button } from '@/components/ui/button'
+import { NewsBody } from '@/components/news-body'
 
 /**
  * News detail page — mounted at `#/news/:slug`.
@@ -45,19 +49,19 @@ export function NewsSlugPage({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center gap-3 px-8 pt-6">
-        <button
-          type="button"
+      <div className="flex shrink-0 items-center gap-3 px-8 py-4">
+        <Button
           onClick={() => navigate('/news')}
+          variant="outline"
           className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
           Back to news
-        </button>
+        </Button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-8 pb-10 pt-4">
-        <div className="mx-auto flex max-w-3xl flex-col gap-6">
+        <div className="flex flex-col gap-6">
           {post === 'loading' && (
             <div className="flex flex-col gap-4">
               <div className="h-8 w-2/3 animate-pulse rounded-md bg-muted/40" />
@@ -97,11 +101,12 @@ export function NewsSlugPage({ slug }: { slug: string }) {
               )}
 
               <header className="flex flex-col gap-3">
-                <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 font-medium text-foreground/80">
-                    {post.category}
-                  </span>
-                  <span>{formatNewsDate(post.publishedAt)}</span>
+                <div className="flex items-center gap-2 tracking-wide text-muted-foreground">
+                  <Badge variant="outline" className="rounded-sm">
+                    {post.category} 
+                  </Badge>
+                  <span className="text-xs">•</span>
+                  <span className="text-sm">{formatNewsDate(post.publishedAt)}</span>
                 </div>
                 <h1 className="text-3xl font-semibold leading-tight tracking-tight">
                   {post.title}
@@ -110,11 +115,8 @@ export function NewsSlugPage({ slug }: { slug: string }) {
                   <p className="text-base text-muted-foreground">{post.excerpt}</p>
                 )}
               </header>
-
-              <div
-                className="news-body max-w-none text-sm leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: post.bodyHtml }}
-              />
+              <Separator />
+              <NewsBody html={post.bodyHtml} className="typeset typeset-docs max-w-none text-sm leading-relaxed" />
             </article>
           )}
         </div>

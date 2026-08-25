@@ -112,7 +112,6 @@ export function NewsSlider() {
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     if ((e.target as HTMLElement).closest('[data-pills]')) return
-    ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
     dragStartX.current = e.clientX
     setDragOffset(0)
   }
@@ -165,8 +164,7 @@ export function NewsSlider() {
       style={{ touchAction: 'pan-y' }}
     >
       {/* Clickable card */}
-      <button
-        type="button"
+      <div
         onClick={() => {
           if (dragOffset === 0) navigate(`/news/${current.slug}`)
         }}
@@ -238,18 +236,19 @@ export function NewsSlider() {
           <Button
             variant="gradient"
             size="lg"
-            asChild
             className="mt-2 w-fit px-4"
+            onClick={(e) => {
+              e.stopPropagation()
+              navigate(`/news/${current.slug}`)
+            }}
           >
-            <a href={`/news/${current.slug}`}>
-              <span className="inline-flex items-center gap-2">
-                <span>Read more</span>
-                <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-              </span>
-            </a>
+            <span className="inline-flex items-center gap-2">
+              <span>Read more</span>
+              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+            </span>
           </Button>
         </div>
-      </button>
+      </div>
 
       {/* Pill navigation with progress */}
       {items.length > 1 && (

@@ -101,13 +101,13 @@ export function AppSidebar() {
                   </a>
                 </SidebarMenuButton>
                 <SidebarMenuButton asChild size="lg" className="px-4">
-                  <a href="/news">
+                  <a href="#/news">
                     <News className="size-5!" />
                     <span>News</span>
                   </a>
                 </SidebarMenuButton>
                 <SidebarMenuButton asChild size="lg" className="px-4">
-                  <a href="/news">
+                  <a href="#/news">
                     <Leaderboard className="size-5!" />
                     <span>Leaderboard</span>
                   </a>

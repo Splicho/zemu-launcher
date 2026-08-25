@@ -4,10 +4,23 @@ import { LoginPage } from '@/pages/login'
 import { HomePage } from '@/pages/home'
 import { MainLayout } from '@/components/main-layout'
 import { BootstrapPage } from '@/pages/bootstrap'
+import { NewsPage } from '@/pages/news'
+import { NewsSlugPage } from '@/pages/news-slug'
 import { useAuthContext } from '@/contexts/auth-context'
 import { useHash } from '@/hooks/use-hash'
 
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
+
+function parseRoute(hash: string | null): { page: string; params?: Record<string, string> } {
+  if (!hash || hash === '/') return { page: 'home' }
+
+  const newsMatch = hash.match(/^\/news\/(.+)$/)
+  if (newsMatch) return { page: 'news-slug', params: { slug: newsMatch[1] } }
+
+  if (hash === '/news') return { page: 'news' }
+
+  return { page: 'home' }
+}
 
 /**
  * Top-level app shell.
@@ -54,7 +67,8 @@ export default function App() {
 function AuthedApp() {
   const { status, token } = useAuthContext()
   const hash = useHash()
-  const isDeepRoute = hash !== null && hash !== '/'
+  const route = parseRoute(hash)
+  const isDeepRoute = hash !== null && hash !== '/' && route.page === 'home'
 
   // Bounce a signed-out user from a deep route back to the landing.
   // The hash state itself is read-only inside React; we mutate the
@@ -108,7 +122,9 @@ function AuthedApp() {
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
       <MainLayout>
-        <HomePage />
+        {route.page === 'news' && <NewsPage />}
+        {route.page === 'news-slug' && route.params && <NewsSlugPage slug={route.params.slug} />}
+        {route.page === 'home' && <HomePage />}
       </MainLayout>
     </div>
   )

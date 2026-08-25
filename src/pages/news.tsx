@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Newspaper } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
-import { fetchNewsList, formatNewsDate, type NewsListItem } from '@/lib/news'
+import { fetchNewsList, type NewsListItem } from '@/lib/news'
 import { useHashRouter } from '@/hooks/use-hash'
+import { NewsCard } from '@/components/news-card'
+import { Button } from '@/components/ui/button'
 
 /**
  * News list page — mounted at `#/news`.
@@ -41,19 +43,18 @@ export function NewsPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center gap-3 px-8 pt-6">
-        <button
-          type="button"
+        <Button
+          variant="outline"
           onClick={() => navigate('/')}
           className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
           Back
-        </button>
+        </Button>
       </div>
 
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-8 pb-8 pt-4">
         <header className="flex items-center gap-2">
-          <Newspaper className="size-5 text-foreground" />
           <h1 className="text-xl font-semibold tracking-tight">All news</h1>
         </header>
 
@@ -83,40 +84,16 @@ export function NewsPage() {
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item) => (
               <li key={item.slug}>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/news/${item.slug}`)}
-                  className="group flex h-full w-full flex-col overflow-hidden rounded-xl bg-card text-left transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
-                    {item.coverImageUrl ? (
-                      <img
-                        src={item.coverImageUrl}
-                        alt={item.coverImageAlt}
-                        loading="lazy"
-                        className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/40">
-                        <Newspaper className="size-10" aria-hidden="true" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-1 flex-col gap-2 p-4">
-                    <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-                      <span className="rounded-md bg-muted/60 px-1.5 py-0.5 font-medium text-foreground/80">
-                        {item.category}
-                      </span>
-                      <span>{formatNewsDate(item.publishedAt)}</span>
-                    </div>
-                    <h3 className="line-clamp-2 text-base font-semibold leading-snug text-foreground">
-                      {item.title}
-                    </h3>
-                    <p className="line-clamp-3 text-sm text-muted-foreground">
-                      {item.excerpt}
-                    </p>
-                  </div>
-                </button>
+                <NewsCard
+                  slug={item.slug}
+                  category={item.category}
+                  coverImageUrl={item.coverImageUrl}
+                  coverImageAlt={item.coverImageAlt}
+                  publishedAt={item.publishedAt}
+                  title={item.title}
+                  excerpt={item.excerpt}
+                  compact
+                />
               </li>
             ))}
           </ul>
