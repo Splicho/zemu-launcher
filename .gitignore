@@ -37,5 +37,4 @@ src-tauri/gen
 # OS
 Thumbs.db
 
-# Bundled FreeArc binary (download separately during release pipeline)
-assets/bin/unarc.exe
+
