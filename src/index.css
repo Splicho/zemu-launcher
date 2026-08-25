@@ -1,41 +1,7 @@
-/*
- * Zemu Launcher theme — shadcn radix-nova skeleton, themed to match the
- * zemu-website.
- *
- * The shadcn CLI generated the @theme inline, @import "tailwindcss" /
- * tw-animate-css / shadcn/tailwind.css, the radix-nova CSS variables,
- * accordion keyframes, and Inter Variable font wiring. We then swap the
- * actual color tokens (`--primary`, `--primary-foreground`, and friends)
- * to the values from zemu-website/packages/ui/src/styles/globals.css so
- * the launcher's auth screen matches the website's auth app visually.
- *
- * Two CSS-variable layers:
- *   - `:root`       — light theme defaults. Kept for parity with the
- *                     website; the launcher forces `.dark` on the
- *                     <html>, so these are never actually rendered.
- *   - `.dark`       — production palette. The warm-red `--primary`
- *                     (`oklch(0.3645 0.1487 29.11)`) drives the
- *                     "Login" submit button to match the website.
- *
- * The `[data-variant="oauth"]:hover` / `:active` block drives the OAuth
- * provider buttons (Discord, Steam, Email). The Button component sets
- * `--oauth` to the brand color; this rule computes the hover/active
- * shade by mixing toward black. Same convention as the abyssal-gate
- * launcher and the zemu-website auth app.
- *
- * Typography:
- *   - "Google Sans" is bundled from /public/fonts/GoogleSans-*.ttf,
- *     same TTFs the zemu-website web app uses. We declare them as
- *     variable fonts (single file covers 100–900) so all shadcn
- *     `font-medium` / `font-semibold` / etc. utilities resolve to a
- *     single wght axis instead of requiring per-weight files.
- *   - Files live under `/fonts/` so the Vite dev server and the
- *     production Tauri build (which serves `dist/`) both find them
- *     without a custom asset plugin.
- */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./typeset.css";
 
 @font-face {
   font-family: "Google Sans";
@@ -162,7 +128,7 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  --background: oklch(0.2 0 0);
   --foreground: oklch(0.985 0 0);
   --page: oklch(0.1822 0 0);
   --card: oklch(0.205 0 0);
@@ -191,7 +157,7 @@
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.20 0 0);
+  --sidebar-accent: oklch(0.25 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
@@ -245,4 +211,119 @@
   html {
     @apply font-sans;
   }
+}
+
+/*
+ * News slider (see src/components/news-slider.tsx).
+ *
+ * Swiper ships its own visual default for nav buttons and pagination
+ * dots that doesn't match the launcher's color tokens or visual
+ * weight. We override them here:
+ *
+ *   - nav buttons: small circular chip, muted background, foreground
+ *     chevron, sits inset within the slider so it doesn't crowd the
+ *     cards. Disabled state matches muted-foreground opacity.
+ *   - pagination bullets: small, muted foreground, primary on active.
+ *
+ * The chevron SVG inside swiper's default button is replaced via CSS
+ * `background-image` so we don't need to render a custom React nav
+ * component — swiper's `navigation: true` looks for these classes.
+ */
+.news-slider .swiper-button-prev,
+.news-slider .swiper-button-next {
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  background-color: var(--muted);
+  color: var(--foreground);
+}
+
+.news-slider .swiper-button-prev::after,
+.news-slider .swiper-button-next::after {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.news-slider .swiper-button-prev:hover,
+.news-slider .swiper-button-next:hover {
+  background-color: var(--accent);
+}
+
+.news-slider .swiper-button-prev.swiper-button-disabled,
+.news-slider .swiper-button-next.swiper-button-disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.news-slider .swiper-pagination-bullet {
+  background-color: var(--muted-foreground);
+  opacity: 0.4;
+}
+
+.news-slider .swiper-pagination-bullet-active {
+  background-color: var(--primary);
+  opacity: 1;
+}
+
+/*
+ * News body content (src/pages/news-slug.tsx).
+ *
+ * `bodyHtml` comes from the public news API and is rendered through
+ * `dangerouslySetInnerHTML`. Tailwind's `prose` plugin isn't bundled
+ * here, so we hand-roll a minimal style set that matches the launcher's
+ * typography: tight line-height, generous spacing between blocks, and
+ * the theme's link color.
+ */
+.news-body h1,
+.news-body h2,
+.news-body h3,
+.news-body h4 {
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--foreground);
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.news-body p {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
+.news-body a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.news-body ul,
+.news-body ol {
+  margin: 0.75em 0;
+  padding-left: 1.5em;
+}
+
+.news-body li {
+  margin: 0.25em 0;
+}
+
+.news-body code {
+  background-color: var(--muted);
+  padding: 0.125em 0.375em;
+  border-radius: 0.25rem;
+  font-size: 0.9em;
+}
+
+.news-body pre {
+  background-color: var(--muted);
+  padding: 1em;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.news-body img {
+  max-width: 100%;
+  border-radius: 0.5rem;
+  margin: 1em 0;
 }

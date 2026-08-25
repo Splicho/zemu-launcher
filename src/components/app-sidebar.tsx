@@ -1,4 +1,4 @@
-import { Home } from '@/components/icons'
+import { Home, News, Leaderboard } from '@/components/icons'
 
 import {
   Sidebar,
@@ -40,7 +40,7 @@ import { LAUNCHER_CONFIG } from '@/config/launcher'
  */
 export function AppSidebar() {
   return (
-    <Sidebar collapsible="none" className="w-58 shrink-0 bg-transparent">
+    <Sidebar collapsible="none" className="w-62 shrink-0 bg-transparent">
       <SidebarContent>
         <div className="flex justify-center px-5 pt-6 pb-4">
           <img
@@ -55,13 +55,25 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive size="lg">
+              <SidebarMenuItem className="space-y-px">
+                <SidebarMenuButton asChild isActive size="lg" className="px-4">
                   <a href="#/">
                     <Home className="size-5!" />
                     <span>Home</span>
                   </a>
                 </SidebarMenuButton>
+                <SidebarMenuButton asChild size="lg" className="px-4">
+                  <a href="/news">
+                    <News className="size-5!" />
+                    <span>News</span>
+                  </a>
+                </SidebarMenuButton>
+                <SidebarMenuButton asChild size="lg" className="px-4">
+                  <a href="/news">
+                    <Leaderboard className="size-5!" />
+                    <span>Leaderboard</span>
+                  </a>
+                </SidebarMenuButton>                  
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
@@ -73,7 +85,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild size="lg">
+                <SidebarMenuButton asChild size="lg" className="px-4">
                   <a href="#/games/king-of-the-kill">
                     <img
                       src="./assets/icon/app-icon.png"
