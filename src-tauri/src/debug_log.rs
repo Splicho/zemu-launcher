@@ -4,40 +4,45 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::AppHandle;
+use tauri::Manager;
 
 const LOG_FILE_NAME: &str = "launcher-debug.log";
 // `Mutex<()>` is fine here — debug log writes are infrequent and the lock
 // is released before any disk I/O happens.
 static LOG_FILE_LOCK: Mutex<()> = Mutex::new(());
 
-/// Project-root log path.
+/// Per-user AppData log path.
 ///
-/// Writes the launcher debug log into the repo root as
-/// `launcher-debug.log` so it's easy to find while iterating. Resolved via
-/// `CARGO_MANIFEST_DIR` (which always points at `src-tauri/`) so it works
-/// regardless of the process CWD.
-///
-/// `*.log` is gitignored, so this file will never be committed.
-fn project_root_log_path() -> Result<PathBuf> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest_dir
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("CARGO_MANIFEST_DIR has no parent"))?;
-    Ok(repo_root.join(LOG_FILE_NAME))
+/// Writes the launcher debug log into the OS-managed app data directory so
+/// the log lands somewhere stable on the user's machine both during
+/// development and after the bundled installer has placed the .exe under
+/// `Program Files`. On Windows this resolves to roughly
+/// `%APPDATA%\com.zemuuk.launcher\`; on macOS to `~/Library/Application
+/// Support/com.zemuuk.launcher/`; on Linux to `~/.local/share/com.zemuuk.launcher/`.
+/// `ensure_dir` is called on every write so the path exists before we try to
+/// open the file.
+fn appdata_log_path(app: &AppHandle) -> Result<PathBuf> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| anyhow::anyhow!("app_data_dir unavailable: {e}"))?;
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("failed to create app data dir: {}", dir.display()))?;
+    Ok(dir.join(LOG_FILE_NAME))
 }
 
-pub fn log_path_string(_app: &AppHandle) -> String {
-    project_root_log_path()
+pub fn log_path_string(app: &AppHandle) -> String {
+    appdata_log_path(app)
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| "<unavailable>".to_string())
 }
 
-pub fn append(_app: &AppHandle, source: &str, message: &str) -> Result<()> {
+pub fn append(app: &AppHandle, source: &str, message: &str) -> Result<()> {
     let _guard = LOG_FILE_LOCK.lock().ok();
-    let path = match project_root_log_path() {
+    let path = match appdata_log_path(app) {
         Ok(p) => p,
         Err(err) => {
-            eprintln!("[debug_log] project_root_log_path failed: {err}");
+            eprintln!("[debug_log] appdata_log_path failed: {err}");
             return Err(err);
         }
     };
@@ -65,9 +70,9 @@ pub fn append(_app: &AppHandle, source: &str, message: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn clear(_app: &AppHandle) -> Result<()> {
+pub fn clear(app: &AppHandle) -> Result<()> {
     let _guard = LOG_FILE_LOCK.lock().ok();
-    let path = project_root_log_path()?;
+    let path = appdata_log_path(app)?;
     if path.exists() {
         std::fs::remove_file(&path)
             .with_context(|| format!("failed removing log file {}", path.display()))?;
@@ -75,9 +80,9 @@ pub fn clear(_app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
-pub fn read(_app: &AppHandle) -> Result<String> {
+pub fn read(app: &AppHandle) -> Result<String> {
     let _guard = LOG_FILE_LOCK.lock().ok();
-    let path = project_root_log_path()?;
+    let path = appdata_log_path(app)?;
     if !path.exists() {
         return Ok(String::new());
     }
