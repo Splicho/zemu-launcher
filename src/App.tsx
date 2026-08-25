@@ -9,6 +9,7 @@ import { NewsSlugPage } from '@/pages/news-slug'
 import { PlayPage } from '@/pages/play'
 import { useAuthContext } from '@/contexts/auth-context'
 import { useHash } from '@/hooks/use-hash'
+import { UpdateProvider } from '@/contexts/update-context'
 
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
 
@@ -63,7 +64,11 @@ export default function App() {
     return <BootstrapPage />
   }
 
-  return <AuthedApp />
+  return (
+    <UpdateProvider>
+      <AuthedApp />
+    </UpdateProvider>
+  )
 }
 
 function AuthedApp() {

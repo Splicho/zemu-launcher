@@ -25,6 +25,8 @@ import {
   SidebarMenuSubButton,
 } from '@/components/ui/sidebar'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
+import { useUpdate } from '@/contexts/update-context'
+import { CircularProgress } from '@/components/circular-progress'
 
 const SOCIAL_LINKS = [
   {
@@ -63,6 +65,7 @@ function useHashRoute() {
 
 export function AppSidebar() {
   const [socialOpen, setSocialOpen] = React.useState(false)
+  const { isUpdating, progress, phase } = useUpdate()
   const hash = useHashRoute()
 
   const isActive = (path: string) => {
@@ -74,13 +77,6 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="none" className="w-62 shrink-0 bg-transparent">
       <SidebarContent className="flex flex-col">
-        <div className="flex justify-center px-5 pt-6 pb-4">
-          <img
-            src="../assets/icon/zemu-logo.png"
-            alt={LAUNCHER_CONFIG.name}
-            className="w-full max-w-32"
-          />
-        </div>
         <SidebarGroup className="px-5 pt-5 pb-2">
           <SidebarGroupLabel className="uppercase tracking-wider pl-4">
             Menu
@@ -119,11 +115,32 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={isActive('/play')} size="lg" className="px-4">
                   <a href="#/play">
-                    <img
-                      src="../assets/icon/app-icon.png"
-                      alt=""
-                      className="size-5 shrink-0 "
-                    />
+                    <span className="w-5 flex shrink-0 justify-center">
+                      <AnimatePresence mode="wait">
+                        {isUpdating ? (
+                          <motion.div
+                            key="progress"
+                            initial={{ scale: 0, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <CircularProgress progress={progress} size={16} strokeWidth={2} />
+                          </motion.div>
+                        ) : (
+                          <motion.img
+                            key="icon"
+                            src="../assets/icon/app-icon.png"
+                            alt=""
+                            className="size-5"
+                            initial={{ scale: 0.5, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 2, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                          />
+                        )}
+                      </AnimatePresence>
+                    </span>
                     <span>ZEmu: King of the Kill</span>
                   </a>
                 </SidebarMenuButton>
