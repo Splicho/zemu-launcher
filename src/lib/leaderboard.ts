@@ -107,15 +107,29 @@ export const MOCK_LEADERBOARD: LeaderboardEntry[] = [
   },
 ]
 
-export async function fetchTopLeaderboard(limit = 5): Promise<LeaderboardEntry[]> {
+export interface FetchTopLeaderboardOptions {
+  limit?: number
+  tier?: LeaderboardTier | 'all'
+}
+
+export async function fetchTopLeaderboard(
+  options: FetchTopLeaderboardOptions = {}
+): Promise<LeaderboardEntry[]> {
+  const { limit = 5, tier = 'all' } = options
   if (import.meta.env.DEV) {
-    return MOCK_LEADERBOARD.slice(0, limit)
+    const filtered =
+      tier === 'all'
+        ? MOCK_LEADERBOARD
+        : MOCK_LEADERBOARD.filter((entry) => entry.tier === tier)
+    return filtered.slice(0, limit)
   }
 
-  const response = await fetch(`${STATS_API_BASE}/leaderboards?limit=${limit}`)
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (tier !== 'all') params.set('tier', tier)
+  const response = await fetch(`${STATS_API_BASE}/leaderboards?${params}`)
   if (!response.ok) {
     throw new Error(`Leaderboard request failed (HTTP ${response.status})`)
   }
   const data = await response.json()
-  return (data.entries ?? []) as LeaderboardEntry[]
+  return ((data.entries ?? []) as LeaderboardEntry[]).slice(0, limit)
 }

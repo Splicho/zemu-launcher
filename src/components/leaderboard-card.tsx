@@ -67,14 +67,13 @@ export function LeaderboardCard() {
   const [teamMode, setTeamMode] = useState('Solo')
 
   const { data: entries, error } = useQuery({
-    queryKey: ['leaderboard', { region, teamMode }],
-    queryFn: () => fetchTopLeaderboard(5),
+    queryKey: ['leaderboard', { region, teamMode, tierFilter }],
+    queryFn: () => fetchTopLeaderboard({ limit: 5, tier: tierFilter }),
   })
 
-  const filteredEntries = entries?.filter((entry) => {
-    const matchesTier = tierFilter === 'all' || entry.tier === tierFilter
-    return matchesTier
-  })
+  // Hard cap so the card always renders at most 5 rows even if the API
+  // returns more, or the tier filter is later relaxed client-side.
+  const visibleEntries = entries?.slice(0, 5)
 
   return (
     <Card>
@@ -149,7 +148,7 @@ export function LeaderboardCard() {
               </>
             )}
 
-            {filteredEntries && filteredEntries.length === 0 && !error && (
+            {visibleEntries && visibleEntries.length === 0 && !error && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
                   No players found.
@@ -157,7 +156,7 @@ export function LeaderboardCard() {
               </TableRow>
             )}
 
-            {filteredEntries?.map((entry) => (
+            {visibleEntries?.map((entry) => (
               <TableRow
                 key={entry.position}
                 className="cursor-pointer hover:bg-foreground/5"
