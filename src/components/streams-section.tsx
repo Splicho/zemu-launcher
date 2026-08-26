@@ -43,7 +43,7 @@ export function StreamsSection() {
       {isLoading ? (
         <p className="mt-4 text-sm text-muted-foreground">Loading streams...</p>
       ) : streams.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">No live streams</p>
+        <p className="mt-4 text-sm text-muted-foreground">Nobody is streaming ZEmu right now. Check back later!</p>
       ) : (
         <div ref={emblaRef} className="mt-4 overflow-hidden">
           <div className="flex gap-4">
