@@ -57,6 +57,7 @@ export default defineConfig({
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(packageJson.version),
   },
   build: {
+    minify: 'esbuild',
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -64,10 +65,14 @@ export default defineConfig({
             return undefined
           }
 
+          // Put React + ReactDOM + react-router + scheduler in the same
+          // chunk so the runtime can resolve circular imports between
+          // react-dom (consumer) and react (dependency) without hitting
+          // a TDZ/undefined-reference error at module-eval time.
           if (
             id.includes(`${path.sep}react${path.sep}`) ||
-            id.includes('react-dom') ||
-            id.includes('scheduler')
+            id.includes(`${path.sep}react-dom${path.sep}`) ||
+            id.includes(`${path.sep}scheduler${path.sep}`)
           ) {
             return 'react-vendor'
           }

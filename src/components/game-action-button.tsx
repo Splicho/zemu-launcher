@@ -8,20 +8,6 @@ import { useGameStateContext } from '@/contexts/game-state-context'
 import { useDepotPercent } from '@/hooks/use-depot-percent'
 import { Cancel } from '@/components/icons'
 
-// Mirror-to-file helper: writes to console AND launcher-debug.log so we can
-// debug the Steam login flow without opening DevTools. Provided by
-// tauri-bridge.ts on `window.__zemuLog`.
-const zLog = (
-  msg: string,
-  meta?: Record<string, unknown>
-): void => {
-  const w = window as unknown as {
-    __zemuLog?: (tag: string, m: string, x?: unknown) => void
-  }
-  if (w.__zemuLog) w.__zemuLog('steam.auth', msg, meta)
-  else console.log(`[steam.auth] ${msg}`, meta ?? '')
-}
-
 interface GameActionButtonProps {
   className?: string
 }
@@ -82,7 +68,6 @@ export function GameActionButton({ className }: GameActionButtonProps) {
         depotProgress?.phase === 'failed' ||
         depotProgress?.phase === 'cancelled')
     ) {
-      zLog('depot download started -> close progress dialog')
       setDownloadDialogOpen(false)
     }
   }, [depotProgress?.phase, downloadDialogOpen])
@@ -99,7 +84,6 @@ export function GameActionButton({ className }: GameActionButtonProps) {
   // above). Fires only on the false → true edge.
   useEffect(() => {
     if (loginSubmitting && !prevLoginSubmittingRef.current) {
-      zLog('loginSubmitting -> open download dialog')
       setLoginDialogOpen(false)
       setDownloadDialogOpen(true)
     }
@@ -110,7 +94,6 @@ export function GameActionButton({ className }: GameActionButtonProps) {
   // the dialog is open even if the parent didn't transition via loginSubmitting.
   useEffect(() => {
     if (awaitingMobileApproval && !prevAwaitingRef.current) {
-      zLog('awaitingMobileApproval -> ensure download dialog open')
       setLoginDialogOpen(false)
       setDownloadDialogOpen(true)
     }
@@ -121,37 +104,30 @@ export function GameActionButton({ className }: GameActionButtonProps) {
   // dialog can surface it. Cleared on dialog close / error / success.
   useEffect(() => {
     if (!window.launcherAPI?.onSteamMobileConfirmationPending) {
-      zLog('window.launcherAPI.onSteamMobileConfirmationPending not available')
       return
     }
 
     let unlisten: (() => void) | null = null
     let cancelled = false
 
-    zLog('subscribing to steam-mobile-confirmation-pending event')
-
     window.launcherAPI
       .onSteamMobileConfirmationPending(() => {
-        zLog('event fired -> setAwaitingMobileApproval(true)')
         if (!cancelled) setAwaitingMobileApproval(true)
       })
       .then((cleanup) => {
-        zLog('subscription registered')
         if (cancelled) {
           cleanup()
           return
         }
         unlisten = cleanup
       })
-      .catch((err) => {
-        zLog('subscription failed', { err: String(err) })
+      .catch(() => {
         // Bridge unavailable — non-fatal; we just won't show the pill.
       })
 
     return () => {
       cancelled = true
       if (unlisten) {
-        zLog('unsubscribing from steam-mobile-confirmation-pending')
         unlisten()
       }
     }
@@ -199,12 +175,10 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     state.type === 'APPLYING_PATCH'
 
   const handleCancelDownload = useCallback(() => {
-    zLog('user clicked cancel download', { stateType: state.type })
     cancelDownload()
-  }, [cancelDownload, state.type])
+  }, [cancelDownload])
 
   const openLoginDialog = useCallback(() => {
-    zLog('openLoginDialog -> reset state, awaitingMobileApproval=false')
     setLoginRequiresGuard(false)
     setLoginCanUseMobileApproval(false)
     setLoginError(null)
@@ -213,27 +187,6 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     setDownloadDialogOpen(false)
     setLoginDialogOpen(true)
   }, [])
-
-  // Trace every state change related to the Steam login flow so we can see
-  // which setter fires and in what order from the log file.
-  useEffect(() => {
-    zLog('state: loginRequiresGuard', { value: loginRequiresGuard })
-  }, [loginRequiresGuard])
-  useEffect(() => {
-    zLog('state: loginCanUseMobileApproval', { value: loginCanUseMobileApproval })
-  }, [loginCanUseMobileApproval])
-  useEffect(() => {
-    zLog('state: awaitingMobileApproval', { value: awaitingMobileApproval })
-  }, [awaitingMobileApproval])
-  useEffect(() => {
-    zLog('state: loginSubmitting', { value: loginSubmitting })
-  }, [loginSubmitting])
-  useEffect(() => {
-    zLog('state: pendingUsername', { value: pendingUsername })
-  }, [pendingUsername])
-  useEffect(() => {
-    zLog('state: loginError', { value: loginError })
-  }, [loginError])
 
   const handleLoginSubmit = useCallback(
     async (input: { username: string; password: string; guardCode: string | null }) => {
@@ -245,7 +198,6 @@ export function GameActionButton({ className }: GameActionButtonProps) {
       setLoginSubmitting(true)
       setLoginError(null)
       setPendingUsername(input.username)
-      zLog('loginSteam submitted', { username: input.username, hasGuardCode: Boolean(input.guardCode) })
 
       try {
         const result = await window.launcherAPI!.loginSteam(
@@ -254,28 +206,15 @@ export function GameActionButton({ className }: GameActionButtonProps) {
           input.guardCode ?? undefined
         )
 
-        zLog('loginSteam resolved', { status: result.status })
-
         switch (result.status) {
           case 'needsGuard':
-            zLog('result=NeedsGuard', {
-              username: result.username,
-              canUseMobileApproval: result.canUseMobileApproval,
-            })
             setLoginRequiresGuard(true)
             setLoginCanUseMobileApproval(result.canUseMobileApproval ?? false)
             setPendingUsername(result.username)
             break
 
           case 'authenticated': {
-            zLog('result=authenticated -> open download dialog, start depot download')
             const { status: _status, ...creds } = result
-            zLog('saving credentials', {
-              hasUsername: Boolean(creds.username),
-              hasRefreshToken: Boolean(creds.refresh_token),
-              steamId: creds.steam_id,
-              keys: Object.keys(creds),
-            })
             await saveSteamCredentials(creds)
             setAwaitingMobileApproval(false)
             setLoginDialogOpen(false)
@@ -285,14 +224,12 @@ export function GameActionButton({ className }: GameActionButtonProps) {
           }
 
           case 'error':
-            zLog('result=Error -> awaitingMobileApproval=false', { message: result.message })
             setAwaitingMobileApproval(false)
             setLoginError(result.message)
             break
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Steam sign-in failed'
-        zLog('submit threw -> awaitingMobileApproval=false', { message, err: String(err) })
         setAwaitingMobileApproval(false)
         setLoginError(message)
         toast.error('Steam sign-in failed', { description: message })
@@ -309,10 +246,8 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     // a directory is selected. Cancelling the picker leaves the user on
     // the same screen (state stays NEEDS_DESTINATION).
     if (state.type === 'NEEDS_DESTINATION') {
-      zLog('no destination -> open folder picker')
       const picked = await selectDirectory()
       if (picked) {
-        zLog('destination selected -> open login dialog')
         openLoginDialog()
       }
       return
@@ -391,7 +326,6 @@ export function GameActionButton({ className }: GameActionButtonProps) {
         open={loginDialogOpen}
         onOpenChange={(next) => {
           if (!next) {
-            zLog('dialog closing -> awaitingMobileApproval=false')
             setAwaitingMobileApproval(false)
           }
           setLoginDialogOpen(next)

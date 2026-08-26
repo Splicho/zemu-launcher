@@ -42,20 +42,6 @@ interface SteamLoginDialogProps {
  * backend blocks on `wait_for_confirmation` — the dialog just shows
  * "Connecting…" while the user approves on their phone.
  */
-const zDialogLog = (
-  msg: string,
-  meta?: Record<string, unknown>
-): void => {
-  const w = window as unknown as {
-    __zemuLog?: (tag: string, m: string, x?: unknown) => void
-  }
-  if (w.__zemuLog) w.__zemuLog('steam.auth', msg, meta)
-  else console.log(`[steam.auth] ${msg}`, meta ?? '')
-}
-
-// Monotonic counter so consecutive renders are distinguishable in the log.
-let dialogRenderCount = 0
-
 export function SteamLoginDialog({
   open,
   onOpenChange,
@@ -66,14 +52,6 @@ export function SteamLoginDialog({
   canUseMobileApproval,
   errorMessage,
 }: SteamLoginDialogProps) {
-  const renderId = ++dialogRenderCount
-  zDialogLog('SteamLoginDialog render #' + renderId, {
-    open,
-    submitting,
-    requiresGuard,
-    canUseMobileApproval,
-    errorMessage,
-  })
   const [username, setUsername] = useState(initialUsername ?? '')
   const [password, setPassword] = useState('')
   const [guardCode, setGuardCode] = useState('')
@@ -97,21 +75,13 @@ export function SteamLoginDialog({
       event.preventDefault()
       if (!username || !password) return
 
-      zDialogLog('SteamLoginDialog handleSubmit', {
-        username,
-        hasPassword: Boolean(password),
-        guardCode: guardCode.trim() ? `${guardCode.trim().length} chars` : 'empty',
-        requiresGuard,
-        canUseMobileApproval,
-      })
-
       await onSubmit({
         username,
         password,
         guardCode: guardCode.trim() ? guardCode.trim() : null,
       })
     },
-    [guardCode, onSubmit, password, username, requiresGuard, canUseMobileApproval]
+    [guardCode, onSubmit, password, username]
   )
 
   const canSubmit = username.length > 0 && password.length > 0 && !submitting

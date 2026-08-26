@@ -48,9 +48,11 @@ pub fn app_is_packaged() -> bool {
     storage::is_packaged()
 }
 
+/// Transition from the bootstrap (updater) window to the main launcher
+/// window. The main window is created eagerly in `lib.rs` setup so this
+/// just unhides, focuses, and closes it.
 #[tauri::command]
 pub async fn launcher_finish_bootstrap(app: tauri::AppHandle) -> Result<(), String> {
-    let _ = debug_log::append(&app, "bootstrap", "launcher_finish_bootstrap start");
     let main_window = ensure_main_window(&app)?;
     if let Some(state) = app.try_state::<AppState>() {
         state.finish_bootstrap();
@@ -59,11 +61,9 @@ pub async fn launcher_finish_bootstrap(app: tauri::AppHandle) -> Result<(), Stri
     focus_window(&main_window);
 
     if let Some(window) = app.get_webview_window("bootstrap") {
-        let _ = debug_log::append(&app, "bootstrap", "closing bootstrap window");
         window.close().map_err(|e| e.to_string())?;
     }
 
-    let _ = debug_log::append(&app, "bootstrap", "launcher_finish_bootstrap complete");
     Ok(())
 }
 
@@ -138,16 +138,7 @@ pub fn launcher_set_api_base_url(app: tauri::AppHandle, url: String) -> Result<(
 
 #[tauri::command]
 pub fn game_select_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    let result = game::select_game_directory(&app).map_err(|e| e.to_string())?;
-    let _ = debug_log::append(
-        &app,
-        "update.command",
-        &format!(
-            "game_select_directory selected={}",
-            result.as_deref().unwrap_or("<none>")
-        ),
-    );
-    Ok(result)
+    game::select_game_directory(&app).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -165,47 +156,13 @@ pub async fn game_check_update(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<UpdateCheckResult, String> {
-    let _ = debug_log::append(&app, "update.command", "game_check_update called");
     let directory = game::get_game_directory(&app)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Game directory is required to check for updates".to_string())?;
-    let _ = debug_log::append(
-        &app,
-        "update.command",
-        &format!("game_check_update directory={directory}"),
-    );
 
-    match update::check_for_updates(&app, &state, directory).await {
-        Ok(result) => {
-            let _ = debug_log::append(
-                &app,
-                "update.command",
-                &format!(
-                    "game_check_update success has_update={} folder_count={} file_count={}",
-                    result.has_update,
-                    result
-                        .folders_to_update
-                        .as_ref()
-                        .map(|items| items.len())
-                        .unwrap_or(0),
-                    result
-                        .files_to_update
-                        .as_ref()
-                        .map(|items| items.len())
-                        .unwrap_or(0)
-                ),
-            );
-            Ok(result)
-        }
-        Err(err) => {
-            let _ = debug_log::append(
-                &app,
-                "update.command",
-                &format!("game_check_update error={err}"),
-            );
-            Err(err.to_string())
-        }
-    }
+    update::check_for_updates(&app, &state, directory)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -355,6 +312,10 @@ pub fn discord_set_activity(
     discord::set_activity(&app, details, state).map_err(|e| e.to_string())
 }
 
+/// Frontend-facing log append. The renderer uses this to mirror console
+/// errors / Steam auth traces / etc. into a file under the user's
+/// app-data directory so the launcher's `debugLog.read()` command can
+/// return them.
 #[tauri::command]
 pub fn debug_log_write(
     app: tauri::AppHandle,
@@ -455,6 +416,11 @@ pub fn register_commands(
     ]
 }
 
+/// Bring the launcher to the foreground when a second instance launches.
+///
+/// The bootstrap (updater) window is preferred while it's active so the
+/// user sees the updater status instead of the launcher UI flickering
+/// under an in-progress update.
 pub fn focus_primary_window(app: &tauri::AppHandle) {
     let bootstrap_active = app
         .try_state::<AppState>()
@@ -486,10 +452,11 @@ fn ensure_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, St
         .find(|window| window.label == "main")
         .ok_or_else(|| "Main window configuration not found".to_string())?;
 
-    tauri::WebviewWindowBuilder::from_config(app, config)
+    let builder = tauri::WebviewWindowBuilder::from_config(app, config)
         .map_err(|e| e.to_string())?
         .build()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(builder)
 }
 
 fn focus_window(window: &tauri::WebviewWindow) {

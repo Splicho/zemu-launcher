@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { LoginPage } from '@/pages/login'
 import { HomePage } from '@/pages/home'
 import { MainLayout } from '@/components/main-layout'
+import { TitleBar } from '@/components/title-bar'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
 import { PlayPage } from '@/pages/play'
@@ -115,7 +116,10 @@ function AuthedApp() {
   if (status !== 'authed' || !token) {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
-        <LoginPage />
+        <TitleBar />
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <LoginPage />
+        </main>
       </div>
     )
   }

@@ -22,16 +22,14 @@
         "minimizable": true,
         "closable": true,
         "fullscreen": false,
-        "decorations": false,
-        "shadow": false,
-        "transparent": true,
-        "center": true,
-        "visible": false
+        "decorations": true,
+        "shadow": true,
+        "center": true
       },
       {
         "label": "bootstrap",
-        "title": "ZEmu Launcher Updater",
-        "url": "index.html#/bootstrap",
+        "create": false,
+        "title": "ZEmu Launcher",
         "width": 460,
         "height": 430,
         "resizable": false,

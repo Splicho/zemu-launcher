@@ -131,24 +131,8 @@ function setupCompatibilityBridge() {
   const appWindow = getCurrentWindow()
   const writeDebugLog = (source: string, message: string, metadata?: DebugMetadata) => {
     const content = metadata ? `${message} | ${safeStringify(metadata)}` : message
-    void invoke('debug_log_write', { source, message: content }).catch((err: unknown) => {
-      // Log to console so silent log-write failures are at least visible
-      // in DevTools. The backend also `eprintln!`s the underlying IO error.
-      console.warn(`[debugLog.write] invoke failed for ${source}:`, err)
-    })
+    void invoke('debug_log_write', { source, message: content }).catch(() => undefined)
   }
-
-  // Mirror-to-file helper: writes to both `console.log` AND
-  // `launcher-debug.log` so we can debug renderer flows without opening
-  // DevTools. The `[steam.auth]` prefix keeps it greppable in the file.
-  ;(window as unknown as { __zemuLog?: (tag: string, msg: string, meta?: unknown) => void }).__zemuLog =
-    (tag, msg, meta) => {
-      const line = meta !== undefined ? `${msg} | ${safeStringify(meta)}` : msg
-      console.log(`[${tag}] ${line}`)
-      void invoke('debug_log_write', { source: tag, message: line }).catch((err: unknown) => {
-        console.warn(`[${tag}] log file write failed:`, err)
-      })
-    }
 
   const maximizedListeners = new Set<() => void>()
   const unmaximizedListeners = new Set<() => void>()
@@ -317,26 +301,11 @@ function setupCompatibilityBridge() {
     loginSteam: (username: string, password: string, guardCode?: string) =>
       invoke<SteamLoginResult>('launcher_steam_login', { username, password, guardCode }),
     onSteamMobileConfirmationPending: (cb: (payload: { username: string }) => void) => {
-      const log = (window as unknown as { __zemuLog?: (tag: string, msg: string, meta?: unknown) => void }).__zemuLog
-      if (log) log('steam.auth', 'registering onSteamMobileConfirmationPending listener')
-      else console.log('[steam.auth] registering onSteamMobileConfirmationPending listener')
-      return listen<{ username: string }>(
-        'steam-mobile-confirmation-pending',
-        (e) => {
-          if (log) log('steam.auth', 'onSteamMobileConfirmationPending event received', e.payload)
-          else console.log('[steam.auth] onSteamMobileConfirmationPending event received', e.payload)
-          cb(e.payload)
-        }
-      )
+      return listen<{ username: string }>('steam-mobile-confirmation-pending', (e) => {
+        cb(e.payload)
+      })
     },
   }
-
-  writeDebugLog('frontend', 'tauri bridge initialized', { dev: import.meta.env.DEV })
-  void invoke<string>('debug_log_path')
-    .then((path) => writeDebugLog('frontend', 'debug log path', { path }))
-    .catch(() => {
-      // Intentionally ignore logging failures.
-    })
 
   window.addEventListener('error', (event) => {
     writeDebugLog('frontend.error', event.message, {

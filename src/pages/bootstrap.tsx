@@ -45,11 +45,11 @@ const INITIAL_STATE: BootstrapState = {
 /**
  * Bootstrap / updater screen.
  *
- * Loaded in Tauri's `bootstrap` window (a small, transparent, always-
- * on-top window declared in `src-tauri/tauri.conf.json` with
- * `url: "index.html#/bootstrap"`). Tauri auto-creates the window at
- * app launch and the React hash router sends us here because of the
- * `#/bootstrap` URL hash.
+ * Loaded in Tauri's `bootstrap` window — a small, transparent, always-
+ * on-top window created in `src-tauri/src/lib.rs`. Both Tauri windows
+ * load the same `index.html`; `App.tsx` reads `getCurrentWindow().label`
+ * to pick which page to render, so this component is the bootstrap label's
+ * root render.
  *
  * Flow:
  *   1. `check()` from `@tauri-apps/plugin-updater` polls the
@@ -59,7 +59,7 @@ const INITIAL_STATE: BootstrapState = {
  *      installer runs, we tell Rust to restart the app.
  *   3. If no update is available (or `check()` errors out
  *      non-fatally), call `invoke('launcher_finish_bootstrap')`.
- *      Rust closes this window and creates the main 1280×800 one.
+ *      Rust closes this window and shows the main 1280×800 one.
  *
  * The small window (460×430, frameless, transparent) is intentional
  * — it's only meant to show the launcher logo + status briefly at
@@ -74,23 +74,12 @@ export function BootstrapPage() {
   const mountedRef = useRef(true)
   const startedRef = useRef(false)
 
-  useEffect(() => {
-    document.documentElement.classList.add('bootstrap-window')
-
-    return () => {
-      document.documentElement.classList.remove('bootstrap-window')
-    }
-  }, [])
-
   const updateState = useCallback((next: Partial<BootstrapState> | BootstrapState) => {
     if (!mountedRef.current) {
       return
     }
 
-    setState((current) => ({
-      ...current,
-      ...next,
-    }))
+    setState((current) => ({ ...current, ...next }))
   }, [])
 
   const openLauncher = useCallback(async () => {
@@ -132,9 +121,7 @@ export function BootstrapPage() {
       return
     }
 
-    let checkFailed = false
     const update = await check().catch((error) => {
-      checkFailed = true
       updateState({
         phase: 'check-error',
         status: 'Could not check launcher updates',
@@ -147,10 +134,6 @@ export function BootstrapPage() {
       })
       return null
     })
-
-    if (checkFailed) {
-      return
-    }
 
     if (!update) {
       updateState({
@@ -270,7 +253,7 @@ export function BootstrapPage() {
         : null
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-transparent px-4 py-4 text-foreground dark">
+    <div className="bootstrap-window flex h-screen w-screen items-center justify-center overflow-hidden bg-transparent px-4 py-4 text-foreground dark">
       <div className="flex h-full max-h-[22.5rem] w-full max-w-[19.5rem] flex-col items-center justify-center overflow-hidden rounded-[22px] bg-background px-12 py-12 shadow-[0_12px_36px_rgba(0,0,0,0.28)]">
         <motion.div
           className="flex items-center justify-center"
