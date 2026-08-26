@@ -74,6 +74,14 @@ export function BootstrapPage() {
   const mountedRef = useRef(true)
   const startedRef = useRef(false)
 
+  useEffect(() => {
+    document.documentElement.classList.add('bootstrap-window')
+
+    return () => {
+      document.documentElement.classList.remove('bootstrap-window')
+    }
+  }, [])
+
   const updateState = useCallback((next: Partial<BootstrapState> | BootstrapState) => {
     if (!mountedRef.current) {
       return
