@@ -284,6 +284,10 @@ async function main() {
   } else {
     target = normalizeTag(rawTag)
   }
+  // Always normalize to a `v`-prefixed tag so the workflow's `tags: 'v*'`
+  // filter matches. `bumpVersion` returns a bare semver (no `v`), so we
+  // re-run it through `normalizeTag` to add the prefix.
+  target = normalizeTag(target)
   const strippedTarget = target.replace(/^v/, '')
 
   if (compareSemver(strippedTarget, current) <= 0) {

@@ -131,6 +131,7 @@ jobs:
           args: --bundles nsis
           owner: Splicho
           repo: zemu-launcher-releases
+          releaseCommitish: main
           tagName: ${{ inputs.tag || github.ref_name }}
           releaseName: Zemu Launcher ${{ inputs.tag || github.ref_name }}
           releaseDraft: false
