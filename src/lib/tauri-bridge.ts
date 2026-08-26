@@ -143,6 +143,10 @@ function setupCompatibilityBridge() {
     setDirectory: (path: string) => invoke<boolean>('game_set_directory', { directory: path }),
     selectDirectory: () => invoke<string | null>('game_select_directory'),
     clearDirectory: () => invoke<boolean>('game_clear_directory'),
+    getFolderSize: (directory: string) =>
+      invoke<number>('game_get_folder_size', { directory }),
+    openInFileManager: (directory: string) =>
+      invoke<void>('game_open_in_file_manager', { directory }),
     isInstalled: () => invoke<boolean>('game_is_installed'),
     getLocalVersion: () => invoke<VersionManifest | null>('game_get_local_version'),
     checkUpdate: () => invoke<UpdateInfo>('game_check_update'),
@@ -275,6 +279,15 @@ declare global {
       setDirectory: (path: string) => Promise<boolean>
       selectDirectory: () => Promise<string | null>
       clearDirectory: () => Promise<boolean>
+      /**
+       * Total byte size of every regular file in `directory`,
+       * recursively. Returns 0 if the directory doesn't exist.
+       */
+      getFolderSize: (directory: string) => Promise<number>
+      /**
+       * Open the user's OS file manager pointed at `directory`.
+       */
+      openInFileManager: (directory: string) => Promise<void>
       isInstalled: () => Promise<boolean>
       getLocalVersion: () => Promise<VersionManifest | null>
       checkUpdate: () => Promise<UpdateInfo>

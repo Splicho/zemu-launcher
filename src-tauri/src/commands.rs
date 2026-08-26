@@ -97,6 +97,26 @@ pub fn game_clear_directory(app: tauri::AppHandle) -> Result<bool, String> {
     game::clear_game_directory(&app).map_err(|e| e.to_string())
 }
 
+/// Sum the byte sizes of every regular file inside the user's chosen
+/// game folder. Powers the "Installed Files" size readout in the
+/// Properties modal. Returns 0 if the folder doesn't exist (so the
+/// UI can degrade gracefully during the brief window between clearing
+/// the directory and the modal re-rendering).
+#[tauri::command]
+pub fn game_get_folder_size(directory: String) -> Result<u64, String> {
+    game::get_folder_size_bytes(&directory).map_err(|e| e.to_string())
+}
+
+/// Open the user's OS file manager pointed at the chosen game folder.
+/// Powers the "Locate" action in the Properties > Installed Files
+/// section. Dispatches via the `webbrowser` crate, which uses the
+/// platform's default handler (ShellExecute on Windows, Finder on
+/// macOS, xdg-open on Linux).
+#[tauri::command]
+pub fn game_open_in_file_manager(directory: String) -> Result<(), String> {
+    game::open_in_file_manager(&directory).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn game_get_executable(app: tauri::AppHandle) -> Result<String, String> {
     Ok(game::get_game_executable(&app))
@@ -329,6 +349,8 @@ pub fn register_commands(
         game_get_directory,
         game_set_directory,
         game_clear_directory,
+        game_get_folder_size,
+        game_open_in_file_manager,
         game_get_executable,
         game_set_executable,
         launcher_set_update_base_url,

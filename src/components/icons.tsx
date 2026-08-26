@@ -166,6 +166,20 @@ export function DiscordFilled({ size, ...props }: IconProps) {
   )
 }
 
+/**
+ * Steam brand mark. Renders white by default so it sits well against
+ * the dark Steam button background; callers can override colour via
+ * `className` (e.g. `text-white`).
+ */
+export function Steam({ size, ...props }: IconProps) {
+  const wh = withSize({ size })
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" {...wh} {...props}>
+	<path fill="currentColor" d="M12 0C5.373 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387l3.91-1.367a2.85 2.85 0 0 0 1.62.51h.005a2.85 2.85 0 0 0 2.848-2.852v-.011a2.85 2.85 0 0 0-.394-1.43l3.85-2.34a4.62 4.62 0 1 0-1.196-1.95l-3.85 2.34a2.85 2.85 0 0 0-4.515.553L5.3 18.6l-.21.07A11.95 11.95 0 0 1 0 12C0 5.373 5.373 0 12 0m9.12 8.16a3.105 3.105 0 1 1-3.105 3.105A3.105 3.105 0 0 1 21.12 8.16m-5.7 7.005a1.34 1.34 0 1 1-1.34 1.34a1.34 1.34 0 0 1 1.34-1.34"></path>
+</svg>
+  )
+}
+
 export function Mail({ size, ...props }: IconProps) {
   const wh = withSize({ size })
   return (

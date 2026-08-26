@@ -4,19 +4,19 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
-import { AlertTriangle, DiscordFilled, Mail } from '@/components/icons'
+import { AlertTriangle, DiscordFilled, Mail, Steam } from '@/components/icons'
 import { useAuthContext } from '@/contexts/auth-context'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
+import type { Provider } from '@/lib/auth'
 
 /**
  * Login screen — adapted from the abyssal-gate launcher's login.tsx
  * for the zemu auth flow.
  *
- * Provider list is trimmed to what the auth app actually exposes
- * (Discord + email credentials). No register flow because
- * the launcher-side auth API doesn't ship a registration endpoint —
- * new users sign up via the website's /register page first, then sign
- * in here.
+ * Provider list matches what the auth app exposes: Discord, Steam, and
+ * email credentials. No register flow because the launcher-side auth
+ * API doesn't ship a registration endpoint — new users sign up via the
+ * website's /register page first, then sign in here.
  *
  * Visual language kept 1:1 with abyssal-gate:
  *   - Dark gradient backdrop (`from-background via-background to-[#1C1A1A]`)
@@ -24,9 +24,9 @@ import { LAUNCHER_CONFIG } from '@/config/launcher'
  *   - Email form slides down via AnimatePresence (height + opacity)
  *   - Login entry animation: fade up y=20 → 0, 400ms easeOut
  *
- * The Button `data-variant="oauth"` plumbing (Discord/Email) is
+ * The Button `data-variant="oauth"` plumbing (Discord/Steam/Email) is
  * handled inside components/ui/button.tsx — the auth screen just
- * passes `variant="discord" | "email"` and the brand color
+ * passes `variant="discord" | "steam" | "email"` and the brand color
  * is set automatically via `--oauth`.
  */
 export function LoginPage() {
@@ -56,7 +56,7 @@ export function LoginPage() {
     }
   }
 
-  const handleProvider = (provider: 'discord') => {
+  const handleProvider = (provider: Provider) => {
     setError(null)
     // Fire-and-forget. `loginWithProvider` awaits the entire OAuth
     // dance (browser handoff → user consents → callback event → token
@@ -137,12 +137,12 @@ export function LoginPage() {
           </div>
         )}
 
-        {/* OAuth providers stacked vertically. Discord is the
-            provider the auth app exposes; Email is a toggle that
+        {/* OAuth providers stacked vertically. Discord and Steam are
+            the providers the auth app exposes; Email is a toggle that
             expands the credentials form below via AnimatePresence.
             Button heights override the shadcn default (h-8 → h-12) to
-            match the abyssal-gate layout's tap targets. Discord
-            intentionally isn't bound to `isSubmitting` — the OAuth
+            match the abyssal-gate layout's tap targets. OAuth buttons
+            intentionally aren't bound to `isSubmitting` — the OAuth
             dance runs out-of-process in the browser, so keeping the
             buttons clickable means the user can retry or switch
             providers if they close the tab mid-flow. Email is gated
@@ -157,6 +157,16 @@ export function LoginPage() {
           >
             <DiscordFilled className="!size-5" />
             Continue with Discord
+          </Button>
+          <Button
+            type="button"
+            variant="steam"
+            onClick={() => handleProvider('steam')}
+            size="lg"
+            className="h-12 w-full justify-center rounded-sm"
+          >
+            <Steam className="!size-5" />
+            Continue with Steam
           </Button>
           <Button
             type="button"

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 
+import { clearSteamInstructionsSeen } from '@/lib/steam-instructions'
+
 export interface GameLaunchState {
   isLaunching: boolean
   isRunning: boolean
@@ -55,8 +57,7 @@ export type GameState =
   | { type: 'NEEDS_DESTINATION' }
   | { type: 'CHECKING_FOR_UPDATE' }
   | { type: 'APPLYING_PATCH' }
-  | { type: 'NOT_INSTALLED' }
-  | { type: 'UPDATE_AVAILABLE'; updateInfo: UpdateInfo }
+  | { type: 'UPDATE_AVAILABLE'; updateInfo: UpdateInfo; reason: 'NOT_INSTALLED' | 'UPDATE_FOUND' }
   | { type: 'DOWNLOADING_UPDATE'; updateStatus: UpdateStatus }
   | { type: 'CDN_UNAVAILABLE' }
   | { type: 'LAUNCHING_GAME' }
@@ -195,10 +196,16 @@ export function useGameState() {
     setError(null)
 
     try {
-      const info = await window.gameAPI.checkUpdate()
+      // Run both reads in parallel and commit state atomically: setting
+      // `updateInfo` before `isInstalled` (or vice versa) creates a
+      // window where the state machine resolves to `NOT_INSTALLED`
+      // ("Install") with `hasUpdate: true` — flashing the wrong label
+      // for a frame, or sticking there if the second read is slow.
+      const [info, installed] = await Promise.all([
+        window.gameAPI.checkUpdate(),
+        window.gameAPI.isInstalled(),
+      ])
       setUpdateInfo(info)
-
-      const installed = await window.gameAPI.isInstalled()
       setIsInstalled(installed)
 
       lastCheckedDirectoryRef.current = gameDirectory
@@ -259,7 +266,7 @@ export function useGameState() {
       updateListenerRef.current = null
     }
 
-    const handleProgress = (status: UpdateStatus) => {
+const handleProgress = (status: UpdateStatus) => {
       setUpdateStatus(status)
       setIsUpdating(status.isUpdating)
       setError(null)
@@ -267,10 +274,18 @@ export function useGameState() {
       const hasUpdates =
         status.totalFolders > 0 || (status.totalFiles && status.totalFiles > 0)
       if (!status.isUpdating && status.overallProgress === 100 && gameDirectory && hasUpdates) {
+        // Patch just finished. The Rust side has written `version.json`
+        // for the new install, so we can confidently mark the game as
+        // installed *now* — no need to wait for the 500ms isInstalled
+        // round-trip. Without this, the state machine's CDN_UNAVAILABLE
+        // branch can win during the gap when `cdnAvailable` is false,
+        // trapping the user on "Updating disabled right now" instead of
+        // landing them on "Play".
         setJustCompletedUpdate(true)
+        setIsInstalled(true)
         setUpdateInfo((prev) =>
-        prev ? { ...prev, hasUpdate: false } : { hasUpdate: false, cdnAvailable: true }
-      )
+          prev ? { ...prev, hasUpdate: false } : { hasUpdate: false, cdnAvailable: true }
+        )
         setTimeout(async () => {
           const installed = await window.gameAPI.isInstalled()
           setIsInstalled(installed)
@@ -303,6 +318,13 @@ export function useGameState() {
     try {
       const selected = await window.gameAPI.selectDirectory()
       if (selected) {
+        // Clear the previous folder's `updateInfo` before swapping the
+        // directory so the state machine resolves to `CHECKING_FOR_UPDATE`
+        // (label: "Checking...") instead of flashing `NOT_INSTALLED` /
+        // "Install" with stale `hasUpdate: true` from the old folder.
+        // The effect on `gameDirectory` change schedules a fresh check
+        // ~100ms later which will populate the new info.
+        setUpdateInfo(null)
         setGameDirectory(selected)
         setError(null)
         hasAutoCheckedOnStartupRef.current = false
@@ -434,6 +456,11 @@ export function useGameState() {
     setGameLaunchState(DEFAULT_GAME_LAUNCH_STATE)
     setError(null)
     setJustCompletedUpdate(false)
+    // Wiping the install means the user is about to set up the game
+    // again — re-arm the Steam instructions modal so they're reminded
+    // how to grab the base game via Steam's depot console. This
+    // matches the "re-show on explicit clear" UX we picked.
+    clearSteamInstructionsSeen()
     hasLoadedRef.current = false
     hasAutoCheckedOnStartupRef.current = false
     lastCheckedDirectoryRef.current = null
@@ -473,27 +500,33 @@ export function useGameState() {
       return { type: 'CHECKING_FOR_UPDATE' }
     }
 
-    if (updateInfo && updateInfo.cdnAvailable === false && !isInstalled) {
-      return { type: 'CDN_UNAVAILABLE' }
-    }
-
     if (justCompletedUpdate && isInstalled) {
       return { type: 'UPDATE_COMPLETE' }
+    }
+
+    // First-time install flow: the user just located a PS3 folder that
+    // has files but no `version.json` (which `isInstalled` checks for).
+    // Show "Install Patch" — they need the patch applied on top of the
+    // existing base game. This is independent of `updateInfo`: even if
+    // the CDN check hasn't completed or is stale, the local "no
+    // version.json" state is enough to know the patch is needed.
+    if (!isInstalled) {
+      return {
+        type: 'UPDATE_AVAILABLE',
+        updateInfo: updateInfo ?? { hasUpdate: true, cdnAvailable: true },
+        reason: 'NOT_INSTALLED',
+      }
     }
 
     if (!updateInfo) {
       return { type: 'CHECKING_FOR_UPDATE' }
     }
 
-    if (!isInstalled) {
-      return { type: 'NOT_INSTALLED' }
+    if (updateInfo.hasUpdate === true) {
+      return { type: 'UPDATE_AVAILABLE', updateInfo, reason: 'UPDATE_FOUND' }
     }
 
-    if (updateInfo && updateInfo.hasUpdate === true) {
-      return { type: 'UPDATE_AVAILABLE', updateInfo }
-    }
-
-    if (updateInfo && updateInfo.hasUpdate === false) {
+    if (updateInfo.hasUpdate === false) {
       return { type: 'UP_TO_DATE' }
     }
 

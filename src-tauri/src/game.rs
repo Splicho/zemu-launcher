@@ -48,6 +48,54 @@ pub fn clear_game_directory(app: &AppHandle) -> Result<bool> {
     Ok(true)
 }
 
+/// Sum the byte sizes of every regular file inside `directory`,
+/// recursively. Symlinks are followed with `follow_links(false)` to
+/// avoid double-counting or loops. Used by the Properties > Installed
+/// Files panel to display the on-disk size of whatever the user has
+/// dropped into the game folder (base game + our patches + saves).
+pub fn get_folder_size_bytes(directory: &str) -> Result<u64> {
+    let path = Path::new(directory);
+    if !path.exists() {
+        return Ok(0);
+    }
+
+    let mut total: u64 = 0;
+    for entry in walkdir::WalkDir::new(path).follow_links(false) {
+        match entry {
+            Ok(entry) => {
+                if entry.file_type().is_file() {
+                    if let Ok(metadata) = entry.metadata() {
+                        total = total.saturating_add(metadata.len());
+                    }
+                }
+            }
+            Err(error) => {
+                // Skip unreadable entries rather than failing the whole
+                // walk — one permission-denied file shouldn't black out
+                // the size readout. Surface the skip in the dev console
+                // so devs can diagnose when sizes look wrong.
+                eprintln!("get_folder_size_bytes: skipping entry: {error}");
+            }
+        }
+    }
+
+    Ok(total)
+}
+
+/// Open the user's OS file manager pointed at `directory`. Uses the
+/// `webbrowser` crate, which dispatches to ShellExecute on Windows,
+/// Finder on macOS, and xdg-open on Linux — exactly what a user
+/// expects when they click "Locate game files".
+pub fn open_in_file_manager(directory: &str) -> Result<()> {
+    let path = Path::new(directory);
+    if !path.exists() {
+        return Err(anyhow!("Directory does not exist: {directory}"));
+    }
+
+    webbrowser::open(directory).map_err(|error| anyhow!(error))?;
+    Ok(())
+}
+
 pub fn get_game_executable(app: &AppHandle) -> String {
     let configured = detect_game_executable(app);
     if configured.is_empty() {

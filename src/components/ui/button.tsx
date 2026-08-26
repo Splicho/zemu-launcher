@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils"
  * style binding.
  */
 const buttonVariants = cva(
-    "group/button relative inline-flex shrink-0 items-center justify-center rounded-4xl border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[background,background-color,background-image,box-shadow] duration-150 ease-out outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+    "group/button relative inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[background,background-color,background-image,box-shadow] duration-150 ease-out outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
     {
       variants: {
         variant: {
@@ -38,6 +38,8 @@ const buttonVariants = cva(
             "h-12! rounded-xl bg-[var(--oauth)] text-base font-normal text-white hover:bg-[var(--oauth-hover,var(--oauth))] active:bg-[var(--oauth-hover,var(--oauth))] [&_[data-slot=spinner]]:!text-white/80",
         discord:
           "bg-[#5865F2] text-white hover:bg-[#4752C4] shadow-[0_2px_8px_0_rgba(88,101,242,0.15)] border-t border-t-white/40 active:ring-2 active:ring-[#5865F2] active:ring-offset-3 active:ring-offset-background focus-visible:ring-1 focus-visible:ring-[#5865F2] focus-visible:ring-offset-4 focus-visible:ring-offset-background",
+        steam:
+          "bg-[#1b2838] text-white hover:bg-[#171a21] shadow-[0_2px_8px_0_rgba(27,40,56,0.25)] border-t border-t-white/20 active:ring-2 active:ring-[#1b2838] active:ring-offset-3 active:ring-offset-background focus-visible:ring-1 focus-visible:ring-[#1b2838] focus-visible:ring-offset-4 focus-visible:ring-offset-background",
         email:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-[0_2px_8px_0_rgba(0,0,0,0.05)] border-t border-t-white/20 active:ring-2 active:ring-ring active:ring-offset-3 active:ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",
       },
@@ -67,6 +69,7 @@ const buttonVariants = cva(
 // Keep these in sync with the abyssal-gate launcher's auth buttons.
 const OAUTH_BRAND_COLORS = {
   discord: "oklch(0.4852 0.1873 271.05)", // Discord blurple (#5865F2)
+  steam: "oklch(0.243 0.038 245)", // Steam dark navy (#1b2838)
   email: "oklch(0.269 0 0)", // Neutral slate-900-ish
 } as const
 
@@ -86,7 +89,8 @@ function Button({
   // Inject --oauth for the OAuth variants so the global hover rule can
   // darken them. We override the data-variant for these three to the
   // literal string "oauth" so the index.css selector matches.
-  const isOauth = variant === "discord" || variant === "email"
+  const isOauth =
+    variant === "discord" || variant === "steam" || variant === "email"
   const oauthStyle = isOauth
     ? ({ "--oauth": OAUTH_BRAND_COLORS[variant as keyof typeof OAUTH_BRAND_COLORS], ...style } as React.CSSProperties)
     : style
