@@ -28,8 +28,6 @@ rfd = "0.14"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
-steamroom = { git = "https://github.com/landaire/steamroom", branch = "main" }
-steamroom-client = { git = "https://github.com/landaire/steamroom", branch = "main" }
 tauri = { version = "2.10.3", features = [] }
 tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

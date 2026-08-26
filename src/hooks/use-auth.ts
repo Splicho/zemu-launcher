@@ -20,7 +20,7 @@ import {
  *   - `status`: which screen we're rendering. `'loading'` during the
  *     startup introspect; `'auth'` to show the login screen; `'authed'`
  *     to render the home screen; `'exchanging'` for the brief window
- *     between the user clicking Discord/Steam and the browser callback
+ *     between the user clicking Discord and the browser callback
  *     landing.
  *
  * The hook is the only place that touches `lib/auth.ts` directly —

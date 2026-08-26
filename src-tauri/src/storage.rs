@@ -1,4 +1,4 @@
-use crate::models::{AuthStore, LauncherConfig, SteamCredentials, VersionManifest};
+use crate::models::{AuthStore, LauncherConfig, VersionManifest};
 use anyhow::{anyhow, Context, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -9,7 +9,6 @@ use tauri::{AppHandle, Manager};
 const CONFIG_FILE: &str = "launcher-config.json";
 const VERSION_FILE: &str = "game-version.json";
 const AUTH_STORE_FILE: &str = "auth-store.json";
-const STEAM_CREDS_FILE: &str = "steam-creds.json";
 
 pub fn ensure_app_data_dir(app: &AppHandle) -> Result<PathBuf> {
     let dir = app
@@ -45,10 +44,6 @@ pub fn version_cache_path(app: &AppHandle) -> Result<PathBuf> {
 
 pub fn auth_store_path(app: &AppHandle) -> Result<PathBuf> {
     Ok(ensure_app_data_dir(app)?.join(AUTH_STORE_FILE))
-}
-
-pub fn steam_creds_path(app: &AppHandle) -> Result<PathBuf> {
-    Ok(ensure_app_data_dir(app)?.join(STEAM_CREDS_FILE))
 }
 
 pub fn load_launcher_config(app: &AppHandle) -> Result<LauncherConfig> {
@@ -100,36 +95,6 @@ pub fn load_auth_store(app: &AppHandle) -> Result<AuthStore> {
 pub fn save_auth_store(app: &AppHandle, store: &AuthStore) -> Result<()> {
     let path = auth_store_path(app)?;
     write_json(&path, store)
-}
-
-/// Load the persisted Steam credentials (refresh token + username) from
-/// `steam-creds.json`. Returns `None` if the file doesn't exist or is
-/// malformed; the caller treats this as "user has never signed in".
-pub fn load_steam_credentials(app: &AppHandle) -> Result<Option<SteamCredentials>> {
-    let path = steam_creds_path(app)?;
-    if !path.exists() {
-        return Ok(None);
-    }
-    match read_json::<SteamCredentials>(&path) {
-        Ok(creds) => Ok(Some(creds)),
-        Err(_) => Ok(None),
-    }
-}
-
-/// Persist Steam credentials so subsequent launches can silently re-auth
-/// without prompting the user. The file lives in the launcher data dir and
-/// follows the same read-on-missing/fallback semantics as the auth store.
-pub fn save_steam_credentials(app: &AppHandle, credentials: &SteamCredentials) -> Result<()> {
-    let path = steam_creds_path(app)?;
-    write_json(&path, credentials)
-}
-
-pub fn clear_steam_credentials(app: &AppHandle) -> Result<()> {
-    let path = steam_creds_path(app)?;
-    if path.exists() {
-        fs::remove_file(&path).with_context(|| format!("failed removing {}", path.display()))?;
-    }
-    Ok(())
 }
 
 pub fn detect_oauth_callback_protocol(app: &AppHandle) -> Result<Option<String>> {

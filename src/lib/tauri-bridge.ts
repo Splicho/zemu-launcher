@@ -78,42 +78,6 @@ export interface UpdateInfo {
   isFileLevel?: boolean
 }
 
-export type DepotPhase =
-  | 'started'
-  | 'logging_in'
-  | 'verifying_ownership'
-  | 'fetching_manifest'
-  | 'file_started'
-  | 'file_completed'
-  | 'chunk_progress'
-  | 'done'
-  | 'failed'
-  | 'cancelled'
-
-export interface DepotProgress {
-  phase: DepotPhase
-  currentFile?: string
-  completedBytes?: number
-  totalBytes?: number
-  completedFiles?: number
-  totalFiles?: number
-  percent?: number
-  message?: string
-  error?: string
-}
-
-export interface SteamCredentials {
-  username: string
-  refresh_token: string
-  steam_id?: string
-  last_login_at?: number
-}
-
-export type SteamLoginResult =
-  | { status: 'needsGuard'; username: string; canUseMobileApproval?: boolean }
-  | ({ status: 'authenticated' } & SteamCredentials)
-  | { status: 'error'; message: string }
-
 function safeStringify(value: unknown): string {
   try {
     return JSON.stringify(value)
@@ -220,33 +184,6 @@ function setupCompatibilityBridge() {
       }
     },
     launchGame: () => invoke<{ success: boolean; error?: string }>('game_launch'),
-    downloadDepot: (
-      manifestId: string,
-      depotId: string,
-      outputPath: string,
-      credentials: SteamCredentials
-    ) =>
-      invoke<{ success: boolean; error?: string }>('game_download_depot', {
-        manifestId,
-        depotId,
-        outputPath,
-        credentials,
-      }),
-    onDepotProgress: (callback: (progress: DepotProgress) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-
-      listen<DepotProgress>('depot-progress', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
   }
 
   window.discordAPI = {
@@ -294,17 +231,6 @@ function setupCompatibilityBridge() {
 
   window.launcherAPI = {
     setRuntimeUpdateUrl: (url: string) => invoke<void>('launcher_set_runtime_update_url', { url }),
-    getSteamCredentials: () => invoke<SteamCredentials | null>('launcher_get_steam_credentials'),
-    saveSteamCredentials: (credentials: SteamCredentials) =>
-      invoke<void>('launcher_save_steam_credentials', { credentials }),
-    clearSteamCredentials: () => invoke<void>('launcher_clear_steam_credentials'),
-    loginSteam: (username: string, password: string, guardCode?: string) =>
-      invoke<SteamLoginResult>('launcher_steam_login', { username, password, guardCode }),
-    onSteamMobileConfirmationPending: (cb: (payload: { username: string }) => void) => {
-      return listen<{ username: string }>('steam-mobile-confirmation-pending', (e) => {
-        cb(e.payload)
-      })
-    },
   }
 
   window.addEventListener('error', (event) => {
@@ -359,13 +285,6 @@ declare global {
       onUpdateProgress: (callback: (status: UpdateStatus) => void) => () => void
       onLaunchState: (callback: (state: GameLaunchState) => void) => () => void
       launchGame: () => Promise<{ success: boolean; error?: string }>
-      downloadDepot: (
-        manifestId: string,
-        depotId: string,
-        outputPath: string,
-        credentials: SteamCredentials
-      ) => Promise<{ success: boolean; error?: string }>
-      onDepotProgress: (callback: (progress: DepotProgress) => void) => () => void
     }
     discordAPI: {
       setInLauncher: () => void
@@ -392,13 +311,6 @@ declare global {
     }
     launcherAPI: {
       setRuntimeUpdateUrl: (url: string) => Promise<void>
-      getSteamCredentials: () => Promise<SteamCredentials | null>
-      saveSteamCredentials: (credentials: SteamCredentials) => Promise<void>
-      clearSteamCredentials: () => Promise<void>
-      loginSteam: (username: string, password: string, guardCode?: string) => Promise<SteamLoginResult>
-      onSteamMobileConfirmationPending: (
-        cb: (payload: { username: string }) => void
-      ) => Promise<UnlistenFn>
     }
   }
 }

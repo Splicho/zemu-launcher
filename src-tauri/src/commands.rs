@@ -4,12 +4,11 @@ use crate::debug_log;
 use crate::discord;
 use crate::game;
 use crate::models::{
-    AuthToken, CommandResult, GameLaunchState, OAuthCallbackPayload, SteamCredentials,
-    SteamLoginResult, UpdateCheckResult, UpdateStatus, VersionManifest,
+    AuthToken, CommandResult, GameLaunchState, OAuthCallbackPayload,
+    UpdateCheckResult, UpdateStatus, VersionManifest,
 };
 use crate::state::AppState;
 use crate::storage;
-use crate::steam;
 use crate::update;
 use tauri::Manager;
 
@@ -185,53 +184,6 @@ pub fn game_cancel_download(state: tauri::State<'_, AppState>) {
 }
 
 #[tauri::command]
-pub fn game_download_depot(
-    app: tauri::AppHandle,
-    credentials: SteamCredentials,
-    manifest_id: String,
-    depot_id: String,
-    output_path: String,
-) -> CommandResult {
-    game::download_steam_depot(&app, credentials, manifest_id, depot_id, output_path)
-}
-
-#[tauri::command]
-pub fn launcher_get_steam_credentials(
-    app: tauri::AppHandle,
-) -> Result<Option<SteamCredentials>, String> {
-    storage::load_steam_credentials(&app).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn launcher_save_steam_credentials(
-    app: tauri::AppHandle,
-    credentials: SteamCredentials,
-) -> Result<(), String> {
-    storage::save_steam_credentials(&app, &credentials).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn launcher_clear_steam_credentials(app: tauri::AppHandle) -> Result<(), String> {
-    storage::clear_steam_credentials(&app).map_err(|e| e.to_string())
-}
-
-/// Attempt to sign in to Steam with a username + password.
-///
-/// Returns a structured [`SteamLoginResult`] so the renderer can:
-///   * Show the Steam Guard code field on `NeedsGuard`
-///   * Persist the rotated refresh token on `Authenticated`
-///   * Surface a human-readable error on `Error`
-#[tauri::command]
-pub async fn launcher_steam_login(
-    app: tauri::AppHandle,
-    username: String,
-    password: String,
-    guard_code: Option<String>,
-) -> SteamLoginResult {
-    steam::auth::login_with_credentials(&app, &username, &password, guard_code.as_deref()).await
-}
-
-#[tauri::command]
 pub fn game_launch(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> CommandResult {
     game::launch_game(&app, state.inner().clone())
 }
@@ -313,7 +265,7 @@ pub fn discord_set_activity(
 }
 
 /// Frontend-facing log append. The renderer uses this to mirror console
-/// errors / Steam auth traces / etc. into a file under the user's
+/// errors / auth traces / etc. into a file under the user's
 /// app-data directory so the launcher's `debugLog.read()` command can
 /// return them.
 #[tauri::command]
@@ -390,7 +342,6 @@ pub fn register_commands(
         game_download_update,
         game_get_update_status,
         game_cancel_download,
-        game_download_depot,
         game_launch,
         game_get_launch_state,
         auth_get_token,
@@ -408,11 +359,7 @@ pub fn register_commands(
         debug_log_read,
         debug_log_clear,
         api_get,
-        api_post,
-        launcher_get_steam_credentials,
-        launcher_save_steam_credentials,
-        launcher_clear_steam_credentials,
-        launcher_steam_login
+        api_post
     ]
 }
 

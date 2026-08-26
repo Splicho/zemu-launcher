@@ -29,7 +29,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
-export type Provider = 'discord' | 'steam'
+export type Provider = 'discord'
 
 export interface LauncherUser {
   id: string

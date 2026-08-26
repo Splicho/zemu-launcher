@@ -13,8 +13,8 @@ function formatSpeed(bytesPerSecond: number | null, stalled: boolean): string {
 }
 
 /**
- * Shows a Sonner toast while any download is active (Steam depot or Zemu
- * patch). Speed is owned by `useDownloadSpeed` and ETA by `useDownloadEta`,
+ * Shows a Sonner toast while any download is active (Zemu patch update).
+ * Speed is owned by `useDownloadSpeed` and ETA by `useDownloadEta`,
  * both shared with the rest of the UI so we don't run duplicate smoothing
  * loops.
  *
@@ -25,22 +25,18 @@ function formatSpeed(bytesPerSecond: number | null, stalled: boolean): string {
  *     5.4 MB/s · 54m 21s remaining
  *
  * Terminal handling: when the active toast closes, we don't show our own
- * "complete" toast on cancel or failure — the depot branch already toasts
- * "Base game downloaded" on success (via `use-game-state.ts`) and
- * "Update failed" on backend error, and we don't want a duplicate (or a
- * misleading "complete" after a cancel).
+ * "complete" toast on cancel or failure — the update branch already toasts
+ * "Update complete" on success and "Update failed" on backend error, and we
+ * don't want a duplicate (or a misleading "complete" after a cancel).
  */
 export function useDownloadSpeedToast() {
-  const { isDownloadingDepot, depotProgress, isUpdating, updateStatus } =
-    useGameStateContext()
+  const { isUpdating, updateStatus } = useGameStateContext()
   const { kind, speed, stalled } = useDownloadSpeed()
   const eta = useDownloadEta()
 
-  const isActive =
-    (isDownloadingDepot && kind === 'depot') ||
-    (isUpdating && kind === 'update')
+  const isActive = isUpdating && kind === 'update'
 
-  const title = kind === 'depot' ? 'Downloading KotK' : kind === 'update' ? 'Updating KotK' : ''
+  const title = 'Updating KotK'
   const description = useMemo(() => {
     const speedText = formatSpeed(speed, stalled)
     if (stalled) return speedText
@@ -53,11 +49,6 @@ export function useDownloadSpeedToast() {
   // *after* the active toast has already been dismissed by the optimistic
   // cancel path.
   const currentTerminalPhase: 'done' | 'cancelled' | 'failed' | null = (() => {
-    if (kind === 'depot' && depotProgress) {
-      if (depotProgress.phase === 'done') return 'done'
-      if (depotProgress.phase === 'cancelled') return 'cancelled'
-      if (depotProgress.phase === 'failed') return 'failed'
-    }
     if (kind === 'update' && updateStatus?.error) {
       return 'failed'
     }
@@ -65,7 +56,7 @@ export function useDownloadSpeedToast() {
   })()
 
   const activeToastIdRef = useRef<string | number | null>(null)
-  const lastTitleRef = useRef<'depot' | 'update' | null>(null)
+  const lastTitleRef = useRef<'update' | null>(null)
   // Last terminal phase we observed while the active toast was up. Used to
   // decide what to show (if anything) when the active toast closes.
   const lastTerminalPhaseRef = useRef<
@@ -82,13 +73,6 @@ export function useDownloadSpeedToast() {
   useEffect(() => {
     if (!isActive || !kind) return
 
-    // Title changed (depot ↔ update) — dismiss the old one and re-create
-    if (lastTitleRef.current && lastTitleRef.current !== kind) {
-      if (activeToastIdRef.current !== null) {
-        toast.dismiss(activeToastIdRef.current)
-        activeToastIdRef.current = null
-      }
-    }
     lastTitleRef.current = kind
 
     if (activeToastIdRef.current === null) {
@@ -113,8 +97,6 @@ export function useDownloadSpeedToast() {
     if (isActive) return
 
     if (activeToastIdRef.current !== null) {
-      const previousTitle =
-        lastTitleRef.current === 'update' ? 'Updating KotK' : 'Downloading KotK'
       const terminal =
         lastTerminalPhaseRef.current ?? currentTerminalPhase
 
@@ -122,7 +104,7 @@ export function useDownloadSpeedToast() {
       lastTerminalPhaseRef.current = null
 
       if (terminal === 'done') {
-        toast.success(`${previousTitle} complete`, {
+        toast.success('Update complete', {
           id: '__download-speed-done__',
           duration: 3000,
         })

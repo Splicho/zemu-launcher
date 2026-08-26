@@ -25,7 +25,6 @@ import {
   SidebarMenuSubButton,
 } from '@/components/ui/sidebar'
 import { useUpdate } from '@/contexts/update-context'
-import { useGameStateContext } from '@/contexts/game-state-context'
 import { CircularProgress } from '@/components/circular-progress'
 
 const SOCIAL_LINKS = [
@@ -66,7 +65,6 @@ function useHashRoute() {
 export function AppSidebar() {
   const [socialOpen, setSocialOpen] = React.useState(false)
   const { isUpdating, progress } = useUpdate()
-  const { state: gameState, depotProgress } = useGameStateContext()
   const hash = useHashRoute()
 
   const isActive = (path: string) => {
@@ -118,7 +116,7 @@ export function AppSidebar() {
                   <a href="#/play">
                     <span className="w-5 flex shrink-0 justify-center">
                       <AnimatePresence mode="wait">
-                        {(isUpdating || gameState.type === 'DOWNLOADING_DEPOT') ? (
+                        {isUpdating ? (
                           <motion.div
                             key="progress"
                             initial={{ scale: 0, opacity: 0 }}
@@ -127,13 +125,7 @@ export function AppSidebar() {
                             transition={{ duration: 0.2 }}
                           >
                             <CircularProgress
-                              progress={
-                                gameState.type === 'DOWNLOADING_DEPOT'
-                                  ? depotProgress
-                                    ? Math.round(((depotProgress.completedBytes ?? 0) / ((depotProgress.totalBytes ?? 0) || 1)) * 100)
-                                    : 0
-                                  : progress
-                              }
+                              progress={progress}
                               size={16}
                               strokeWidth={2}
                             />

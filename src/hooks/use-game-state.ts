@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
-import type { SteamCredentials } from '@/lib/tauri-bridge'
 
 export interface GameLaunchState {
   isLaunching: boolean
@@ -52,34 +51,9 @@ export interface UpdateInfo {
   isFileLevel?: boolean
 }
 
-export type DepotPhase =
-  | 'started'
-  | 'logging_in'
-  | 'verifying_ownership'
-  | 'fetching_manifest'
-  | 'file_started'
-  | 'file_completed'
-  | 'chunk_progress'
-  | 'done'
-  | 'failed'
-  | 'cancelled'
-
-export interface DepotProgress {
-  phase: DepotPhase
-  currentFile?: string
-  completedBytes?: number
-  totalBytes?: number
-  completedFiles?: number
-  totalFiles?: number
-  percent?: number
-  message?: string
-  error?: string
-}
-
 export type GameState =
   | { type: 'NEEDS_DESTINATION' }
   | { type: 'CHECKING_FOR_UPDATE' }
-  | { type: 'DOWNLOADING_DEPOT' }
   | { type: 'APPLYING_PATCH' }
   | { type: 'NOT_INSTALLED' }
   | { type: 'UPDATE_AVAILABLE'; updateInfo: UpdateInfo }
@@ -103,23 +77,18 @@ export function useGameState() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
   const [isChecking, setIsChecking] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
-  const [isDownloadingDepot, setIsDownloadingDepot] = useState(false)
   const [isApplyingPatch, setIsApplyingPatch] = useState(false)
   const [gameLaunchState, setGameLaunchState] = useState<GameLaunchState>(DEFAULT_GAME_LAUNCH_STATE)
   const [error, setError] = useState<string | null>(null)
   const [justCompletedUpdate, setJustCompletedUpdate] = useState(false)
-  const [steamCredentials, setSteamCredentials] = useState<SteamCredentials | null>(null)
-  const [depotProgress, setDepotProgress] = useState<DepotProgress | null>(null)
 
   const isLoadingRef = useRef(false)
   const hasLoadedRef = useRef(false)
   const updateListenerRef = useRef<(() => void) | null>(null)
   const launchStateListenerRef = useRef<(() => void) | null>(null)
-  const depotProgressListenerRef = useRef<(() => void) | null>(null)
   const isCheckingRef = useRef(false)
   const lastCheckedDirectoryRef = useRef<string | null>(null)
   const hasAutoCheckedOnStartupRef = useRef(false)
-  const pendingAutoPatchRef = useRef(false)
 
   // Load initial state on mount
   useEffect(() => {
@@ -141,17 +110,6 @@ export function useGameState() {
         if (directory) {
           const installed = await window.gameAPI.isInstalled()
           setIsInstalled(installed)
-        }
-
-        if (window.launcherAPI) {
-          try {
-            const creds = await window.launcherAPI.getSteamCredentials()
-            if (creds) {
-              setSteamCredentials(creds)
-            }
-          } catch {
-            // No persisted credentials — user must sign in.
-          }
         }
       } catch {
         setGameDirectory(null)
@@ -339,83 +297,6 @@ export function useGameState() {
     }
   }, [gameDirectory, checkForUpdates, justCompletedUpdate])
 
-  // Listen for Steam depot download progress
-  useEffect(() => {
-    if (!window.gameAPI || !window.gameAPI.onDepotProgress) return
-
-    if (depotProgressListenerRef.current) {
-      depotProgressListenerRef.current()
-      depotProgressListenerRef.current = null
-    }
-
-    const cleanup = window.gameAPI.onDepotProgress((progress) => {
-      setDepotProgress(progress)
-
-      switch (progress.phase) {
-        case 'started':
-        case 'logging_in':
-        case 'verifying_ownership':
-        case 'fetching_manifest':
-        case 'file_started':
-        case 'chunk_progress':
-          // In-flight progress — the existing `isDownloadingDepot` flag is
-          // enough to keep the sidebar / button busy.
-          break
-
-        case 'done':
-          setIsDownloadingDepot(false)
-          toast.success('Base game downloaded', {
-            description: 'Applying Zemu patch...',
-          })
-          // Auto-trigger patch on successful depot download.
-          if (pendingAutoPatchRef.current && window.gameAPI && gameDirectory) {
-            pendingAutoPatchRef.current = false
-            void window.gameAPI
-              .downloadUpdate(gameDirectory)
-              .catch((err) => {
-                const errorMsg =
-                  err instanceof Error ? err.message : 'Patch application failed'
-                setError(errorMsg)
-                toast.error('Patch application failed', { description: errorMsg })
-              })
-              .finally(() => {
-                setIsApplyingPatch(false)
-              })
-            setIsApplyingPatch(true)
-          }
-          break
-
-        case 'failed':
-          setIsDownloadingDepot(false)
-          pendingAutoPatchRef.current = false
-          setError(progress.error || 'Depot download failed')
-          toast.error('Depot download failed', {
-            description: progress.error || 'See debug log for details.',
-          })
-          break
-
-        case 'cancelled':
-          setIsDownloadingDepot(false)
-          pendingAutoPatchRef.current = false
-          break
-
-        default:
-          break
-      }
-    })
-
-    if (cleanup && typeof cleanup === 'function') {
-      depotProgressListenerRef.current = cleanup
-    }
-
-    return () => {
-      if (depotProgressListenerRef.current) {
-        depotProgressListenerRef.current()
-        depotProgressListenerRef.current = null
-      }
-    }
-  }, [gameDirectory])
-
   const selectDirectory = useCallback(async (): Promise<string | null> => {
     if (!window.gameAPI) return null
 
@@ -442,67 +323,8 @@ export function useGameState() {
   const cancelDownload = useCallback(() => {
     if (!window.gameAPI) return
     window.gameAPI.cancelDownload()
-    // Optimistically clear local downloading state so the UI responds instantly
-    // even if the backend hasn't emitted its terminal status event yet.
-    setIsDownloadingDepot(false)
     setIsApplyingPatch(false)
-    setDepotProgress(null)
   }, [])
-
-  const downloadDepot = useCallback(
-    async (
-      manifestId: string,
-      depotId: string,
-      credentials?: SteamCredentials | null
-    ): Promise<void> => {
-      if (!gameDirectory || !window.gameAPI) {
-        throw new Error('Game directory is required')
-      }
-
-      const activeCredentials = credentials ?? steamCredentials
-      if (!activeCredentials) {
-        throw new Error('Steam credentials required. Sign in via the Steam login dialog.')
-      }
-
-      setIsDownloadingDepot(true)
-      setDepotProgress(null)
-      setError(null)
-      pendingAutoPatchRef.current = true
-
-      try {
-        const result = await window.gameAPI.downloadDepot(
-          manifestId,
-          depotId,
-          gameDirectory,
-          activeCredentials
-        )
-
-        if (!result.success) {
-          pendingAutoPatchRef.current = false
-          setIsDownloadingDepot(false)
-          throw new Error(result.error || 'Depot download failed')
-        }
-
-        // The backend will rotate the refresh token; re-fetch on completion.
-        if (window.launcherAPI) {
-          try {
-            const refreshed = await window.launcherAPI.getSteamCredentials()
-            if (refreshed) setSteamCredentials(refreshed)
-          } catch {
-            // Ignore — the next launch will refresh naturally.
-          }
-        }
-      } catch (err) {
-        pendingAutoPatchRef.current = false
-        setIsDownloadingDepot(false)
-        const errorMsg = err instanceof Error ? err.message : 'Depot download failed'
-        setError(errorMsg)
-        toast.error('Depot download failed', { description: errorMsg })
-        throw err
-      }
-    },
-    [gameDirectory, steamCredentials]
-  )
 
   const applyPatch = useCallback(async (): Promise<void> => {
     if (!gameDirectory || !window.gameAPI) {
@@ -617,20 +439,6 @@ export function useGameState() {
     lastCheckedDirectoryRef.current = null
   }, [])
 
-  const saveSteamCredentials = useCallback(async (credentials: SteamCredentials) => {
-    if (!window.launcherAPI) {
-      throw new Error('launcherAPI not available')
-    }
-    await window.launcherAPI.saveSteamCredentials(credentials)
-    setSteamCredentials(credentials)
-  }, [])
-
-  const clearSteamCredentials = useCallback(async () => {
-    if (!window.launcherAPI) return
-    await window.launcherAPI.clearSteamCredentials()
-    setSteamCredentials(null)
-  }, [])
-
   // Derive state
   const state: GameState = useMemo(() => {
     if (error) {
@@ -647,10 +455,6 @@ export function useGameState() {
 
     if (gameLaunchState.isRunning) {
       return { type: 'PLAYING' }
-    }
-
-    if (isDownloadingDepot) {
-      return { type: 'DOWNLOADING_DEPOT' }
     }
 
     if (isApplyingPatch) {
@@ -704,7 +508,6 @@ export function useGameState() {
     updateStatus,
     error,
     justCompletedUpdate,
-    isDownloadingDepot,
     isApplyingPatch,
   ])
 
@@ -716,21 +519,15 @@ export function useGameState() {
     updateStatus,
     isChecking,
     isUpdating,
-    isDownloadingDepot,
     isApplyingPatch,
     error,
-    depotProgress,
-    steamCredentials,
     selectDirectory,
     clearDirectory,
     checkForUpdates,
     startUpdate,
     launchGame,
-    downloadDepot,
     cancelDownload,
     applyPatch,
     retryLastStep,
-    saveSteamCredentials,
-    clearSteamCredentials,
   }
 }

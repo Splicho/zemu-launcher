@@ -7,7 +7,6 @@ mod game;
 mod models;
 mod oauth_server;
 mod state;
-mod steam;
 mod storage;
 mod update;
 

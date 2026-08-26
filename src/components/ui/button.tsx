@@ -5,8 +5,8 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 /**
- * shadcn radix-nova Button, extended with the three OAuth variants the
- * launcher auth screen needs: `discord`, `steam`, `email`. Each one
+ * shadcn radix-nova Button, extended with the OAuth variants the
+ * launcher auth screen needs: `discord`, `email`. Each one
  * pulls its brand color from the `--oauth` CSS variable (set via
  * `style={{ '--oauth': OAUTH_BRAND_COLORS[variant] }}` below) and
  * relies on the `[data-variant="oauth"]:hover/:active` rule in
@@ -38,8 +38,6 @@ const buttonVariants = cva(
             "h-12! rounded-xl bg-[var(--oauth)] text-base font-normal text-white hover:bg-[var(--oauth-hover,var(--oauth))] active:bg-[var(--oauth-hover,var(--oauth))] [&_[data-slot=spinner]]:!text-white/80",
         discord:
           "bg-[#5865F2] text-white hover:bg-[#4752C4] shadow-[0_2px_8px_0_rgba(88,101,242,0.15)] border-t border-t-white/40 active:ring-2 active:ring-[#5865F2] active:ring-offset-3 active:ring-offset-background focus-visible:ring-1 focus-visible:ring-[#5865F2] focus-visible:ring-offset-4 focus-visible:ring-offset-background",
-        steam:
-          "bg-[#1B2838] text-white hover:bg-[#14202E] shadow-[0_2px_8px_0_rgba(27,40,56,0.25)] border-t border-t-white/20 active:ring-2 active:ring-[#1B2838] active:ring-offset-3 active:ring-offset-background focus-visible:ring-1 focus-visible:ring-[#1B2838] focus-visible:ring-offset-4 focus-visible:ring-offset-background",
         email:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-[0_2px_8px_0_rgba(0,0,0,0.05)] border-t border-t-white/20 active:ring-2 active:ring-ring active:ring-offset-3 active:ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",
       },
@@ -69,7 +67,6 @@ const buttonVariants = cva(
 // Keep these in sync with the abyssal-gate launcher's auth buttons.
 const OAUTH_BRAND_COLORS = {
   discord: "oklch(0.4852 0.1873 271.05)", // Discord blurple (#5865F2)
-  steam: "oklch(0.278 0.039 257.85)", // Steam navy (#1B2838)
   email: "oklch(0.269 0 0)", // Neutral slate-900-ish
 } as const
 
@@ -89,7 +86,7 @@ function Button({
   // Inject --oauth for the OAuth variants so the global hover rule can
   // darken them. We override the data-variant for these three to the
   // literal string "oauth" so the index.css selector matches.
-  const isOauth = variant === "discord" || variant === "steam" || variant === "email"
+  const isOauth = variant === "discord" || variant === "email"
   const oauthStyle = isOauth
     ? ({ "--oauth": OAUTH_BRAND_COLORS[variant as keyof typeof OAUTH_BRAND_COLORS], ...style } as React.CSSProperties)
     : style

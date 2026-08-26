@@ -31,18 +31,13 @@ const DISPLAY_GRANULARITY_S = 5
  *      doesn't go blank mid-download.
  */
 export function useDownloadEta(): string {
-  const { isDownloadingDepot, depotProgress, isUpdating, updateStatus } =
-    useGameStateContext()
+  const { isUpdating, updateStatus } = useGameStateContext()
   const { kind, speed, stalled } = useDownloadSpeed()
 
   // Remaining bytes for the active branch. This is the *raw* value — the
   // monotonic clamp lives in the effect below.
   const rawRemainingBytes: number | null = (() => {
-    if (kind === 'depot' && isDownloadingDepot && depotProgress) {
-      const total = depotProgress.totalBytes ?? 0
-      const done = depotProgress.completedBytes ?? 0
-      if (total > 0) return Math.max(0, total - done)
-    } else if (kind === 'update' && isUpdating && updateStatus?.folders) {
+    if (kind === 'update' && isUpdating && updateStatus?.folders) {
       let total = 0
       for (const f of updateStatus.folders) {
         if (f.stage !== 'complete') total += Math.max(0, f.total - f.downloaded)
@@ -60,7 +55,7 @@ export function useDownloadEta(): string {
   const lastValidSpeedRef = useRef<number | null>(null)
   const speedFirstSeenAtRef = useRef<number | null>(null)
   const lastDisplayedRef = useRef<string>('')
-  const lastKindRef = useRef<'depot' | 'update' | null>(null)
+  const lastKindRef = useRef<'update' | null>(null)
 
   useEffect(() => {
     if (lastKindRef.current !== kind) {

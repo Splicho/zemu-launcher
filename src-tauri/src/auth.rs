@@ -48,8 +48,8 @@ pub fn save_token(app: &AppHandle, token: AuthToken) -> Result<()> {
 
 /// Exchanges a bearer token for the launcher's `AuthToken` by calling the
 /// Auth.js-backed `/api/launcher/user` endpoint on zemu-website. The token
-/// can come from any of the three configured providers (Discord, Steam,
-/// email+password) — the website owns the canonical user record and returns
+/// can come from any of the configured providers (Discord or email+password)
+/// — the website owns the canonical user record and returns
 /// the roles/permissions/avatar we should cache locally.
 pub async fn complete_oauth_token(
     app: &AppHandle,
@@ -256,8 +256,8 @@ pub fn validate_and_remove_oauth_state(app: &AppHandle, state: &str) -> Result<b
 }
 
 /// Opens the user's browser to the OAuth provider's sign-in page. The
-/// provider name maps to one of the three configured on zemu-website
-/// (`discord`, `steam`, `credentials`). For `credentials` we open a hosted
+/// provider name maps to one of the two configured on zemu-website
+/// (`discord`, `credentials`). For `credentials` we open a hosted
 /// sign-in page that posts the resulting bearer token back via the
 /// registered deep-link protocol.
 pub fn open_oauth(app: &AppHandle, provider: String, is_dev_runtime: bool) -> CommandResult {
