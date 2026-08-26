@@ -73,24 +73,23 @@ jobs:
         run: pnpm run sync:launcher-config
 
       - name: Mirror tag to releases repo
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_RELEASES_REPO_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
           $tag = '${{ inputs.tag || github.ref_name }}'
           $owner = 'Splicho'
           $repo = 'zemu-launcher-releases'
-          $token = '${{ secrets.PUBLIC_RELEASES_REPO_TOKEN }}'
-          $headers = @{ Authorization = "token $token"; Accept = "application/vnd.github+json" }
-          $existing = gh api "repos/$owner/$repo/releases/tags/$tag" --header "Authorization: token $token" 2>$null
-          if ($existing) {
-            Write-Host "Release for tag $tag already exists in $repo — skipping pre-creation."
+          $existing = gh release view $tag --repo "$owner/$repo" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release for tag $tag already exists in $repo - skipping pre-creation."
           } else {
-            Write-Host "No release found for $tag in $repo — pre-creating it..."
+            Write-Host "No release found for $tag in $repo - pre-creating it..."
             gh release create $tag `
               --repo "$owner/$repo" `
               --title "Zemu Launcher $tag" `
               --notes "Release $tag" `
-              --target main `
-              --token $token 2>&1
+              --target main
             Write-Host "Release pre-created successfully."
           }
 
