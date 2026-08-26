@@ -1,6 +1,6 @@
 export const LAUNCHER_CONFIG = {
   name: 'ZEmu Launcher',
-  version: '0.1.4',
+  version: '0.1.5',
   company: 'ZEmu',
   // Public URL the launcher hits to fetch version.json + .arc archives.
   // Bundled into update-config.json by scripts/sync-launcher-config.cjs.
