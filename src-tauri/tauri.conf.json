@@ -65,7 +65,7 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "installerIcon": "assets/icon/app-icon.ico"
+        "installerIcon": "../assets/icon/app-icon.ico"
       }
     }
   },
