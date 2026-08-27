@@ -5,7 +5,6 @@ import { HashRouter, Route, Routes } from 'react-router-dom'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { BootstrapPage } from '@/pages/bootstrap'
-import { Spinner } from '@/components/ui/spinner'
 
 const MainApp = lazy(() =>
   import('@/main-app').then((module) => ({ default: module.default })),
@@ -14,7 +13,12 @@ const MainApp = lazy(() =>
 function AppLoader() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background text-foreground dark">
-      <Spinner className="h-8 w-8 text-primary" />
+      <img
+        src="./assets/running-man.gif"
+        alt="Loading"
+        className="h-32 w-32"
+        draggable={false}
+      />
     </div>
   )
 }

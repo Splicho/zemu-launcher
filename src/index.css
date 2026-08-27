@@ -215,6 +215,12 @@ html.bootstrap-window #root {
   background: transparent !important;
 }
 
+html.main-window,
+html.main-window body,
+html.main-window #root {
+  background: transparent !important;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

@@ -5,6 +5,25 @@
     <link rel="icon" type="image/x-icon" href="./assets/icon/app-icon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ZEmu Launcher</title>
+    <script>
+      (function () {
+        try {
+          var persisted = localStorage.getItem('zemu.theme');
+          var prefersDark =
+            window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = persisted || 'system';
+          var html = document.documentElement;
+          if (theme === 'dark' || (theme === 'system' && prefersDark !== false)) {
+            html.classList.add('dark');
+          } else {
+            html.classList.remove('dark');
+          }
+        } catch (_) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

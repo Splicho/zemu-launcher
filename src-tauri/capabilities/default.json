@@ -8,6 +8,8 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
-    "autostart:default"
+    "autostart:default",
+    "opener:default",
+    "opener:allow-open-url"
   ]
 }

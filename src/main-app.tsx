@@ -93,6 +93,14 @@ function AuthedApp() {
   const route = parseRoute(hash)
   const isDeepRoute = hash !== null && hash !== '/' && route.page === 'home'
 
+  useEffect(() => {
+    document.documentElement.classList.add('main-window')
+
+    return () => {
+      document.documentElement.classList.remove('main-window')
+    }
+  }, [])
+
   const prevPageRef = useRef(route.page)
   const isSettingsPage = route.page === 'settings' || route.page === 'appearance'
   const [sidebarType, setSidebarType] = useState<SidebarType>(

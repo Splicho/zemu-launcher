@@ -12,6 +12,7 @@ import {
   Twitter,
   YouTube,
 } from '@/components/icons'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 import {
   Sidebar,
@@ -386,7 +387,20 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                         animate={{ x: 0, opacity: 1 }}
                         transition={{ delay: idx * 0.05, duration: 0.15 }}
                       >
-                        <SidebarMenuSubButton asChild>
+                        <SidebarMenuSubButton
+                          asChild
+                          onClick={(event) => {
+                            // Prevent the <a target="_blank"> from also
+                            // navigating the webview; plugin-opener is the
+                            // canonical path in Tauri.
+                            event.preventDefault()
+                            void openUrl(href).catch((error) => {
+                              toast.error(`Failed to open ${label}`, {
+                                description: String(error),
+                              })
+                            })
+                          }}
+                        >
                           <a href={href} target="_blank" rel="noopener noreferrer">
                             <Icon className="size-4" />
                             <span>{label}</span>

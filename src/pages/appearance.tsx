@@ -23,7 +23,7 @@ const THEME_OPTIONS: { value: AppTheme; label: string; description: string }[] =
 ]
 
 export function AppearancePage() {
-  const [theme, setTheme] = useState<AppTheme>('system')
+  const [theme, setTheme] = useState<AppTheme>('dark')
 
   useEffect(() => {
     if (!window.launcherAPI) return
@@ -32,8 +32,15 @@ export function AppearancePage() {
 
   useEffect(() => {
     const root = document.documentElement
+    try {
+      localStorage.setItem('zemu.theme', theme)
+    } catch (_) {}
     if (theme === 'system') {
-      root.classList.remove('dark')
+      const prefersDark =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches
+      if (prefersDark !== false) root.classList.add('dark')
+      else root.classList.remove('dark')
     } else {
       root.classList.toggle('dark', theme === 'dark')
     }

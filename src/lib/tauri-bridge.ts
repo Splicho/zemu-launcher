@@ -314,11 +314,20 @@ function setupCompatibilityBridge() {
   // Apply the persisted theme before the first paint so there is no flash.
   void invoke<string>('theme_get')
     .then((t) => {
+      try {
+        localStorage.setItem('zemu.theme', t)
+      } catch (_) {}
       const root = document.documentElement
       if (t === 'dark') root.classList.add('dark')
       else if (t === 'light') root.classList.remove('dark')
-      // 'system' — remove .dark and let the OS/media-query win
-      else root.classList.remove('dark')
+      // 'system' (or unknown) — dark by default, fall back to OS preference
+      else {
+        const prefersDark =
+          window.matchMedia &&
+          window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (prefersDark !== false) root.classList.add('dark')
+        else root.classList.remove('dark')
+      }
     })
     .catch(() => {})
 
