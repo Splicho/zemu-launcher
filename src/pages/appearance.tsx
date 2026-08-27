@@ -34,7 +34,9 @@ export function AppearancePage() {
     const root = document.documentElement
     try {
       localStorage.setItem('zemu.theme', theme)
-    } catch (_) {}
+    } catch {
+      // localStorage may be unavailable (private mode / sandboxed webview).
+    }
     if (theme === 'system') {
       const prefersDark =
         typeof window.matchMedia === 'function' &&

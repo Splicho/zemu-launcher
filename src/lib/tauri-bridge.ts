@@ -312,11 +312,17 @@ function setupCompatibilityBridge() {
   }
 
   // Apply the persisted theme before the first paint so there is no flash.
+  const cacheTheme = (value: string) => {
+    try {
+      localStorage.setItem('zemu.theme', value)
+    } catch {
+      // localStorage may be unavailable (private mode / sandboxed webview);
+      // falling back to the in-memory theme applier is fine.
+    }
+  }
   void invoke<string>('theme_get')
     .then((t) => {
-      try {
-        localStorage.setItem('zemu.theme', t)
-      } catch (_) {}
+      cacheTheme(t)
       const root = document.documentElement
       if (t === 'dark') root.classList.add('dark')
       else if (t === 'light') root.classList.remove('dark')
