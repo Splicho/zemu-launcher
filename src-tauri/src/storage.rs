@@ -9,6 +9,7 @@ use tauri::{AppHandle, Manager};
 const CONFIG_FILE: &str = "launcher-config.json";
 const VERSION_FILE: &str = "game-version.json";
 const AUTH_STORE_FILE: &str = "auth-store.json";
+const LICENSE_STORE_FILE: &str = "license-store.json";
 
 pub fn ensure_app_data_dir(app: &AppHandle) -> Result<PathBuf> {
     let dir = app
@@ -95,6 +96,30 @@ pub fn load_auth_store(app: &AppHandle) -> Result<AuthStore> {
 pub fn save_auth_store(app: &AppHandle, store: &AuthStore) -> Result<()> {
     let path = auth_store_path(app)?;
     write_json(&path, store)
+}
+
+pub fn license_store_path(app: &AppHandle) -> Result<PathBuf> {
+    Ok(ensure_app_data_dir(app)?.join(LICENSE_STORE_FILE))
+}
+
+pub fn load_license_store(app: &AppHandle) -> Result<Option<crate::models::LicenseRecord>> {
+    let path = license_store_path(app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    match read_json::<crate::models::LicenseRecord>(&path) {
+        Ok(record) => Ok(Some(record)),
+        Err(_) => Ok(None),
+    }
+}
+
+pub fn save_license_store(
+    app: &AppHandle,
+    record: &crate::models::LicenseRecord,
+) -> Result<()> {
+    let path = license_store_path(app)?;
+    write_json(&path, record)
 }
 
 pub fn detect_oauth_callback_protocol(app: &AppHandle) -> Result<Option<String>> {

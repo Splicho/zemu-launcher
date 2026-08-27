@@ -10,6 +10,7 @@ import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
 import { PlayPage } from '@/pages/play'
 import { AuthProvider, useAuthContext } from '@/contexts/auth-context'
+import { LicenseProvider, useLicenseContext } from '@/contexts/license-context'
 import { useHash } from '@/hooks/use-hash'
 import { UpdateProvider } from '@/contexts/update-context'
 import { GameStateProvider } from '@/contexts/game-state-context'
@@ -52,15 +53,33 @@ export default function MainApp() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <UpdateProvider>
-          <GameStateProvider>
-            <AuthedApp />
-            <DownloadSpeedToast />
-            <Toaster />
-          </GameStateProvider>
+          <LicenseProvider>
+            <GameStateProviderBridge>
+              <AuthedApp />
+              <DownloadSpeedToast />
+              <Toaster />
+            </GameStateProviderBridge>
+          </LicenseProvider>
         </UpdateProvider>
       </AuthProvider>
     </QueryClientProvider>
   )
+}
+
+/**
+ * Bridge between `LicenseProvider` and `GameStateProvider`.
+ *
+ * `GameStateProvider` requires `licenseStatus` as a prop (it doesn't
+ * own the license state itself — `useLicense` is the source of truth),
+ * but it's instantiated once at the top of the tree, above every
+ * consumer. This component reads the license context once and pipes
+ * the status into the provider below it. The result is one shared
+ * `useGameState()` instance with license gating baked in, and one
+ * shared `useLicense()` instance reachable from anywhere downstream.
+ */
+function GameStateProviderBridge({ children }: { children: React.ReactNode }) {
+  const { status } = useLicenseContext()
+  return <GameStateProvider licenseStatus={status}>{children}</GameStateProvider>
 }
 
 function AuthedApp() {

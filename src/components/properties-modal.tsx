@@ -15,6 +15,13 @@ interface PropertiesModalProps {
   /** Controlled by the parent (sidebar context menu). */
   open: boolean
   onOpenChange: (open: boolean) => void
+  /**
+   * Section to land on when the modal opens. Defaults to `'install'`.
+   * Used by the "License required" CTA to land directly on the License
+   * tab; ignored on subsequent opens (the modal resets to `defaultSection`
+   * every time it closes, so the same default applies on re-open).
+   */
+  defaultSection?: PropertiesSectionId
   /** Absolute path to the user's chosen install folder, or null when
    *  none is set. Drives the Installed Files size + Locate buttons. */
   gameDirectory: string | null
@@ -28,29 +35,32 @@ const DEFAULT_SECTION: PropertiesSectionId = 'install'
 export function PropertiesModal({
   open,
   onOpenChange,
+  defaultSection = DEFAULT_SECTION,
   gameDirectory,
   onChangeFolder,
 }: PropertiesModalProps) {
   const [activeSection, setActiveSection] =
-    useState<PropertiesSectionId>(DEFAULT_SECTION)
+    useState<PropertiesSectionId>(defaultSection)
 
   const handleSectionSelect = useCallback((id: PropertiesSectionId) => {
     setActiveSection(id)
   }, [])
 
   // Reset the active section on close so reopening always lands the
-  // user on "Installed Files" rather than wherever they last left
-  // off. Hooking into onOpenChange (rather than an effect on `open`)
-  // keeps the reset coupled to the user-initiated close path, which
-  // is the only path that matters here.
+  // user on `defaultSection` (Install by default; License when the
+  // modal was opened from the "License required" CTA) rather than
+  // wherever they last left off. Hooking into onOpenChange (rather
+  // than an effect on `open`) keeps the reset coupled to the
+  // user-initiated close path, which is the only path that matters
+  // here.
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (!nextOpen) {
-        setActiveSection(DEFAULT_SECTION)
+        setActiveSection(defaultSection)
       }
       onOpenChange(nextOpen)
     },
-    [onOpenChange],
+    [onOpenChange, defaultSection],
   )
 
   return (

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 
 import { Button } from '@/components/ui/button'
 import { useGameStateContext } from '@/contexts/game-state-context'
+import { usePropertiesModalOpener } from '@/contexts/open-properties-context'
 import { Cancel } from '@/components/icons'
 import { SteamInstructionsModal } from '@/components/steam-instructions-modal'
 import {
@@ -21,6 +22,10 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     startUpdate,
     selectDirectory,
   } = useGameStateContext()
+  // `GameActionButton` lives in `PlayHeader` (a sibling of `AppSidebar`),
+  // so we can't directly call the sidebar's open-properties handler.
+  // The sidebar publishes its opener through this context.
+  const openProperties = usePropertiesModalOpener()
 
   // `hasAcknowledgedSteamInstructions` gates two things:
   //   1. Whether the primary "Install" button routes through the Steam
@@ -39,6 +44,12 @@ export function GameActionButton({ className }: GameActionButtonProps) {
   const [showSteamModal, setShowSteamModal] = useState(false)
 
   const buttonText = useMemo(() => {
+    if (state.type === 'LICENSE_BINDING') {
+      return 'Activating...'
+    }
+    if (state.type === 'LICENSE_REQUIRED') {
+      return 'License required'
+    }
     if (state.type === 'DOWNLOADING_UPDATE' && 'updateStatus' in state && state.updateStatus) {
       const progress = state.updateStatus.overallProgress.toFixed(0)
       return `Updating...${progress}%`
@@ -76,7 +87,8 @@ export function GameActionButton({ className }: GameActionButtonProps) {
       state.type === 'APPLYING_PATCH' ||
       state.type === 'LAUNCHING_GAME' ||
       state.type === 'PLAYING' ||
-      state.type === 'CDN_UNAVAILABLE',
+      state.type === 'CDN_UNAVAILABLE' ||
+      state.type === 'LICENSE_BINDING',
     [state.type]
   )
 
@@ -101,6 +113,15 @@ export function GameActionButton({ className }: GameActionButtonProps) {
   }, [])
 
   const handlePrimaryAction = useCallback(async () => {
+    if (state.type === 'LICENSE_REQUIRED') {
+      // "License required" is a redirect, not a state transition —
+      // we open the Properties modal pinned to the License section
+      // and let the user redeem their key. After they close the
+      // modal the AppSidebar calls `license.revalidate()` so the
+      // state machine re-derives and (hopefully) drops the gate.
+      openProperties('license')
+      return
+    }
     if (state.type === 'NEEDS_DESTINATION') {
       // First-time install path: route through the Steam instructions
       // modal so the user knows how to grab the base game. Returning
@@ -121,7 +142,13 @@ export function GameActionButton({ className }: GameActionButtonProps) {
       startUpdate()
       return
     }
-  }, [state.type, selectDirectory, startUpdate, hasAcknowledgedSteamInstructions])
+  }, [
+    state.type,
+    openProperties,
+    selectDirectory,
+    startUpdate,
+    hasAcknowledgedSteamInstructions,
+  ])
 
   return (
     <div className="flex flex-col items-center gap-2">

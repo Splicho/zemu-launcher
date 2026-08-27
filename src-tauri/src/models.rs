@@ -3,6 +3,17 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LicenseRecord {
+    pub license_key: String,
+    pub pc_identifier: String,
+    pub bound_at: i64,
+    pub validated_at: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discord_user_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthToken {
     pub token: String,
     pub user_id: String,

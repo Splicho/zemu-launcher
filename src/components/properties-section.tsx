@@ -9,6 +9,8 @@ import {
   PROPERTIES_SECTIONS,
   type PropertiesSectionId,
 } from '@/components/properties-sidebar'
+import { LicenseSection } from '@/components/properties-license-section'
+import { useLicenseContext } from '@/contexts/license-context'
 import { formatBytes } from '@/lib/format'
 
 interface PropertiesSectionProps {
@@ -43,6 +45,12 @@ export function PropertiesSection({
       // safe fallback if an unknown id ever sneaks through.
       ?.label ?? 'Installed Files'
 
+  // `useLicenseContext` is called unconditionally so the rules of
+  // hooks are satisfied. The license body itself only renders for
+  // the `license` rail id; the hook's overhead is negligible on the
+  // other branches.
+  const license = useLicenseContext()
+
   return (
     <ScrollArea className="flex-1">
       <div className="p-6">
@@ -58,6 +66,15 @@ export function PropertiesSection({
           <InstalledFilesSection
             gameDirectory={gameDirectory}
             onChangeFolder={onChangeFolder}
+          />
+        ) : activeId === 'license' ? (
+          <LicenseSection
+            status={license.status}
+            record={license.record}
+            redeemError={license.redeemError}
+            revalidateError={license.revalidateError}
+            isBinding={license.status === 'binding'}
+            onRedeem={license.redeem}
           />
         ) : (
           <p className="text-sm text-muted-foreground">

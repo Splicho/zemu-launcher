@@ -4,9 +4,10 @@ use crate::debug_log;
 use crate::discord;
 use crate::game;
 use crate::models::{
-    AuthToken, CommandResult, GameLaunchState, OAuthCallbackPayload,
+    AuthToken, CommandResult, GameLaunchState, LicenseRecord, OAuthCallbackPayload,
     UpdateCheckResult, UpdateStatus, VersionManifest,
 };
+use crate::pc_identifier;
 use crate::state::AppState;
 use crate::storage;
 use crate::update;
@@ -334,6 +335,44 @@ pub async fn api_post(
         .map_err(|e| e.to_string())
 }
 
+/// Returns the launcher's stable PC identifier — generated on first
+/// call and persisted to disk for subsequent calls. Used as the
+/// `pcIdentifier` field when validating license keys against the
+/// zemu-website API. Opaque to the renderer.
+#[tauri::command]
+pub fn launcher_get_pc_identifier(app: tauri::AppHandle) -> Result<String, String> {
+    pc_identifier::get_or_create_pc_identifier(&app).map_err(|e| e.to_string())
+}
+
+/// Load the persisted license record from `app_data/license-store.json`.
+/// Returns `null` if no record has been saved yet.
+#[tauri::command]
+pub fn license_get_record(app: tauri::AppHandle) -> Result<Option<LicenseRecord>, String> {
+    storage::load_license_store(&app).map_err(|e| e.to_string())
+}
+
+/// Persist a license record to `app_data/license-store.json`. Called
+/// after every successful redeem or validate so the record survives
+/// launcher restarts.
+#[tauri::command]
+pub fn license_save_record(
+    app: tauri::AppHandle,
+    record: LicenseRecord,
+) -> Result<(), String> {
+    storage::save_license_store(&app, &record).map_err(|e| e.to_string())
+}
+
+/// Delete the persisted license record. Called on logout so a different
+/// user on the same PC starts clean.
+#[tauri::command]
+pub fn license_clear_record(app: tauri::AppHandle) -> Result<(), String> {
+    let path = storage::license_store_path(&app).map_err(|e| e.to_string())?;
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 pub fn register_commands(
 ) -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
@@ -381,7 +420,11 @@ pub fn register_commands(
         debug_log_read,
         debug_log_clear,
         api_get,
-        api_post
+        api_post,
+        launcher_get_pc_identifier,
+        license_get_record,
+        license_save_record,
+        license_clear_record
     ]
 }
 

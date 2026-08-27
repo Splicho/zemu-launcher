@@ -65,13 +65,29 @@ export type GameState =
   | { type: 'UPDATE_COMPLETE' }
   | { type: 'UP_TO_DATE' }
   | { type: 'ERROR'; error: string }
+  | { type: 'LICENSE_REQUIRED' }
+  | { type: 'LICENSE_BINDING' }
+
+import type { LicenseStatus } from '@/hooks/use-license'
 
 const DEFAULT_GAME_LAUNCH_STATE: GameLaunchState = {
   isLaunching: false,
   isRunning: false,
 }
 
-export function useGameState() {
+/**
+ * License status is injected rather than read from `useLicense`
+ * directly so the two hooks stay composable. The caller (typically
+ * `app-sidebar`) wires them together — `useGameState` only consumes
+ * the status value, the calling tree owns the actual `useLicense()`
+ * instance and its redeems/revalidates.
+ *
+ * `LicenseStatus` is required (no default) so a missing license gate
+ * in the call tree fails the type-check rather than silently letting
+ * unbound users download.
+ */
+export function useGameState(options: { licenseStatus: LicenseStatus }) {
+  const { licenseStatus } = options
   const [gameDirectory, setGameDirectory] = useState<string | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
@@ -467,7 +483,13 @@ const handleProgress = (status: UpdateStatus) => {
   }, [])
 
   // Derive state
-  const state: GameState = useMemo(() => {
+  //
+  // Two layers: `baseState` is the original state machine unchanged.
+  // `state` overlays the license gate on top — LICENSE_REQUIRED /
+  // LICENSE_BINDING short-circuit everything else *except* an in-flight
+  // action (downloading, applying, launching, playing) so a license
+  // expiry mid-download doesn't yank the carpet out.
+  const baseState: GameState = useMemo(() => {
     if (error) {
       return { type: 'ERROR', error }
     }
@@ -543,6 +565,28 @@ const handleProgress = (status: UpdateStatus) => {
     justCompletedUpdate,
     isApplyingPatch,
   ])
+
+  const state: GameState = useMemo(() => {
+    // In-flight actions take precedence over license gating — we don't
+    // want to bounce a user out of an active download because the
+    // server briefly failed to validate their key.
+    if (
+      baseState.type === 'DOWNLOADING_UPDATE' ||
+      baseState.type === 'APPLYING_PATCH' ||
+      baseState.type === 'LAUNCHING_GAME' ||
+      baseState.type === 'PLAYING'
+    ) {
+      return baseState
+    }
+
+    if (licenseStatus === 'binding') {
+      return { type: 'LICENSE_BINDING' }
+    }
+    if (licenseStatus === 'unbound' || licenseStatus === 'other-pc') {
+      return { type: 'LICENSE_REQUIRED' }
+    }
+    return baseState
+  }, [baseState, licenseStatus])
 
   return {
     state,

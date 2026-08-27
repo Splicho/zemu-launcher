@@ -39,7 +39,9 @@ import {
 } from '@/lib/steam-instructions'
 import { useUpdate } from '@/contexts/update-context'
 import { useGameStateContext } from '@/contexts/game-state-context'
+import { useLicenseContext } from '@/contexts/license-context'
 import { CircularProgress } from '@/components/circular-progress'
+import type { PropertiesSectionId } from '@/components/properties-sidebar'
 
 const SOCIAL_LINKS = [
   {
@@ -64,6 +66,18 @@ const SOCIAL_LINKS = [
   },
 ] as const
 
+interface AppSidebarProps {
+  /**
+   * Callback fired by the sidebar on mount so siblings (typically
+   * `GameActionButton` via the `OpenPropertiesProvider` context) can
+   * ask the sidebar to open the Properties modal pinned to a specific
+   * section. We pass the same handler both ways: when the context
+   * calls it, we open the modal; when the user closes the modal we
+   * revalidate the license.
+   */
+  registerOpener: (fn: (section?: 'install' | 'license') => void) => void
+}
+
 function useHashRoute() {
   const [hash, setHash] = React.useState(() => window.location.hash)
 
@@ -76,16 +90,43 @@ function useHashRoute() {
   return hash
 }
 
-export function AppSidebar() {
+export function AppSidebar({ registerOpener }: AppSidebarProps) {
   const [socialOpen, setSocialOpen] = React.useState(false)
   const [hasAcknowledgedSteamInstructions, setHasAcknowledgedSteamInstructions] =
     React.useState<boolean>(hasSeenSteamInstructions)
   const [showSteamModal, setShowSteamModal] = React.useState(false)
   const [showPropertiesModal, setShowPropertiesModal] = React.useState(false)
+  // When the user opens Properties from the "License required" CTA
+  // (`onLicenseRequiredClick` below) we set this so the modal lands
+  // on the License section instead of Installed Files. Cleared on
+  // close so the next open-from-context-menu returns to the default.
+  const [propertiesDefaultSection, setPropertiesDefaultSection] =
+    React.useState<PropertiesSectionId | undefined>(undefined)
   const { isUpdating, progress } = useUpdate()
   const { checkForUpdates, selectDirectory, isChecking, gameDirectory } =
     useGameStateContext()
+  const license = useLicenseContext()
   const hash = useHashRoute()
+
+  // Stable callback the rest of the app uses (via
+  // `usePropertiesModalOpener`) to ask us to open the Properties
+  // modal. The optional `section` argument lets the caller pin the
+  // tab — e.g. the "License required" CTA passes `'license'`.
+  const openProperties = React.useCallback(
+    (section?: 'install' | 'license') => {
+      setPropertiesDefaultSection(section)
+      setShowPropertiesModal(true)
+    },
+    [],
+  )
+
+  // Register with the parent (`MainLayout`) once on mount. The parent
+  // re-publishes us via `OpenPropertiesProvider` so any sibling
+  // subtree can call `openProperties`. We don't need to deregister —
+  // `AppSidebar` lives for the whole app's lifetime.
+  React.useEffect(() => {
+    registerOpener(openProperties)
+  }, [registerOpener, openProperties])
 
   const isActive = (path: string) => {
     const basePath = hash.replace(/#/, '') || '/'
@@ -139,6 +180,26 @@ export function AppSidebar() {
     setHasAcknowledgedSteamInstructions(true)
     setShowSteamModal(false)
   }, [])
+
+  // Wraps the modal's open/close so we can revalidate the license
+  // when the user closes the modal. Without this a successful redeem
+  // wouldn't update the primary button label until the next mount —
+  // the user would have to refresh the page to see "Install" replace
+  // "License required".
+  const handlePropertiesOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      setShowPropertiesModal(nextOpen)
+      if (!nextOpen) {
+        setPropertiesDefaultSection(undefined)
+        // `revalidate()` is a no-op when there's no cached record,
+        // and updates the in-memory record when there is one. We
+        // don't block on it; the button label will update as soon as
+        // the state machine re-derives.
+        void license.revalidate()
+      }
+    },
+    [license],
+  )
 
   const isCheckDisabled = isChecking || isUpdating
 
@@ -254,12 +315,14 @@ export function AppSidebar() {
                     </ContextMenuItem>
                     <ContextMenuSeparator />
                     <ContextMenuItem
-                      onSelect={() => {
+                      onSelect={(event) => {
                         // "Properties…" is a passive, always-available
                         // configuration entry — no domain guards needed.
                         // Letting Radix close the menu on select (i.e.
                         // NOT calling preventDefault) keeps it from
                         // lingering behind the modal.
+                        event.preventDefault()
+                        setPropertiesDefaultSection(undefined)
                         setShowPropertiesModal(true)
                       }}
                     >
@@ -340,7 +403,8 @@ export function AppSidebar() {
       />
       <PropertiesModal
         open={showPropertiesModal}
-        onOpenChange={setShowPropertiesModal}
+        onOpenChange={handlePropertiesOpenChange}
+        defaultSection={propertiesDefaultSection}
         gameDirectory={gameDirectory}
         onChangeFolder={handleLocateGameFiles}
       />

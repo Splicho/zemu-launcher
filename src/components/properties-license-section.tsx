@@ -1,0 +1,278 @@
+/**
+ * Right-pane body for the License rail entry. Drives off the
+ * `LicenseStatus` exposed by `useLicense`:
+ *
+ *   - `bound`    → table row shows the live key + "Active"
+ *   - `other-pc` → table row shows the cached key + "Active" (the
+ *                  key is still valid, it's just bound elsewhere);
+ *                  admin-only banner appears below the form. If the
+ *                  last revalidate returned `revoked`, the status
+ *                  flips to "Revoked".
+ *   - `unbound`  → table renders its empty-state row (no record);
+ *                  redeem form sits above
+ *   - `unknown`  → same as `unbound` until the first check resolves
+ *
+ * Status transitions while the user is on the tab (redeem /
+ * revalidate / initial mount) are handled by `useLicense` — this
+ * component is pure render.
+ */
+
+import { useId, useMemo, useState } from 'react'
+
+import { toast } from 'sonner'
+
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  autoFormatLicenseKeyInput,
+  formatLicenseKey,
+  normalizeLicenseKey,
+  type RedeemFailureReason,
+  type ValidateFailureReason,
+} from '@/lib/license'
+import type { LicenseFailure, LicenseRecord, LicenseStatus } from '@/hooks/use-license'
+
+/**
+ * Union of all fail reasons the UI might render a message for.
+ * Redeem and revalidate now share the same failure set
+ * (`not_found` / `revoked` / `already_bound` / `unreachable`);
+ * we keep the union explicit so a future server-side addition
+ * surfaces here as a type error.
+ */
+type UiFailureReason = ValidateFailureReason | RedeemFailureReason | 'unreachable'
+
+interface LicenseSectionProps {
+  status: LicenseStatus
+  record: LicenseRecord | null
+  redeemError: LicenseFailure | null
+  revalidateError: LicenseFailure | null
+  isBinding: boolean
+  onRedeem: (
+    rawKey: string,
+  ) => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
+}
+
+// The Status column reflects the *key's own state* (Active / Revoked),
+// not whether it's bound to this PC — binding is communicated by the
+// admin-only banner below the form. We fall back to the last revalidate
+// outcome so a key that the server just revoked is flagged even before
+// the local record has been cleared. When there's no record yet, the
+// table renders its empty-state row instead of a status cell.
+function keyStatusLabel(
+  record: LicenseRecord | null,
+  status: LicenseStatus,
+  revalidateError: LicenseFailure | null,
+): string {
+  if (!record) return ''
+  if (revalidateError?.reason === 'revoked') return 'Revoked'
+  if (status === 'binding') return 'Checking…'
+  return 'Active'
+}
+
+export function LicenseSection({
+  status,
+  record,
+  redeemError,
+  revalidateError,
+  isBinding,
+  onRedeem,
+}: LicenseSectionProps) {
+  // Format the cached key for display. When there's no record,
+  // the table renders its empty state instead.
+  const formattedKey = useMemo(
+    () => (record ? formatLicenseKey(record.licenseKey) : null),
+    [record],
+  )
+
+  // We always render the form + table together. When no record
+  // exists yet, the table shows the empty-state row; the form
+  // remains available above it so the user can redeem.
+  return (
+    <div className="space-y-6">
+      <RedeemForm
+        redeemError={redeemError}
+        isSubmitting={isBinding}
+        onSubmit={onRedeem}
+      />
+
+      <Separator />
+
+      <Card>
+        <CardHeader className="px-6">
+          <CardTitle className="uppercase tracking-wide">Licenses</CardTitle>
+        </CardHeader>
+        <CardContent className="px-6 pb-6">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>License key</TableHead>
+                <TableHead className="w-0 text-right">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {record ? (
+                <TableRow>
+                  <TableCell className="font-mono text-xs">
+                    {formattedKey}
+                  </TableCell>
+                  <TableCell className="text-right text-xs">
+                    {keyStatusLabel(record, status, revalidateError)}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={2}
+                    className="py-6 text-center text-xs text-muted-foreground"
+                  >
+                    No license bound yet. Use the form above to redeem a key.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {revalidateError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Couldn't verify license</AlertTitle>
+          <AlertDescription>
+            {revalidateErrorMessage(revalidateError.reason)} The launcher
+            will keep using the cached key until the server is reachable
+            again.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {status === 'other-pc' && record ? (
+        <Alert>
+          <AlertTitle>Bound to a different PC</AlertTitle>
+          <AlertDescription>
+            This license is bound to another machine. To move it to
+            this PC, please contact an admin — re-binding is not
+            currently a self-service option.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+    </div>
+  )
+}
+
+function RedeemForm({
+  redeemError,
+  isSubmitting,
+  onSubmit,
+}: {
+  redeemError: LicenseFailure | null
+  isSubmitting: boolean
+  onSubmit: (
+    rawKey: string,
+  ) => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
+}) {
+  const [value, setValue] = useState('')
+  const inputId = useId()
+
+  // `value` holds the *displayed* formatted string. We derive the
+  // raw (no dashes) key for submission so we don't ship hyphens to
+  // the server.
+  const { raw, valid } = useMemo(() => normalizeLicenseKey(value), [value])
+
+  // If a redeem attempt fails, we keep the user's input intact so they
+  // can edit instead of re-typing. The promise resolves to the raw
+  // result so the parent can still drive state (bound/unbound).
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!valid || isSubmitting) return
+    toast.promise(onSubmit(raw), {
+      loading: 'Activating…',
+      success: () => {
+        // Sonner toast is shown automatically on success; nothing extra needed.
+        return 'License activated.'
+      },
+      error: (failure: LicenseFailure) => redeemErrorMessage(failure.reason),
+    })
+  }
+
+  const errorMessage = redeemError
+    ? redeemErrorMessage(redeemError.reason)
+    : null
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor={inputId}>License key</Label>
+        <Input
+          id={inputId}
+          type="text"
+          inputMode="text"
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+          value={value}
+          onChange={(event) => {
+            setValue(autoFormatLicenseKeyInput(event.target.value))
+          }}
+          disabled={isSubmitting}
+          className="font-mono tracking-wider"
+          aria-invalid={errorMessage ? true : undefined}
+        />
+        {errorMessage ? (
+          <Alert variant="destructive">
+            <AlertDescription>{errorMessage}</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" variant="gradient" disabled={!valid || isSubmitting}>
+          Redeem
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function redeemErrorMessage(reason: UiFailureReason): string {
+  switch (reason) {
+    case 'not_found':
+      return 'This key was not recognized. Double-check the characters and try again.'
+    case 'revoked':
+      return 'This license has been revoked. Please contact an admin if you believe this is a mistake.'
+    case 'already_bound':
+      return 'This license is bound to a different machine. Please contact an admin to move it.'
+    case 'unreachable':
+      return "Couldn't reach the license server. Check your connection and try again."
+  }
+}
+
+function revalidateErrorMessage(reason: UiFailureReason): string {
+  if (reason === 'revoked') {
+    return 'This key has been revoked on the server.'
+  }
+  if (reason === 'already_bound') {
+    return 'This key is now bound to a different machine.'
+  }
+  if (reason === 'not_found') {
+    return 'The server no longer recognises this key.'
+  }
+  return "Couldn't reach the license server."
+}

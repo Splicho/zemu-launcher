@@ -188,6 +188,22 @@ function setupCompatibilityBridge() {
       }
     },
     launchGame: () => invoke<{ success: boolean; error?: string }>('game_launch'),
+    /**
+     * Returns the launcher's stable PC identifier — generated on first
+     * call and persisted to disk by the Rust side. Used as the
+     * `pcIdentifier` field when validating license keys against the
+     * zemu-website API. The string is opaque from the renderer's
+     * perspective (no machine-property leakage).
+     */
+    getPcIdentifier: () => invoke<string>('launcher_get_pc_identifier'),
+  }
+
+  window.licenseAPI = {
+    getRecord: () =>
+      invoke<LicenseRecordTauri | null>('license_get_record'),
+    saveRecord: (record: LicenseRecordTauri) =>
+      invoke<void>('license_save_record', { record }),
+    clearRecord: () => invoke<void>('license_clear_record'),
   }
 
   window.discordAPI = {
@@ -262,6 +278,14 @@ interface AuthToken {
   expiresAt?: number
 }
 
+interface LicenseRecordTauri {
+  licenseKey: string
+  pcIdentifier: string
+  boundAt: number
+  validatedAt: number
+  discordUserId?: string | null
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -298,6 +322,12 @@ declare global {
       onUpdateProgress: (callback: (status: UpdateStatus) => void) => () => void
       onLaunchState: (callback: (state: GameLaunchState) => void) => () => void
       launchGame: () => Promise<{ success: boolean; error?: string }>
+      /**
+       * Stable PC identifier persisted by the Rust side. Used as the
+       * `pcIdentifier` field when validating license keys against the
+       * zemu-website API.
+       */
+      getPcIdentifier: () => Promise<string>
     }
     discordAPI: {
       setInLauncher: () => void
@@ -324,6 +354,11 @@ declare global {
     }
     launcherAPI: {
       setRuntimeUpdateUrl: (url: string) => Promise<void>
+    }
+    licenseAPI: {
+      getRecord: () => Promise<LicenseRecordTauri | null>
+      saveRecord: (record: LicenseRecordTauri) => Promise<void>
+      clearRecord: () => Promise<void>
     }
   }
 }

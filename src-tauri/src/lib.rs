@@ -6,6 +6,7 @@ mod discord;
 mod game;
 mod models;
 mod oauth_server;
+mod pc_identifier;
 mod state;
 mod storage;
 mod update;
