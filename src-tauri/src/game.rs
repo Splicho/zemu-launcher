@@ -82,18 +82,47 @@ pub fn get_folder_size_bytes(directory: &str) -> Result<u64> {
     Ok(total)
 }
 
-/// Open the user's OS file manager pointed at `directory`. Uses
-/// `webbrowser` with a `file://` URI so the OS dispatches to
-/// ShellExecute (Windows), Finder (macOS), or xdg-open (Linux).
+/// Open the user's OS file manager pointed at `directory`.
+///
+/// Goes straight to the platform-native opener rather than
+/// `webbrowser::open`, which routes through the user's default browser
+/// and opens a `file://` URL in a new tab on Windows.
 pub fn open_in_file_manager(directory: &str) -> Result<()> {
     let path = Path::new(directory);
     if !path.exists() {
         return Err(anyhow!("Directory does not exist: {directory}"));
     }
 
-    let file_url = url::Url::from_file_path(path)
-        .map_err(|_| anyhow!("Failed to build file:// URL for {directory}"))?;
-    webbrowser::open(file_url.as_str()).map_err(|error| anyhow!(error))?;
+    #[cfg(target_os = "windows")]
+    {
+        // `explorer.exe` accepts a folder path and opens it directly in
+        // File Explorer. `cmd /c start ""` is the conventional incantation
+        // for "open with the default handler" but for a folder we want
+        // Explorer specifically, so we invoke it directly.
+        // Note: `explorer.exe` exits with a non-zero status even on
+        // success in some locales, so we ignore the exit code.
+        Command::new("explorer.exe")
+            .arg(path)
+            .spawn()
+            .map_err(|error| anyhow!("Failed to launch Explorer: {error}"))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|error| anyhow!("Failed to launch Finder: {error}"))?;
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|error| anyhow!("Failed to launch xdg-open: {error}"))?;
+    }
+
     Ok(())
 }
 
