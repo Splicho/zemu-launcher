@@ -9,26 +9,6 @@ import { useAuthContext } from '@/contexts/auth-context'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 import type { Provider } from '@/lib/auth'
 
-/**
- * Login screen — adapted from the abyssal-gate launcher's login.tsx
- * for the zemu auth flow.
- *
- * Provider list matches what the auth app exposes: Discord, Steam, and
- * email credentials. No register flow because the launcher-side auth
- * API doesn't ship a registration endpoint — new users sign up via the
- * website's /register page first, then sign in here.
- *
- * Visual language kept 1:1 with abyssal-gate:
- *   - Dark gradient backdrop (`from-background via-background to-[#1C1A1A]`)
- *   - Stacked full-width OAuth buttons with rounded-sm corners, h-12
- *   - Email form slides down via AnimatePresence (height + opacity)
- *   - Login entry animation: fade up y=20 → 0, 400ms easeOut
- *
- * The Button `data-variant="oauth"` plumbing (Discord/Steam/Email) is
- * handled inside components/ui/button.tsx — the auth screen just
- * passes `variant="discord" | "steam" | "email"` and the brand color
- * is set automatically via `--oauth`.
- */
 export function LoginPage() {
   const { login, loginWithProvider } = useAuthContext()
   const [email, setEmail] = useState('')
@@ -137,16 +117,6 @@ export function LoginPage() {
           </div>
         )}
 
-        {/* OAuth providers stacked vertically. Discord and Steam are
-            the providers the auth app exposes; Email is a toggle that
-            expands the credentials form below via AnimatePresence.
-            Button heights override the shadcn default (h-8 → h-12) to
-            match the abyssal-gate layout's tap targets. OAuth buttons
-            intentionally aren't bound to `isSubmitting` — the OAuth
-            dance runs out-of-process in the browser, so keeping the
-            buttons clickable means the user can retry or switch
-            providers if they close the tab mid-flow. Email is gated
-            so the form submit can't double-fire. */}
         <div className="flex flex-col gap-3">
           <Button
             type="button"
@@ -184,10 +154,7 @@ export function LoginPage() {
           </Button>
         </div>
 
-        {/* Email/password form slides down. AnimatePresence handles the
-            enter/exit so the surrounding buttons don't jump. The
-            abyssal-gate launcher uses height + opacity together for a
-            smooth slide. */}
+
         <AnimatePresence mode="wait">
           {showEmailForm && (
             <motion.div
@@ -196,18 +163,6 @@ export function LoginPage() {
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.3, ease: 'easeInOut' }}
-              // `min-w-0` so the inner inputs (which default to a
-              // browser `size=20` intrinsic min-width) don't push the
-              // email form past the OAuth stack's right edge. We
-              // deliberately don't put `overflow-hidden` on this
-              // wrapper — the input's `focus-visible:ring-3` is a
-              // `box-shadow` that extends 3px outside the input
-              // border, and any `overflow: hidden` ancestor would
-              // chop that ring. Instead the height animation is
-              // achieved by animating `height` on this div (which
-              // does not need `overflow-hidden` since `height: 0`
-              // already hides the children), and we add a small
-              // `pb-px` below so the ring has room to render.
               className="min-w-0 pb-px"
             >
               <form onSubmit={handleEmailSubmit} className="min-w-0 space-y-4 pt-4">
@@ -231,12 +186,22 @@ export function LoginPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label
-                    htmlFor="password"
-                    className="text-sm font-medium text-foreground"
-                  >
-                    Password
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="password"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      Password
+                    </label>
+                    <a
+                      href={`${LAUNCHER_CONFIG.apiBaseUrl}/forgot-password`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      Forgot password?
+                    </a>
+                  </div>
                   <Input
                     id="password"
                     type="password"
@@ -258,6 +223,18 @@ export function LoginPage() {
                   className="h-11 w-full rounded-lg"                >
                   {isSubmitting ? 'Please wait...' : 'Login'}
                 </Button>
+
+                <p className="text-center text-sm text-muted-foreground">
+                  No account?{' '}
+                  <a
+                    href={`${LAUNCHER_CONFIG.apiBaseUrl}/register`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Create new account
+                  </a>
+                </p>
               </form>
             </motion.div>
           )}
