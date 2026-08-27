@@ -10,7 +10,8 @@ import {
   type PropertiesSectionId,
 } from '@/components/properties-sidebar'
 import { LicenseSection } from '@/components/properties-license-section'
-import { useLicenseContext } from '@/contexts/license-context'
+import { SteamInstructionsSteps } from '@/components/steam-instructions-modal'
+import { useLicenseContext } from '@/hooks/use-license'
 import { formatBytes } from '@/lib/format'
 
 interface PropertiesSectionProps {
@@ -29,10 +30,10 @@ interface PropertiesSectionProps {
 
 /**
  * Right pane of the Properties modal. A small switch dispatches per
- * section id — today `install` has a real body, `license` and any
- * future ids fall through to the shared placeholder. The dispatch
- * table makes adding bodies straightforward without touching the modal
- * shell or the rail.
+ * section id — `install` and `license` have real bodies, `guide` shows
+ * the read-only Steam depot instructions, and any future ids fall through
+ * to the shared placeholder. The dispatch table makes adding bodies
+ * straightforward without touching the modal shell or the rail.
  */
 export function PropertiesSection({
   activeId,
@@ -77,6 +78,8 @@ export function PropertiesSection({
             onRedeem={license.redeem}
             onRevalidate={license.revalidate}
           />
+        ) : activeId === 'guide' ? (
+          <InstallationGuideSection />
         ) : (
           <p className="text-sm text-muted-foreground">
             Settings for this section will appear here. This is a
@@ -85,6 +88,22 @@ export function PropertiesSection({
         )}
       </div>
     </ScrollArea>
+  )
+}
+
+/**
+ * Read-only render of the Steam depot install instructions. Reuses the
+ * exact same `SteamInstructionsSteps` markup the standalone
+ * `SteamInstructionsModal` uses, so the prose stays in sync without
+ * duplicating it. Intentionally has no footer / "Got it" button: this
+ * pane is a reference, not a gate; the seen-flag + Steam launch flow
+ * stays on the modal side via the Install / Locate buttons.
+ */
+function InstallationGuideSection() {
+  return (
+    <div className="space-y-4">
+      <SteamInstructionsSteps />
+    </div>
   )
 }
 

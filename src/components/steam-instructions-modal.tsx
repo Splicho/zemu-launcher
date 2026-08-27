@@ -87,55 +87,7 @@ export function SteamInstructionsModal({
           </DialogDescription>
         </DialogHeader>
 
-        <ol className="space-y-3 text-sm text-popover-foreground">
-          <li className="flex gap-3">
-            <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-              1
-            </span>
-            <span>Open Steam on your computer.</span>
-          </li>
-
-          <li className="flex gap-3">
-            <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-              2
-            </span>
-            <span>
-              Press <Kbd>Win</Kbd> + <Kbd>R</Kbd>, type{' '}
-              <Code>{STEAM_CONSOLE_URL}</Code>, then press <Kbd>Enter</Kbd>.
-              The Steam Console window will open.
-            </span>
-          </li>
-
-          <li className="flex gap-3">
-            <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-              3
-            </span>
-            <div className="min-w-0 flex-1">
-              In the Steam Console window, run:
-              <CopyableCommand command={DOWNLOAD_DEPOT_COMMAND} />
-              then press <Kbd>Enter</Kbd>.
-            </div>
-          </li>
-
-          <li className="flex gap-3">
-            <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-              4
-            </span>
-            <span>
-              Wait for the download to finish. The depot lands under{' '}
-              <Code>steamapps/content/app_433850/depot_433851/</Code>.
-            </span>
-          </li>
-
-          <li className="flex gap-3">
-            <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-              5
-            </span>
-            <span>
-              You can close Steam once the download finishes.
-            </span>
-          </li>
-        </ol>
+        <SteamInstructionsSteps />
 
         <DialogFooter className="-mx-4 -mb-4 mt-2 sm:justify-end">
           <DialogClose asChild>
@@ -160,11 +112,77 @@ export function SteamInstructionsModal({
 }
 
 /**
+ * Reusable ordered list of depot-download steps. Exported so the
+ * `Installation Guide` pane inside the Properties dialog can render the
+ * same instructions as a read-only reference without duplicating the
+ * prose (or the helpers below).
+ */
+export function SteamInstructionsSteps() {
+  return (
+    <ol className="space-y-3 text-sm text-popover-foreground">
+      <li className="flex gap-3">
+        <StepBadge>1</StepBadge>
+        <span>Open Steam on your computer.</span>
+      </li>
+
+      <li className="flex gap-3">
+        <StepBadge>2</StepBadge>
+        <span>
+          Press <Kbd>Win</Kbd> + <Kbd>R</Kbd>, type{' '}
+          <Code>{STEAM_CONSOLE_URL}</Code>, then press <Kbd>Enter</Kbd>.
+          The Steam Console window will open.
+        </span>
+      </li>
+
+      <li className="flex gap-3">
+        <StepBadge>3</StepBadge>
+        <div className="min-w-0 flex-1 space-y-2">
+          In the Steam Console window, run:
+          <CopyableCommand command={DOWNLOAD_DEPOT_COMMAND} />
+          then press <Kbd>Enter</Kbd>.
+        </div>
+      </li>
+
+      <li className="flex gap-3">
+        <StepBadge>4</StepBadge>
+        <span>
+          Wait for the download to finish. The depot lands under{' '}
+          <Code>steamapps/content/app_433850/depot_433851/</Code>.
+        </span>
+      </li>
+
+      <li className="flex gap-3">
+        <StepBadge>5</StepBadge>
+        <span>You can close Steam once the download finishes.</span>
+      </li>
+
+      <li className="flex gap-3">
+        <StepBadge>6</StepBadge>
+        <span>Install ZEmu Patch.</span>
+      </li>
+    </ol>
+  )
+}
+
+/**
+ * Numbered circle used at the start of each step in the ordered list.
+ * Pulled out of the JSX so the markup in `SteamInstructionsSteps`
+ * stays focused on the prose.
+ */
+function StepBadge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
+      {children}
+    </span>
+  )
+}
+
+/**
  * Inline `<kbd>`-styled key badge. Plain `<span>` underneath — we
  * reach for a `kbd` element semantically but style it ourselves so the
  * launcher doesn't pull in a typography plugin.
  */
-function Kbd({ children }: { children: React.ReactNode }) {
+export function Kbd({ children }: { children: React.ReactNode }) {
   return (
     <kbd className="inline-flex items-center rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
       {children}
@@ -176,7 +194,7 @@ function Kbd({ children }: { children: React.ReactNode }) {
  * Monospaced inline command chip. Visually distinct from the body text
  * so the long depot command doesn't get lost in the surrounding prose.
  */
-function Code({ children }: { children: React.ReactNode }) {
+export function Code({ children }: { children: React.ReactNode }) {
   return (
     <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground break-all">
       {children}
@@ -191,7 +209,7 @@ function Code({ children }: { children: React.ReactNode }) {
  * clipboard write can be blocked by permissions / context, and the
  * user can still copy the text by hand.
  */
-function CopyableCommand({ command }: { command: string }) {
+export function CopyableCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(async () => {

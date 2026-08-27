@@ -106,7 +106,7 @@ export function GeneralPage() {
           {discordEnabled === true && (
             <div className="mt-4 rounded-md border border-border/50 bg-muted/20 p-4">
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Show activity
+                Activity setting
               </Label>
               <RadioGroup
                 className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2"

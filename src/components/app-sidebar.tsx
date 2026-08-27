@@ -42,9 +42,10 @@ import {
 } from '@/lib/steam-instructions'
 import { useUpdate } from '@/contexts/update-context'
 import { useGameStateContext } from '@/contexts/game-state-context'
-import { useLicenseContext } from '@/contexts/license-context'
+import { useLicenseContext } from '@/hooks/use-license'
 import { CircularProgress } from '@/components/circular-progress'
 import type { PropertiesSectionId } from '@/components/properties-sidebar'
+import type { OpenProperties } from '@/contexts/open-properties-context'
 
 const SOCIAL_LINKS = [
   {
@@ -78,7 +79,7 @@ interface AppSidebarProps {
    * calls it, we open the modal; when the user closes the modal we
    * revalidate the license.
    */
-  registerOpener: (fn: (section?: 'install' | 'license') => void) => void
+  registerOpener: (fn: OpenProperties) => void
 }
 
 function useHashRoute() {
@@ -116,7 +117,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
   // modal. The optional `section` argument lets the caller pin the
   // tab — e.g. the "License required" CTA passes `'license'`.
   const openProperties = React.useCallback(
-    (section?: 'install' | 'license') => {
+    (section?: PropertiesSectionId) => {
       setPropertiesDefaultSection(section)
       setShowPropertiesModal(true)
     },
@@ -329,13 +330,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                     ) : null}
                     <ContextMenuSeparator />
                     <ContextMenuItem
-                      onSelect={(event) => {
-                        // "Properties…" is a passive, always-available
-                        // configuration entry — no domain guards needed.
-                        // Letting Radix close the menu on select (i.e.
-                        // NOT calling preventDefault) keeps it from
-                        // lingering behind the modal.
-                        event.preventDefault()
+                      onSelect={() => {
                         setPropertiesDefaultSection(undefined)
                         setShowPropertiesModal(true)
                       }}

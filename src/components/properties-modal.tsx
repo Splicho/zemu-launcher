@@ -82,12 +82,12 @@ export function PropertiesModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* `min-h-[28rem]` gives the dialog real vertical presence so
-          the rail and content area both have room to breathe. With
-          only placeholder text the dialog used to collapse to a
-          squat shape; this floor scales up nicely as real section
-          content gets added. */}
-        <div className="flex min-h-[28rem]">
+        {/* `min-h-[36rem]` gives the dialog real vertical presence so
+          the rail and content area both have room to breathe. The
+          Installation Guide pane (five numbered steps) drove the bump
+          from 28rem — without it, the last step hovered right at the
+          bottom edge. */}
+        <div className="flex min-h-[36rem]">
           <PropertiesSidebar
             activeId={activeSection}
             onSelect={handleSectionSelect}

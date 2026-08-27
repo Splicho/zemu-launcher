@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { FolderTree, KeySquare } from 'lucide-react'
+import { BookOpen, FolderTree, KeySquare } from 'lucide-react'
 
 import {
   SidebarMenu,
@@ -12,13 +12,15 @@ import {
  * public contract — `PropertiesModal` switches content on it, not on
  * the label — so adding/renaming sections never breaks the API.
  *
- * Currently just two sections: a file-management view and the game's
- * EULA. As real section content lands, this list grows and each
- * section body is rendered in `PropertiesSection`.
+ * Three sections today:
+ *  - `install`: file-management view (size, locate, change).
+ *  - `license`: redeem / revalidate the user's account key.
+ *  - `guide`:   read-only copy of the Steam depot install steps.
  */
 export const PROPERTIES_SECTIONS = [
   { id: 'install', label: 'Installed Files', Icon: FolderTree },
-  { id: 'license', label: 'Account key', Icon: KeySquare },
+  { id: 'license', label: 'Account Key', Icon: KeySquare },
+  { id: 'guide', label: 'Installation Guide', Icon: BookOpen },
 ] as const satisfies ReadonlyArray<{
   id: string
   label: string

@@ -21,7 +21,9 @@ import {
   type ReactNode,
 } from 'react'
 
-export type OpenProperties = (section?: 'install' | 'license') => void
+import type { PropertiesSectionId } from '@/components/properties-sidebar'
+
+export type OpenProperties = (section?: PropertiesSectionId) => void
 
 const OpenPropertiesContext = createContext<OpenProperties | null>(null)
 

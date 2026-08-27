@@ -167,7 +167,7 @@ export function GameActionButton({ className }: GameActionButtonProps) {
         <Button
           size="lg"
           className={`rounded-lg min-w-[200px] p-6 text-lg px-10 ${className || ''}`}
-          variant="gradient"
+          variant="play"
           onClick={handlePrimaryAction}
           disabled={isDisabled}
         >

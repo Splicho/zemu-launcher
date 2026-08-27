@@ -45,8 +45,6 @@ import {
   autoFormatLicenseKeyInput,
   formatLicenseKey,
   normalizeLicenseKey,
-  type RedeemFailureReason,
-  type ValidateFailureReason,
 } from '@/lib/license'
 import type { LicenseFailure, LicenseRecord, LicenseStatus } from '@/hooks/use-license'
 
@@ -57,7 +55,7 @@ import type { LicenseFailure, LicenseRecord, LicenseStatus } from '@/hooks/use-l
  * we keep the union explicit so a future server-side addition
  * surfaces here as a type error.
  */
-type UiFailureReason = ValidateFailureReason | RedeemFailureReason | 'unreachable'
+type UiFailureReason = LicenseFailure
 
 interface LicenseSectionProps {
   status: LicenseStatus
@@ -83,7 +81,7 @@ function keyStatusLabel(
   revalidateError: LicenseFailure | null,
 ): string {
   if (!record) return ''
-  if (revalidateError?.reason === 'revoked') return 'Revoked'
+  if (revalidateError === 'revoked') return 'Revoked'
   if (status === 'binding') return 'Checking…'
   return 'Active'
 }
@@ -229,12 +227,12 @@ function RedeemForm({
     if (revalidateResult.ok) {
       toast.success('Key redeemed.')
     } else {
-      toast.error(redeemErrorMessage(revalidateResult.failure.reason))
+      toast.error(redeemErrorMessage(revalidateResult.failure))
     }
   }
 
   const errorMessage = redeemError
-    ? redeemErrorMessage(redeemError.reason)
+    ? redeemErrorMessage(redeemError)
     : null
 
   return (

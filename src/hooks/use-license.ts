@@ -12,7 +12,7 @@
  * `useGameState` reads `licenseStatus` from this hook to decide
  * whether to short-circuit to `LICENSE_REQUIRED`.
  *
- * Status mapping (internal -> exposed):
+ * Status mapping:
  *
  *   'unknown'    -- still loading the persisted record from disk.
  *                   Treated as not-bound by the state machine so we
@@ -21,27 +21,28 @@
  *   'bound'      -- record is present and the last validate returned
  *                   `valid: true`.
  *   'unbound'    -- no record, or the last check returned not_found /
- *                   revoked / unreachable with no cached record. The
- *                   "License required" state.
+ *                   revoked. The "License required" state.
  *   'other-pc'   -- last validate returned `already_bound`. The key
  *                   exists but isn't ours; downloads are gated behind
  *                   LICENSE_REQUIRED with a different modal message.
  *
- * Persistence model:
+ * Persistence:
  *
  *   The license record is stored at `app_data/license-store.json` by
- *   the Rust side. Loading it on mount means the launcher survives
- *   restarts without re-pasting the key. Saving after every redeem
- *   and every successful revalidate keeps the file current.
+ *   the Rust side. We load it on mount and save after every successful
+ *   redeem and every successful revalidate.
  *
  *   The `discord_user_id` field is only ever read from the server
  *   response; it is NOT used as a gating mechanism any more — the
  *   server stopped returning `discord_required` for redeem.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-
-import { validateLicense, redeemLicense, type ValidateFailureReason, type RedeemFailureReason } from '@/lib/license'
+import { createContext, useContext, useEffect, useState } from 'react'
+import { validateLicense, redeemLicense } from '@/lib/license'
+import type {
+  ValidateFailureReason,
+  RedeemFailureReason,
+} from '@/lib/license'
 
 export type LicenseStatus =
   | 'unknown'
@@ -58,49 +59,26 @@ export interface LicenseRecord {
   discordUserId: string | null
 }
 
-/**
- * Failures from either the redeem (user-paste) or revalidate (cached
- * check) flows. The redeem set is now the same as the validate set
- * (the server no longer returns `discord_required`); we still type
- * both flows through the same union so the UI error map stays in one
- * place.
- */
-export interface LicenseFailure {
-  reason: ValidateFailureReason | RedeemFailureReason | 'unreachable'
-}
+export type LicenseFailureReason =
+  | ValidateFailureReason
+  | RedeemFailureReason
+  | 'unreachable'
+
+/** Alias for the failure discriminated-union returned by redeem/revalidate. */
+export type LicenseFailure = LicenseFailureReason
 
 export interface UseLicenseResult {
   status: LicenseStatus
   record: LicenseRecord | null
-  /**
-   * Last redeem attempt's failure — `null` while no attempt is in
-   * flight or the last attempt succeeded.
-   */
-  redeemError: LicenseFailure | null
-  /**
-   * Whether the last revalidate ended in a failure — distinct from
-   * `redeemError` (which is only set by explicit user action).
-   * Lets the modal show "couldn't reach the license server" without
-   * it being mistaken for a redemption attempt.
-   */
-  revalidateError: LicenseFailure | null
-  /**
-   * Try to redeem a user-pasted key. On success the record is saved
-   * to disk. On failure the error is returned so the UI can render it.
-   */
-  redeem: (rawKey: string) => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
-  /**
-   * Re-run validate against the currently-cached record. Saves the
-   * updated record (with fresh `validatedAt`) to disk on success.
-   * Returns the failure reason if the key is no longer valid, so
-   * callers can surface a contextual message.
-   */
-  revalidate: () => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
-  /**
-   * Drop everything — used on logout. Clears both in-memory state and
-   * the persisted record on disk.
-   */
-  reset: () => void
+  redeemError: LicenseFailureReason | null
+  revalidateError: LicenseFailureReason | null
+  redeem: (
+    rawKey: string
+  ) => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
+  revalidate: () => Promise<
+    { ok: true } | { ok: false; failure: LicenseFailure }
+  >
+  reset: () => Promise<void>
 }
 
 export interface UseLicenseOptions {
@@ -112,68 +90,36 @@ export interface UseLicenseOptions {
   enabled?: boolean
 }
 
-/** Revalidation interval in milliseconds (60 seconds). */
 const REVALIDATE_INTERVAL_MS = 60_000
 
-export function useLicense(options: UseLicenseOptions = {}): UseLicenseResult {
-  const enabled = options.enabled ?? true
-
+export function useLicense({
+  enabled = true,
+}: UseLicenseOptions = {}): UseLicenseResult {
   const [status, setStatus] = useState<LicenseStatus>('unknown')
   const [record, setRecord] = useState<LicenseRecord | null>(null)
-  const [redeemError, setRedeemError] = useState<LicenseFailure | null>(null)
-  const [revalidateError, setRevalidateError] = useState<LicenseFailure | null>(null)
+  const [redeemError, setRedeemError] = useState<LicenseFailureReason | null>(
+    null
+  )
+  const [revalidateError, setRevalidateError] =
+    useState<LicenseFailureReason | null>(null)
 
-  const pcIdentifierRef = useRef<string | null>(null)
-  const revalidateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const isMountedRef = useRef(true)
-
-  // ── Disk persistence helpers ──────────────────────────────────────────────
-
-  const loadFromDisk = useCallback(async (): Promise<LicenseRecord | null> => {
-    if (typeof window === 'undefined' || !window.licenseAPI?.getRecord) {
-      return null
-    }
-    try {
-      const stored = await window.licenseAPI.getRecord()
-      return stored ?? null
-    } catch {
-      return null
-    }
-  }, [])
-
-  const saveToDisk = useCallback(async (r: LicenseRecord): Promise<void> => {
-    if (typeof window === 'undefined' || !window.licenseAPI?.saveRecord) return
-    try {
-      await window.licenseAPI.saveRecord(r)
-    } catch (error) {
-      console.warn('[license] failed to save record to disk', error)
-    }
-  }, [])
-
-  const clearFromDisk = useCallback(async (): Promise<void> => {
-    if (typeof window === 'undefined' || !window.licenseAPI?.clearRecord) return
-    try {
-      await window.licenseAPI.clearRecord()
-    } catch (error) {
-      console.warn('[license] failed to clear record from disk', error)
-    }
-  }, [])
-
-  // ── Resolve PC identifier once ─────────────────────────────────────────────
-
+  // Resolve the PC identifier once. Cheap IPC; we just await it when
+  // we need it the first time. We keep it in state (not a ref) so it
+  // survives across renders and we only resolve it once.
+  const [pcIdentifier, setPcIdentifier] = useState<string | null>(null)
   useEffect(() => {
     if (!enabled) return
     if (typeof window === 'undefined' || !window.gameAPI?.getPcIdentifier) {
-      pcIdentifierRef.current = 'dev-pc-identifier'
+      setPcIdentifier('dev-pc-identifier')
       return
     }
     let cancelled = false
     window.gameAPI
       .getPcIdentifier()
       .then((id) => {
-        if (!cancelled) pcIdentifierRef.current = id
+        if (!cancelled) setPcIdentifier(id)
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         console.warn('[license] getPcIdentifier failed', error)
       })
     return () => {
@@ -181,213 +127,194 @@ export function useLicense(options: UseLicenseOptions = {}): UseLicenseResult {
     }
   }, [enabled])
 
-  // ── Core validate logic ───────────────────────────────────────────────────
+  async function revalidate(): Promise<
+    { ok: true } | { ok: false; failure: LicenseFailure }
+  > {
+    if (!enabled || !record) {
+      return { ok: false, failure: 'unreachable' }
+    }
+    if (!pcIdentifier) {
+      return { ok: false, failure: 'unreachable' }
+    }
 
-  /**
-   * Run a single validate call. On success, updates `validatedAt` and
-   * saves the record to disk. Returns the record so callers can update
-   * their own state if needed.
-   */
-  const runValidate = useCallback(
-    async (
-      rawKey: string,
-      currentRecord: LicenseRecord | null,
-    ): Promise<
-      | { ok: true; record: LicenseRecord }
-      | { ok: false; failure: LicenseFailure }
-    > => {
-      const pcIdentifier = pcIdentifierRef.current
-      if (!pcIdentifier) {
-        return { ok: false, failure: { reason: 'unreachable' } }
-      }
-      const outcome = await validateLicense({ licenseKey: rawKey, pcIdentifier })
-      if (outcome.kind === 'ok') {
-        const now = Date.now()
-        const next: LicenseRecord = {
-          licenseKey: outcome.response.licenseKey,
-          pcIdentifier,
-          // Preserve the original `boundAt` so the card shows when the
-          // key was first bound, not when it was last checked.
-          boundAt: currentRecord?.boundAt ?? now,
-          validatedAt: now,
-          discordUserId: outcome.response.discordUserId,
-        }
-        await saveToDisk(next)
-        return { ok: true, record: next }
-      }
-      if (outcome.kind === 'denied') {
-        return { ok: false, failure: { reason: outcome.response.reason } }
-      }
-      return { ok: false, failure: { reason: 'unreachable' } }
-    },
-    [saveToDisk],
-  )
+    setStatus('binding')
+    const result = await validateWithKey(record.licenseKey, pcIdentifier)
+    applyValidationResult(result)
+    return result.ok ? { ok: true } : { ok: false, failure: result.reason }
+  }
 
-  // ── Revalidate ────────────────────────────────────────────────────────────
-
-  const revalidate = useCallback(async (): Promise<{ ok: true } | { ok: false; failure: LicenseFailure }> => {
-    if (!enabled) return { ok: false, failure: { reason: 'unreachable' } }
-    const cachedKey = record?.licenseKey
-    if (!cachedKey) {
-      setStatus((prev) => (prev === 'unknown' ? prev : 'unbound'))
-      setRevalidateError(null)
-      return { ok: false, failure: { reason: 'unreachable' } }
+  async function redeem(
+    rawKey: string
+  ): Promise<{ ok: true } | { ok: false; failure: LicenseFailure }> {
+    setRedeemError(null)
+    if (!pcIdentifier) {
+      const failure: LicenseFailure = 'unreachable'
+      setRedeemError(failure)
+      setStatus('unbound')
+      return { ok: false, failure }
     }
     setStatus('binding')
-    const result = await runValidate(cachedKey, record)
+    const outcome = await redeemLicense({
+      licenseKey: rawKey,
+      pcIdentifier,
+    })
+    if (outcome.kind === 'ok') {
+      const next: LicenseRecord = {
+        licenseKey: outcome.response.licenseKey,
+        pcIdentifier,
+        boundAt: Date.now(),
+        validatedAt: Date.now(),
+        discordUserId: outcome.response.discordUserId,
+      }
+      await saveRecord(next)
+      setRecord(next)
+      setStatus('bound')
+      setRedeemError(null)
+      return { ok: true }
+    }
+    if (outcome.kind === 'denied') {
+      const failure: LicenseFailure = outcome.response.reason
+      setRedeemError(failure)
+      setStatus(
+        outcome.response.reason === 'already_bound' ? 'other-pc' : 'unbound'
+      )
+      return { ok: false, failure }
+    }
+    const failure: LicenseFailure = 'unreachable'
+    setRedeemError(failure)
+    setStatus('unbound')
+    return { ok: false, failure }
+  }
+
+  async function reset(): Promise<void> {
+    setStatus('unbound')
+    setRecord(null)
+    setRedeemError(null)
+    setRevalidateError(null)
+    await clearRecord()
+  }
+
+  // Single shared helper: validate `key` against the server and roll
+  // the outcome into `status` + `record` + `revalidateError`. Used by
+  // both the mount flow and the periodic interval.
+  async function validateWithKey(
+    key: string,
+    pc: string
+  ): Promise<
+    | { ok: true; record: LicenseRecord }
+    | { ok: false; reason: LicenseFailureReason }
+  > {
+    const outcome = await validateLicense({
+      licenseKey: key,
+      pcIdentifier: pc,
+    })
+    if (outcome.kind === 'ok') {
+      const next: LicenseRecord = {
+        licenseKey: outcome.response.licenseKey,
+        pcIdentifier: pc,
+        boundAt: record?.boundAt ?? Date.now(),
+        validatedAt: Date.now(),
+        discordUserId: outcome.response.discordUserId,
+      }
+      await saveRecord(next)
+      return { ok: true, record: next }
+    }
+    if (outcome.kind === 'denied') {
+      return { ok: false, reason: outcome.response.reason }
+    }
+    return { ok: false, reason: 'unreachable' }
+  }
+
+  function applyValidationResult(
+    result:
+      | { ok: true; record: LicenseRecord }
+      | { ok: false; reason: LicenseFailureReason }
+  ): void {
     if (result.ok) {
       setRecord(result.record)
       setStatus('bound')
       setRevalidateError(null)
-      return { ok: true }
+      return
     }
-    if (result.failure.reason === 'already_bound') {
+    if (result.reason === 'already_bound') {
       setStatus('other-pc')
-      setRevalidateError(result.failure)
-      return { ok: false, failure: result.failure }
+      setRevalidateError(result.reason)
+      return
     }
-    if (result.failure.reason === 'unreachable') {
-      setStatus(record ? 'bound' : 'unbound')
-      setRevalidateError(result.failure)
-      return { ok: false, failure: result.failure }
+    if (result.reason === 'unreachable') {
+      // Server unreachable — keep the cached record. We'll retry in
+      // 60s; bouncing the user into "Account Key Required" for a
+      // transient network blip is exactly what we don't want.
+      setStatus('bound')
+      setRevalidateError(result.reason)
+      return
     }
     // not_found / revoked: keep the record so the table can show the badge.
     setStatus('unbound')
-    setRevalidateError(result.failure)
-    return { ok: false, failure: result.failure }
-  }, [enabled, record, runValidate])
+    setRevalidateError(result.reason)
+  }
 
-  // ── Mount: load from disk, then revalidate if present ────────────────────
-
+  // Load on mount. If a record is on disk, restore it as `bound`
+  // immediately (so the UI doesn't flash "Account Key Required")
+  // and validate in the background to confirm the server still
+  // agrees. The periodic interval below keeps the record fresh.
   useEffect(() => {
     if (!enabled) {
       setStatus('unbound')
       return
     }
-    isMountedRef.current = true
     let cancelled = false
-
     ;(async () => {
-      const stored = await loadFromDisk()
-      if (cancelled || !isMountedRef.current) return
-
+      const stored = await loadRecord()
+      if (cancelled) return
       if (!stored) {
         setStatus('unbound')
-        setRevalidateError(null)
         return
       }
-
-      // Restore the record immediately so the UI doesn't flash "no license"
-      // before the revalidate completes.
       setRecord(stored)
       setStatus('bound')
       setRevalidateError(null)
-
-      // But revalidate in the background to confirm it's still valid.
-      const result = await runValidate(stored.licenseKey, stored)
-      if (cancelled || !isMountedRef.current) return
-
-      if (result.ok) {
-        setRecord(result.record)
-        setStatus('bound')
-        setRevalidateError(null)
-      } else if (result.failure.reason === 'already_bound') {
-        setStatus('other-pc')
-        setRevalidateError(result.failure)
-      } else if (result.failure.reason === 'unreachable') {
-        // Server is unreachable — keep using the cached record.
-        setStatus('bound')
-        setRevalidateError(result.failure)
-      } else {
-        // not_found / revoked — keep the record so the table can show the badge.
-        setStatus('unbound')
-        setRevalidateError(result.failure)
-      }
     })()
-
     return () => {
       cancelled = true
-      isMountedRef.current = false
     }
-  }, [enabled, loadFromDisk, runValidate, clearFromDisk])
+  }, [enabled])
 
-  // ── Periodic revalidation interval ────────────────────────────────────────
-
+  // Re-validate in the background once we have both the cached
+  // record and the PC identifier. Re-runs when either changes so a
+  // late-arriving PC id doesn't strand the cached record on "bound"
+  // forever — we always want to confirm the server still agrees.
   useEffect(() => {
-    if (!enabled) return
-
-    const tick = () => {
-      if (record) void revalidate()
-    }
-
-    revalidateIntervalRef.current = setInterval(tick, REVALIDATE_INTERVAL_MS)
+    if (!enabled || !record || !pcIdentifier) return
+    let cancelled = false
+    ;(async () => {
+      const result = await validateWithKey(record.licenseKey, pcIdentifier)
+      if (cancelled) return
+      applyValidationResult(result)
+    })()
     return () => {
-      if (revalidateIntervalRef.current !== null) {
-        clearInterval(revalidateIntervalRef.current)
-        revalidateIntervalRef.current = null
-      }
+      cancelled = true
     }
-  }, [enabled, record, revalidate])
+    // We intentionally re-run only when `record` or `pcIdentifier`
+    // changes — not on every render. Periodic refresh below handles
+    // the steady-state cadence.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, record, pcIdentifier])
 
-  // ── Redeem ────────────────────────────────────────────────────────────────
-
-  const redeem = useCallback(
-    async (
-      rawKey: string,
-    ): Promise<{ ok: true } | { ok: false; failure: LicenseFailure }> => {
-      setRedeemError(null)
-      setStatus('binding')
-      const pcIdentifier = pcIdentifierRef.current
-      if (!pcIdentifier) {
-        const failure: LicenseFailure = { reason: 'unreachable' }
-        setRedeemError(failure)
-        setStatus('unbound')
-        return { ok: false, failure }
-      }
-      const outcome = await redeemLicense({
-        licenseKey: rawKey,
-        pcIdentifier,
-      })
-      if (outcome.kind === 'ok') {
-        const now = Date.now()
-        const next: LicenseRecord = {
-          licenseKey: outcome.response.licenseKey,
-          pcIdentifier,
-          boundAt: now,
-          validatedAt: now,
-          discordUserId: outcome.response.discordUserId,
-        }
-        await saveToDisk(next)
-        setRecord(next)
-        setStatus('bound')
-        setRedeemError(null)
-        return { ok: true }
-      }
-      if (outcome.kind === 'denied') {
-        const failure: LicenseFailure = { reason: outcome.response.reason }
-        setRedeemError(failure)
-        setStatus(
-          outcome.response.reason === 'already_bound' ? 'other-pc' : 'unbound',
-        )
-        return { ok: false, failure }
-      }
-      const failure: LicenseFailure = { reason: 'unreachable' }
-      setRedeemError(failure)
-      setStatus('unbound')
-      return { ok: false, failure }
-    },
-    [saveToDisk],
-  )
-
-  // ── Reset ─────────────────────────────────────────────────────────────────
-
-  const reset = useCallback(async () => {
-    setStatus('unbound')
-    setRecord(null)
-    setRedeemError(null)
-    setRevalidateError(null)
-    await clearFromDisk()
-  }, [clearFromDisk])
+  // Periodic revalidation. Cleans itself up on unmount and on
+  // sign-out (`enabled` flips false). Only ticks while a record
+  // exists — no point pinging the server for an unbound launcher.
+  useEffect(() => {
+    if (!enabled || !record || !pcIdentifier) return
+    const interval = setInterval(() => {
+      void revalidate()
+    }, REVALIDATE_INTERVAL_MS)
+    return () => clearInterval(interval)
+    // Re-arm only when the inputs change. `revalidate` reads the
+    // current record/identifier through closure; the next tick
+    // (within 60s) will pick up any new values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, record, pcIdentifier])
 
   return {
     status,
@@ -398,4 +325,62 @@ export function useLicense(options: UseLicenseOptions = {}): UseLicenseResult {
     revalidate,
     reset,
   }
+}
+
+// ── IPC helpers ─────────────────────────────────────────────────────────
+//
+// These exist so React doesn't track them as state and so the
+// `window.licenseAPI?.…` null checks stay in one place.
+
+async function loadRecord(): Promise<LicenseRecord | null> {
+  if (typeof window === 'undefined' || !window.licenseAPI?.getRecord) {
+    return null
+  }
+  try {
+    const stored = await window.licenseAPI.getRecord()
+    return stored ?? null
+  } catch (error) {
+    console.warn('[license] failed to load record from disk', error)
+    return null
+  }
+}
+
+async function saveRecord(record: LicenseRecord): Promise<void> {
+  if (typeof window === 'undefined' || !window.licenseAPI?.saveRecord) return
+  try {
+    await window.licenseAPI.saveRecord(record)
+  } catch (error) {
+    console.warn('[license] failed to save record to disk', error)
+  }
+}
+
+async function clearRecord(): Promise<void> {
+  if (typeof window === 'undefined' || !window.licenseAPI?.clearRecord) return
+  try {
+    await window.licenseAPI.clearRecord()
+  } catch (error) {
+    console.warn('[license] failed to clear record from disk', error)
+  }
+}
+
+// ── Context ─────────────────────────────────────────────────────────────
+//
+// Shared instance of `useLicense()` for the whole tree. The consumer
+// hook + context object live in this hook file (not in the `.tsx`
+// provider file) so Vite's React Fast Refresh can hot-reload the
+// `<LicenseProvider>` component without tripping the
+// "non-component export in a component file" guard. Hooks go in
+// `.ts`, components go in `.tsx`.
+
+export const LicenseContext = createContext<UseLicenseResult | null>(null)
+
+export function useLicenseContext(): UseLicenseResult {
+  const ctx = useContext(LicenseContext)
+  if (!ctx) {
+    throw new Error(
+      'useLicenseContext must be used inside <LicenseProvider>. ' +
+        'Wrap your tree in main-app.tsx.'
+    )
+  }
+  return ctx
 }
