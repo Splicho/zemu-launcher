@@ -300,7 +300,27 @@ function setupCompatibilityBridge() {
           error: safeStringify(error),
         })
       }),
+    getTheme: () =>
+      invoke<string>('theme_get').catch((error) => {
+        writeDebugLog('theme', 'getTheme failed', { error: safeStringify(error) })
+        return 'system'
+      }),
+    setTheme: (theme: string) =>
+      invoke<void>('theme_set', { theme }).catch((error) => {
+        writeDebugLog('theme', 'setTheme failed', { theme, error: safeStringify(error) })
+      }),
   }
+
+  // Apply the persisted theme before the first paint so there is no flash.
+  void invoke<string>('theme_get')
+    .then((t) => {
+      const root = document.documentElement
+      if (t === 'dark') root.classList.add('dark')
+      else if (t === 'light') root.classList.remove('dark')
+      // 'system' — remove .dark and let the OS/media-query win
+      else root.classList.remove('dark')
+    })
+    .catch(() => {})
 
   window.addEventListener('error', (event) => {
     writeDebugLog('frontend.error', event.message, {
@@ -409,6 +429,8 @@ declare global {
       setRuntimeUpdateUrl: (url: string) => Promise<void>
       getAutostartEnabled: () => Promise<boolean>
       setAutostartEnabled: (enabled: boolean) => Promise<void>
+      getTheme: () => Promise<string>
+      setTheme: (theme: string) => Promise<void>
     }
     licenseAPI: {
       getRecord: () => Promise<LicenseRecordTauri | null>

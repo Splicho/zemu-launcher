@@ -10,7 +10,8 @@ import { TitleBar } from '@/components/title-bar'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
 import { PlayPage } from '@/pages/play'
-import { SettingsPage } from '@/pages/settings'
+import { GeneralPage } from '@/pages/settings'
+import { AppearancePage } from '@/pages/appearance'
 import { AuthProvider, useAuthContext } from '@/contexts/auth-context'
 import { LicenseProvider, useLicenseContext } from '@/contexts/license-context'
 import { useHash } from '@/hooks/use-hash'
@@ -31,6 +32,7 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
   if (hash === '/news') return { page: 'news' }
   if (hash === '/play') return { page: 'play' }
   if (hash === '/settings') return { page: 'settings' }
+  if (hash === '/settings/appearance') return { page: 'appearance' }
 
   return { page: 'home' }
 }
@@ -92,8 +94,9 @@ function AuthedApp() {
   const isDeepRoute = hash !== null && hash !== '/' && route.page === 'home'
 
   const prevPageRef = useRef(route.page)
+  const isSettingsPage = route.page === 'settings' || route.page === 'appearance'
   const [sidebarType, setSidebarType] = useState<SidebarType>(
-    route.page === 'settings' ? 'settings' : 'app',
+    isSettingsPage ? 'settings' : 'app',
   )
 
   useEffect(() => {
@@ -101,7 +104,8 @@ function AuthedApp() {
     const prev = prevPageRef.current
     if (next === prev) return
     prevPageRef.current = next
-    const nextType: SidebarType = next === 'settings' ? 'settings' : 'app'
+    const nextType: SidebarType =
+      next === 'settings' || next === 'appearance' ? 'settings' : 'app'
     setSidebarType(nextType)
   }, [route.page])
 
@@ -170,7 +174,8 @@ function AuthedApp() {
         {route.page === 'news' && <NewsPage />}
         {route.page === 'news-slug' && route.params && <NewsSlugPage slug={route.params.slug} />}
         {route.page === 'play' && <PlayPage />}
-        {route.page === 'settings' && <SettingsPage />}
+        {route.page === 'settings' && <GeneralPage />}
+        {route.page === 'appearance' && <AppearancePage />}
         {route.page === 'home' && <HomePage />}
       </MainLayout>
     </div>

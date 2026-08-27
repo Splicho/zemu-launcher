@@ -1,5 +1,6 @@
 import { ChevronLeft } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useHash } from '@/hooks/use-hash'
 
 import {
   Sidebar,
@@ -12,7 +13,16 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 
+const SETTINGS_NAV = [
+  { href: '#/settings', label: 'General' },
+  { href: '#/settings/appearance', label: 'Appearance' },
+] as const
+
 export function SettingsSidebar() {
+  const hash = useHash()
+  const activeHref = hash ? `#${hash}` : '#/settings'
+  const activeId = SETTINGS_NAV.find((n) => activeHref === n.href)?.href ?? '#/settings'
+
   return (
     <Sidebar collapsible="none" className="w-62 shrink-0 bg-transparent">
       <SidebarContent className="flex flex-col">
@@ -25,18 +35,20 @@ export function SettingsSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={true}
-                  size="lg"
-                  className="px-4"
-                >
-                  <a href="#/settings">
-                    <span>General</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {SETTINGS_NAV.map(({ href, label }) => (
+                <SidebarMenuItem key={href}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={activeId === href}
+                    size="lg"
+                    className="px-4"
+                  >
+                    <a href={href}>
+                      <span>{label}</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

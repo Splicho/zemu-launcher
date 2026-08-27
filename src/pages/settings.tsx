@@ -37,7 +37,7 @@ const RPC_MODE_OPTIONS: { value: DiscordRpcMode; label: string; description: str
  * the Rust presence worker — Discord caps Rich Presence at 2 buttons,
  * so they don't belong in user-tunable settings.
  */
-export function SettingsPage() {
+export function GeneralPage() {
   const [discordEnabled, setDiscordEnabled] = useState<boolean | null>(null)
   const [rpcMode, setRpcMode] = useState<DiscordRpcMode | null>(null)
   const [autostartEnabled, setAutostartEnabled] = useState<boolean | null>(null)
