@@ -21,7 +21,11 @@ import {
   CardTitle,
   CardContent,
 } from '@/components/ui/card'
-import { fetchTopLeaderboard, type LeaderboardTier } from '@/lib/leaderboard'
+import {
+  fetchTopLeaderboard,
+  TIER_VALUES,
+  type LeaderboardTier,
+} from '@/lib/leaderboard'
 
 const RANK_ASSETS: Record<LeaderboardTier, { smudge: string; medal: string }> = {
   bronze: { smudge: '/images/assets/ranks/bronze/smudge.png', medal: '/images/assets/ranks/bronze/medal.png' },
@@ -62,7 +66,12 @@ function SkeletonRow() {
 }
 
 export function LeaderboardCard() {
-  const [tierFilter, setTierFilter] = useState('all')
+  const [tierFilter, setTierFilterRaw] = useState<LeaderboardTier | 'all'>('all')
+  const setTierFilter = (value: string) => {
+    if (value === 'all' || TIER_VALUES.includes(value as LeaderboardTier)) {
+      setTierFilterRaw(value as LeaderboardTier | 'all')
+    }
+  }
   const [region, setRegion] = useState('EU')
   const [teamMode, setTeamMode] = useState('Solo')
 

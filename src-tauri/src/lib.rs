@@ -13,6 +13,7 @@ mod update;
 
 use state::AppState;
 use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_deep_link::DeepLinkExt;
 use url::Url;
 
@@ -34,6 +35,10 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         .manage(app_state.clone())
         .invoke_handler(commands::register_commands())
         .setup(move |app| {

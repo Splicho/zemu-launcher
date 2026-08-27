@@ -264,6 +264,32 @@ function setupCompatibilityBridge() {
 
   window.launcherAPI = {
     setRuntimeUpdateUrl: (url: string) => invoke<void>('launcher_set_runtime_update_url', { url }),
+    /**
+     * Whether the launcher is currently registered with the OS
+     * autostart mechanism (e.g. `HKCU\...\Run` on Windows). Reading
+     * reflects the real OS state — not a cached config value — so the
+     * Settings toggle can recover correctly even if the user toggles
+     * the entry in Task Manager > Startup.
+     */
+    getAutostartEnabled: () =>
+      invoke<boolean>('launcher_get_autostart_enabled').catch((error) => {
+        writeDebugLog('autostart', 'getAutostartEnabled failed', {
+          error: safeStringify(error),
+        })
+        return false
+      }),
+    /**
+     * Enable or disable the OS-managed autostart entry. Returns once
+     * the registry / LaunchAgent write succeeds so the UI can reflect
+     * the new state.
+     */
+    setAutostartEnabled: (enabled: boolean) =>
+      invoke<void>('launcher_set_autostart_enabled', { enabled }).catch((error) => {
+        writeDebugLog('autostart', 'setAutostartEnabled failed', {
+          enabled,
+          error: safeStringify(error),
+        })
+      }),
   }
 
   window.addEventListener('error', (event) => {
@@ -296,7 +322,7 @@ interface LicenseRecordTauri {
   pcIdentifier: string
   boundAt: number
   validatedAt: number
-  discordUserId?: string | null
+  discordUserId: string | null
 }
 
 declare global {
@@ -369,6 +395,8 @@ declare global {
     }
     launcherAPI: {
       setRuntimeUpdateUrl: (url: string) => Promise<void>
+      getAutostartEnabled: () => Promise<boolean>
+      setAutostartEnabled: (enabled: boolean) => Promise<void>
     }
     licenseAPI: {
       getRecord: () => Promise<LicenseRecordTauri | null>

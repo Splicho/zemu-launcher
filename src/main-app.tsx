@@ -1,10 +1,11 @@
-import { useEffect } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { LoginPage } from '@/pages/login'
 import { HomePage } from '@/pages/home'
 import { MainLayout } from '@/components/main-layout'
+import type { SidebarType } from '@/components/main-layout'
 import { TitleBar } from '@/components/title-bar'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
@@ -90,6 +91,20 @@ function AuthedApp() {
   const route = parseRoute(hash)
   const isDeepRoute = hash !== null && hash !== '/' && route.page === 'home'
 
+  const prevPageRef = useRef(route.page)
+  const [sidebarType, setSidebarType] = useState<SidebarType>(
+    route.page === 'settings' ? 'settings' : 'app',
+  )
+
+  useEffect(() => {
+    const next = route.page
+    const prev = prevPageRef.current
+    if (next === prev) return
+    prevPageRef.current = next
+    const nextType: SidebarType = next === 'settings' ? 'settings' : 'app'
+    setSidebarType(nextType)
+  }, [route.page])
+
   // Set the update URL in the backend on startup
   useEffect(() => {
     if (window.launcherAPI) {
@@ -147,7 +162,11 @@ function AuthedApp() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
-      <MainLayout backgroundSrc={route.page === 'play' ? '/background/kotk_bg.webp' : undefined} routeKey={hash ?? ''}>
+        <MainLayout
+          backgroundSrc={route.page === 'play' ? '/background/kotk_bg.webp' : undefined}
+          routeKey={hash ?? ''}
+          sidebarType={sidebarType}
+        >
         {route.page === 'news' && <NewsPage />}
         {route.page === 'news-slug' && route.params && <NewsSlugPage slug={route.params.slug} />}
         {route.page === 'play' && <PlayPage />}

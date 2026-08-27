@@ -12,6 +12,7 @@ use crate::state::AppState;
 use crate::storage;
 use crate::update;
 use tauri::Manager;
+use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
 
 #[tauri::command]
 pub fn window_minimize(window: tauri::WebviewWindow) -> Result<(), String> {
@@ -301,7 +302,7 @@ pub fn discord_set_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), S
     if enabled {
         // Re-apply the current activity so Discord lights up immediately
         // without waiting for the next game-state transition.
-        let _ = discord::trigger_refresh(&app);
+        let _ = discord::set_in_launcher(&app);
     }
     Ok(())
 }
@@ -394,6 +395,34 @@ pub fn license_clear_record(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Returns whether the launcher is currently registered to launch
+/// automatically when the user logs in. Mirrors the OS-managed
+/// autostart entry (e.g. the Windows Run registry key) — this does
+/// not check `LauncherConfig`.
+#[tauri::command]
+pub fn launcher_get_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|e| e.to_string())
+}
+
+/// Register or unregister the launcher with the OS autostart mechanism
+/// (e.g. `HKCU\...\Run` on Windows). The toggle in Settings writes
+/// directly through here so the persisted state always matches what
+/// the OS will actually do at logon.
+#[tauri::command]
+pub fn launcher_set_autostart_enabled(
+    app: tauri::AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    let manager = app.autolaunch();
+    if enabled {
+        manager.enable().map_err(|e| e.to_string())
+    } else {
+        manager.disable().map_err(|e| e.to_string())
+    }
+}
+
 pub fn register_commands(
 ) -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
@@ -447,7 +476,9 @@ pub fn register_commands(
         launcher_get_pc_identifier,
         license_get_record,
         license_save_record,
-        license_clear_record
+        license_clear_record,
+        launcher_get_autostart_enabled,
+        launcher_set_autostart_enabled
     ]
 }
 

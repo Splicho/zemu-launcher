@@ -66,6 +66,8 @@ export default [
         console: 'readonly',
         fetch: 'readonly',
         URL: 'readonly',
+        URLSearchParams: 'readonly',
+        navigator: 'readonly',
         process: 'readonly',
         localStorage: 'readonly',
         sessionStorage: 'readonly',

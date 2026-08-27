@@ -2,6 +2,7 @@ import { ReactNode, useCallback, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 import { AppSidebar } from '@/components/app-sidebar'
+import { SettingsSidebar } from '@/components/settings-sidebar'
 import { Header } from '@/components/header'
 import { TitleBar } from '@/components/title-bar'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -10,6 +11,8 @@ import {
   OpenPropertiesProvider,
   type OpenProperties,
 } from '@/contexts/open-properties-context'
+
+export type SidebarType = 'app' | 'settings'
 
 const EASING = [0.25, 0.46, 0.45, 0.94] as const
 
@@ -29,7 +32,31 @@ const backgroundVariants = {
   },
 }
 
-export function MainLayout({ children, backgroundSrc, routeKey }: { children: ReactNode; backgroundSrc?: string; routeKey?: string }) {
+const sidebarVariants = {
+  enter: { x: '-100%', opacity: 0 },
+  center: {
+    x: 0,
+    opacity: 1,
+    transition: { duration: 0.3, ease: EASING },
+  },
+  exit: {
+    x: '-100%',
+    opacity: 0,
+    transition: { duration: 0.3, ease: EASING },
+  },
+}
+
+export function MainLayout({
+  children,
+  backgroundSrc,
+  routeKey,
+  sidebarType = 'app',
+}: {
+  children: ReactNode
+  backgroundSrc?: string
+  routeKey?: string
+  sidebarType?: SidebarType
+}) {
   // `AppSidebar` mounts the actual `PropertiesModal`. Other components
   // (notably `GameActionButton` for the "License required" CTA) need a
   // way to ask the sidebar to open that modal pinned to a specific
@@ -75,7 +102,22 @@ export function MainLayout({ children, backgroundSrc, routeKey }: { children: Re
                 />
               )}
               <div className="relative z-10 flex min-h-0 flex-1">
-                <AppSidebar registerOpener={handleRegister} />
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={sidebarType}
+                    variants={sidebarVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    className="flex min-h-0"
+                  >
+                    {sidebarType === 'settings' ? (
+                      <SettingsSidebar />
+                    ) : (
+                      <AppSidebar registerOpener={handleRegister} />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
                 <div className="flex flex-1 flex-col overflow-hidden">
                   <Header />
                   <motion.main

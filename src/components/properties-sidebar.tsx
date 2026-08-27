@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { FolderTree, ScrollText } from 'lucide-react'
+import { FolderTree, KeySquare } from 'lucide-react'
 
 import {
   SidebarMenu,
@@ -18,7 +18,7 @@ import {
  */
 export const PROPERTIES_SECTIONS = [
   { id: 'install', label: 'Installed Files', Icon: FolderTree },
-  { id: 'license', label: 'License', Icon: ScrollText },
+  { id: 'license', label: 'Account key', Icon: KeySquare },
 ] as const satisfies ReadonlyArray<{
   id: string
   label: string

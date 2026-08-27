@@ -142,13 +142,13 @@ export function LicenseSection({
 
       <Card>
         <CardHeader className="px-6">
-          <CardTitle className="uppercase tracking-wide">Licenses</CardTitle>
+          <CardTitle className="uppercase tracking-wide">Account key</CardTitle>
         </CardHeader>
         <CardContent className="px-6 pb-6">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>License key</TableHead>
+                <TableHead>Account key</TableHead>
                 <TableHead className="w-0 text-right">Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -240,7 +240,7 @@ function RedeemForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor={inputId}>License key</Label>
+        <Label htmlFor={inputId}>Account key</Label>
         <Input
           id={inputId}
           type="text"
