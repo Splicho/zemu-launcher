@@ -57,7 +57,12 @@ i18n
       zh,
       'pt-BR': ptBR,
     },
+    supportedLngs: SUPPORTED_LANGUAGES.map((l) => l.code),
+    nonExplicitSupportedLngs: true,
     fallbackLng: 'en',
+    // Skip auto-loading resources for codes outside our supported set;
+    // i18next will fall back to `en` instead.
+    load: 'languageOnly',
 
     // Language detector order: user-persisted → OS language → English
     detection: {
@@ -69,6 +74,17 @@ i18n
     interpolation: {
       escapeValue: false,
     },
+
+    // Normalize detected codes so OS locales like "pt-BR", "zh-CN",
+    // "en-GB" collapse onto the supported set.
+    returnNull: false,
   })
+
+// After detection runs, normalize so e.g. "pt-BR" → "pt-BR" (not "pt").
+i18n.on('languageDetector', () => undefined)
+const detected = i18n.language || 'en'
+i18n.changeLanguage(normalizeLanguageCode(detected)).catch(() => {
+  // ignore — fallbackLng: 'en' will handle it
+})
 
 export default i18n
