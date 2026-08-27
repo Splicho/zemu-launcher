@@ -231,6 +231,12 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                     <span>Leaderboard</span>
                   </a>
                 </SidebarMenuButton>
+                <SidebarMenuButton asChild isActive={isActive('/settings')} size="lg" className="px-4">
+                  <a href="#/settings">
+                    <Settings className="size-5!" />
+                    <span>Settings</span>
+                  </a>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>

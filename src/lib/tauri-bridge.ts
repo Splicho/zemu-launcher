@@ -221,6 +221,19 @@ function setupCompatibilityBridge() {
         })
       })
     },
+    getEnabled: () =>
+      invoke<boolean>('discord_get_enabled').catch((error) => {
+        writeDebugLog('discord', 'getEnabled failed', { error: safeStringify(error) })
+        return true
+      }),
+    setEnabled: (enabled: boolean) => {
+      void invoke('discord_set_enabled', { enabled }).catch((error) => {
+        writeDebugLog('discord', 'setEnabled failed', {
+          enabled,
+          error: safeStringify(error),
+        })
+      })
+    },
   }
 
   window.authAPI = {
@@ -332,6 +345,8 @@ declare global {
     discordAPI: {
       setInLauncher: () => void
       setActivity: (details: string, state: string) => void
+      getEnabled: () => Promise<boolean>
+      setEnabled: (enabled: boolean) => void
     }
     authAPI: {
       getToken: () => Promise<AuthToken | null>

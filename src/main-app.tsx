@@ -9,6 +9,7 @@ import { TitleBar } from '@/components/title-bar'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
 import { PlayPage } from '@/pages/play'
+import { SettingsPage } from '@/pages/settings'
 import { AuthProvider, useAuthContext } from '@/contexts/auth-context'
 import { LicenseProvider, useLicenseContext } from '@/contexts/license-context'
 import { useHash } from '@/hooks/use-hash'
@@ -28,6 +29,7 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
 
   if (hash === '/news') return { page: 'news' }
   if (hash === '/play') return { page: 'play' }
+  if (hash === '/settings') return { page: 'settings' }
 
   return { page: 'home' }
 }
@@ -149,6 +151,7 @@ function AuthedApp() {
         {route.page === 'news' && <NewsPage />}
         {route.page === 'news-slug' && route.params && <NewsSlugPage slug={route.params.slug} />}
         {route.page === 'play' && <PlayPage />}
+        {route.page === 'settings' && <SettingsPage />}
         {route.page === 'home' && <HomePage />}
       </MainLayout>
     </div>

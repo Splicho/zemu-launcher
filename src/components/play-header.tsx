@@ -18,7 +18,7 @@ export function PlayHeader() {
           <GameActionButton />
           <div className="flex items-center gap-2 text-muted-foreground">
             <Box className="size-5" />
-            <span className="text-sm">100MB</span>
+            <span className="text-sm">15GB</span>
           </div>
         </div>
       </div>

@@ -285,6 +285,20 @@ pub fn discord_set_activity(
     discord::set_activity(&app, details, state).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn discord_get_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    storage::load_launcher_config(&app)
+        .map(|config| config.discord_rpc_enabled)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn discord_set_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let mut config = storage::load_launcher_config(&app).map_err(|e| e.to_string())?;
+    config.discord_rpc_enabled = enabled;
+    storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())
+}
+
 /// Frontend-facing log append. The renderer uses this to mirror console
 /// errors / auth traces / etc. into a file under the user's
 /// app-data directory so the launcher's `debugLog.read()` command can
@@ -415,6 +429,8 @@ pub fn register_commands(
         auth_take_pending_oauth_callback,
         discord_set_in_launcher,
         discord_set_activity,
+        discord_get_enabled,
+        discord_set_enabled,
         debug_log_write,
         debug_log_path,
         debug_log_read,

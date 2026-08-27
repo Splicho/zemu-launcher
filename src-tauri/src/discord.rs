@@ -8,8 +8,9 @@ use std::time::Duration;
 use tauri::AppHandle;
 
 // Discord Rich Presence client ID. Owned by the launcher application and
-// created in the Discord developer portal. Replace before shipping.
-const DISCORD_CLIENT_ID: &str = "REPLACE_WITH_DISCORD_CLIENT_ID";
+// created in the Discord developer portal. The Rich Presence Art Asset
+// referenced by every state is uploaded under the key `app_logo`.
+const DISCORD_CLIENT_ID: &str = "1542061186600804352";
 
 const RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -20,6 +21,16 @@ struct DesiredActivity {
     large_image: Option<String>,
     large_text: Option<String>,
 }
+
+/// Hardcoded buttons shown on the Discord Rich Presence card.
+///
+/// Discord limits Rich Presence to a maximum of 2 buttons, and the
+/// `label` field caps at 32 characters. These are intentionally
+/// compile-time constants — they aren't user-configurable.
+const DISCORD_BUTTONS: &[(&str, &str)] = &[
+    ("Website", "https://zemu.uk"),
+    ("Play the game", "https://zemu.uk/play"),
+];
 
 #[allow(dead_code)]
 enum DiscordCommand {
@@ -73,6 +84,12 @@ fn send_command(command: DiscordCommand) -> Result<()> {
         .map_err(|error| anyhow!("Failed to enqueue Discord command: {error}"))
 }
 
+fn is_enabled(app: &AppHandle) -> bool {
+    crate::storage::load_launcher_config(app)
+        .map(|config| config.discord_rpc_enabled)
+        .unwrap_or(true)
+}
+
 fn worker_loop(app: AppHandle, rx: std::sync::mpsc::Receiver<DiscordCommand>) {
     let mut client: Option<DiscordIpcClient> = None;
     let mut desired: Option<DesiredActivity> = None;
@@ -86,11 +103,18 @@ fn worker_loop(app: AppHandle, rx: std::sync::mpsc::Receiver<DiscordCommand>) {
                 break;
             }
             Ok(DiscordCommand::SetLauncher) => {
+                if !is_enabled(&app) {
+                    if let Some(mut active) = client.take() {
+                        let _ = active.close();
+                    }
+                    desired = None;
+                    continue;
+                }
                 desired = Some(DesiredActivity {
                     state_label: "In Launcher".to_string(),
-                    details: Some("Browsing Zemu".to_string()),
-                    large_image: Some("launcher".to_string()),
-                    large_text: Some("Zemu Launcher".to_string()),
+                    details: Some("Browsing ZEmu".to_string()),
+                    large_image: Some("app_logo".to_string()),
+                    large_text: Some("ZEmu Launcher".to_string()),
                 });
                 if let Err(error) = apply_activity(&mut client, desired.as_ref()) {
                     let _ = debug_log::append(
@@ -101,10 +125,17 @@ fn worker_loop(app: AppHandle, rx: std::sync::mpsc::Receiver<DiscordCommand>) {
                 }
             }
             Ok(DiscordCommand::SetInGame) => {
+                if !is_enabled(&app) {
+                    if let Some(mut active) = client.take() {
+                        let _ = active.close();
+                    }
+                    desired = None;
+                    continue;
+                }
                 desired = Some(DesiredActivity {
                     state_label: "Playing".to_string(),
                     details: Some("In-game".to_string()),
-                    large_image: Some("game".to_string()),
+                    large_image: Some("app_logo".to_string()),
                     large_text: Some("Zemu".to_string()),
                 });
                 if let Err(error) = apply_activity(&mut client, desired.as_ref()) {
@@ -116,10 +147,17 @@ fn worker_loop(app: AppHandle, rx: std::sync::mpsc::Receiver<DiscordCommand>) {
                 }
             }
             Ok(DiscordCommand::SetActivity { details, state }) => {
+                if !is_enabled(&app) {
+                    if let Some(mut active) = client.take() {
+                        let _ = active.close();
+                    }
+                    desired = None;
+                    continue;
+                }
                 desired = Some(DesiredActivity {
                     state_label: state,
                     details: Some(details),
-                    large_image: Some("launcher".to_string()),
+                    large_image: Some("app_logo".to_string()),
                     large_text: Some("Zemu Launcher".to_string()),
                 });
                 if let Err(error) = apply_activity(&mut client, desired.as_ref()) {
@@ -131,6 +169,13 @@ fn worker_loop(app: AppHandle, rx: std::sync::mpsc::Receiver<DiscordCommand>) {
                 }
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                if !is_enabled(&app) {
+                    if let Some(mut active) = client.take() {
+                        let _ = active.close();
+                    }
+                    desired = None;
+                    continue;
+                }
                 if desired.is_some() && client.is_none() {
                     if let Err(error) = apply_activity(&mut client, desired.as_ref()) {
                         let _ = debug_log::append(
@@ -178,12 +223,19 @@ fn apply_activity(
     let active = ensure_connected(client)?;
 
     let assets = activity::Assets::new()
-        .large_image(desired.large_image.as_deref().unwrap_or("launcher"))
-        .large_text(desired.large_text.as_deref().unwrap_or("Zemu"));
+        .large_image(desired.large_image.as_deref().unwrap_or("app_logo"))
+        .large_text(desired.large_text.as_deref().unwrap_or("Zemu Launcher"));
+
+    let buttons: Vec<_> = DISCORD_BUTTONS
+        .iter()
+        .take(2)
+        .map(|(label, url)| activity::Button::new(*label, *url))
+        .collect();
 
     let mut builder = activity::Activity::new()
         .state(&desired.state_label)
-        .assets(assets);
+        .assets(assets)
+        .buttons(buttons);
 
     if let Some(details) = desired.details.as_deref() {
         builder = builder.details(details);

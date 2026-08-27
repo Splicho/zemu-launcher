@@ -83,6 +83,11 @@ pub struct LauncherConfig {
     /// `H1Z1.exe` at the root of the install.
     #[serde(default)]
     pub game_executable: Option<String>,
+    /// Whether the Discord Rich Presence worker should publish
+    /// activity. Defaults to `true` so the opt-out is the user's
+    /// explicit choice.
+    #[serde(default = "default_true")]
+    pub discord_rpc_enabled: bool,
 }
 
 impl Default for LauncherConfig {
@@ -95,6 +100,7 @@ impl Default for LauncherConfig {
             api_base_url: None,
             oauth_callback_protocol: None,
             game_executable: None,
+            discord_rpc_enabled: true,
         }
     }
 }
