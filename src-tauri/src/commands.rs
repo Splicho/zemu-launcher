@@ -296,7 +296,14 @@ pub fn discord_get_enabled(app: tauri::AppHandle) -> Result<bool, String> {
 pub fn discord_set_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
     let mut config = storage::load_launcher_config(&app).map_err(|e| e.to_string())?;
     config.discord_rpc_enabled = enabled;
-    storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())
+    storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())?;
+
+    if enabled {
+        // Re-apply the current activity so Discord lights up immediately
+        // without waiting for the next game-state transition.
+        let _ = discord::trigger_refresh(&app);
+    }
+    Ok(())
 }
 
 /// Frontend-facing log append. The renderer uses this to mirror console

@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { ChevronRight, RefreshCw, FolderSearch, Settings } from 'lucide-react'
+import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   DiscordFilled,
@@ -23,6 +24,7 @@ import {
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarMenuSubButton,
+  SidebarSeparator,
 } from '@/components/ui/sidebar'
 import {
   ContextMenu,
@@ -145,6 +147,15 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
     void selectDirectory()
   }, [hasAcknowledgedSteamInstructions, selectDirectory])
 
+  const handleBrowseGameFiles = React.useCallback(async () => {
+    if (!gameDirectory) return
+    try {
+      await window.gameAPI.openInFileManager(gameDirectory)
+    } catch (error) {
+      toast.error(`Failed to open folder: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [gameDirectory])
+
   const handleCheckForUpdates = React.useCallback(() => {
     // A menu-driven "Check for updates" is always an explicit user
     // request, so force a fresh CDN check — the
@@ -206,10 +217,10 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
   return (
     <Sidebar collapsible="none" className="w-62 shrink-0 bg-transparent">
       <SidebarContent className="flex flex-col">
-        <SidebarGroup className="px-5 pt-5 pb-2">
-          <SidebarGroupLabel className="uppercase tracking-wider pl-4">
-            Menu
-          </SidebarGroupLabel>
+        <div className="flex justify-center pt-5 pb-2">
+          <img src="../assets/icon/zemu-logo.png" alt="" className="h-8 object-contain" />
+        </div>
+        <SidebarGroup className="px-5 pb-2">
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem className="space-y-px">
@@ -229,12 +240,6 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                   <a href="#/leaderboard">
                     <Leaderboard className="size-5!" />
                     <span>Leaderboard</span>
-                  </a>
-                </SidebarMenuButton>
-                <SidebarMenuButton asChild isActive={isActive('/settings')} size="lg" className="px-4">
-                  <a href="#/settings">
-                    <Settings className="size-5!" />
-                    <span>Settings</span>
                   </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -310,15 +315,17 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                       <span>Check for updates</span>
                     </ContextMenuItem>
                     <ContextMenuSeparator />
-                    <ContextMenuItem
-                      onSelect={(event) => {
-                        event.preventDefault()
-                        handleLocateGameFiles()
-                      }}
-                    >
-                      <FolderSearch className="size-4" />
-                      <span>Locate game files</span>
-                    </ContextMenuItem>
+                    {gameDirectory ? (
+                      <ContextMenuItem
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          handleBrowseGameFiles()
+                        }}
+                      >
+                        <FolderSearch className="size-4" />
+                        <span>Browse game files</span>
+                      </ContextMenuItem>
+                    ) : null}
                     <ContextMenuSeparator />
                     <ContextMenuItem
                       onSelect={(event) => {
@@ -345,7 +352,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
 
       {/* Socialize footer */}
       <div className="mt-auto px-5 pb-6">
-        <SidebarMenu>
+        <SidebarMenu className="pb-2">
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
@@ -391,6 +398,17 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                 </motion.div>
               )}
             </AnimatePresence>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <SidebarSeparator className="mb-2" />
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/settings')} size="lg" className="px-4">
+              <a href="#/settings">
+                <Settings className="size-5!" />
+                <span>Settings</span>
+              </a>
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </div>

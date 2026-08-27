@@ -57,7 +57,6 @@ export function SettingsPage() {
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Show activity on Discord</span>
-                <StatusPill enabled={discordEnabled === true} />
               </div>
               <p className="text-sm text-muted-foreground">
                 Let your friends see what you're playing in Zemu. Requires Discord
@@ -75,25 +74,7 @@ export function SettingsPage() {
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          This setting persists across restarts in your launcher configuration
-          file.
-        </p>
       </section>
     </div>
-  )
-}
-
-function StatusPill({ enabled }: { enabled: boolean }) {
-  return (
-    <span
-      className={
-        enabled
-          ? 'inline-flex items-center rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success'
-          : 'inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
-      }
-    >
-      {enabled ? 'Enabled' : 'Disabled'}
-    </span>
   )
 }

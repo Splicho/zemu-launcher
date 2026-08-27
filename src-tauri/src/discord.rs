@@ -38,6 +38,7 @@ enum DiscordCommand {
     SetInGame,
     SetActivity { details: String, state: String },
     Shutdown,
+    Refresh,
 }
 
 static DISCORD_SENDER: OnceLock<Sender<DiscordCommand>> = OnceLock::new();
@@ -73,6 +74,11 @@ pub fn set_activity(app: &AppHandle, details: String, state: String) -> Result<(
         &format!("set_activity details={details} state={state}"),
     );
     send_command(DiscordCommand::SetActivity { details, state })
+}
+
+pub fn trigger_refresh(app: &AppHandle) -> Result<()> {
+    let _ = debug_log::append(app, "discord", "trigger_refresh queued");
+    send_command(DiscordCommand::Refresh)
 }
 
 fn send_command(command: DiscordCommand) -> Result<()> {
@@ -182,6 +188,20 @@ fn worker_loop(app: AppHandle, rx: std::sync::mpsc::Receiver<DiscordCommand>) {
                             &app,
                             "discord",
                             &format!("retry connect error={error}"),
+                        );
+                    }
+                }
+            }
+            Ok(DiscordCommand::Refresh) => {
+                if !is_enabled(&app) {
+                    continue;
+                }
+                if desired.is_some() {
+                    if let Err(error) = apply_activity(&mut client, desired.as_ref()) {
+                        let _ = debug_log::append(
+                            &app,
+                            "discord",
+                            &format!("refresh apply_error={error}"),
                         );
                     }
                 }
