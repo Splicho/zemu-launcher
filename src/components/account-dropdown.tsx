@@ -1,14 +1,7 @@
 import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from '@/components/ui/avatar'
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useAuthContext } from '@/contexts/auth-context'
@@ -16,11 +9,8 @@ import { useAuthContext } from '@/contexts/auth-context'
 /**
  * Account dropdown anchored to the user's avatar.
  *
- * The trigger is the avatar only (no name, no chevron — the spec asked
- * for the bare minimum). Inside the dropdown we show:
- *   - header label with the display name + email (the info that's
- *     useful at a glance when confirming which account is signed in)
- *   - a single "Sign out" action that calls `useAuth().logout()`
+ * The trigger is the avatar only (no name, no chevron). Inside the
+ * dropdown: a single "Sign out" action that calls `useAuth().logout()`.
  *
  * The avatar falls back to the first letter of the display name when
  * the provider didn't ship an image URL, which is the common case for
@@ -42,25 +32,70 @@ export function AccountDropdown() {
           aria-label="Open account menu"
           className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
-          <Avatar size="default">
-            {token?.image && <AvatarImage src={token.image} alt={displayName} />}
-            <AvatarFallback>{fallback}</AvatarFallback>
-          </Avatar>
+          <AvatarRoot size="default">
+            {token?.image && <AvatarImg src={token.image} alt={displayName} />}
+            <AvatarFallbackText>{fallback}</AvatarFallbackText>
+          </AvatarRoot>
         </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" sideOffset={8} className="min-w-56">
-        <DropdownMenuLabel className="flex flex-col gap-0.5">
-          <span className="font-medium text-foreground">{displayName}</span>
-          {token?.email && (
-            <span className="text-xs font-normal text-muted-foreground">
-              {token.email}
-            </span>
-          )}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => logout()}>Sign out</DropdownMenuItem>
+      <DropdownMenuContent align="end" sideOffset={8} className="min-w-40">
+        <DropdownMenuItem onSelect={() => logout()}>
+          Sign out
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+// ── Avatar components (inline — AccountDropdown is the only consumer) ──
+
+function AvatarRoot({
+  size = 'default',
+  children,
+}: {
+  size?: 'default' | 'sm' | 'lg'
+  children: React.ReactNode
+}) {
+  const sizeClasses = {
+    default: 'h-8 w-8',
+    sm: 'h-6 w-6',
+    lg: 'h-10 w-10',
+  }[size]
+  return (
+    <div
+      className={`relative flex shrink-0 select-none items-center justify-center overflow-hidden rounded-full bg-muted ${sizeClasses}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+function AvatarImg({
+  src,
+  alt,
+}: {
+  src?: string
+  alt?: string
+}) {
+  if (!src) return null
+  return (
+    <img
+      src={src}
+      alt={alt ?? ''}
+      className="aspect-square h-full w-full object-cover"
+    />
+  )
+}
+
+function AvatarFallbackText({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <span className="flex h-full w-full items-center justify-center bg-primary/10 text-xs font-medium uppercase text-primary">
+      {children}
+    </span>
   )
 }

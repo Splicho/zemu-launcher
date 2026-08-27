@@ -59,7 +59,7 @@ export function SettingsSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg" className="px-4">
-              <a href="#/">
+              <button type="button" onClick={() => window.history.back()}>
                 <motion.span
                   animate={{ x: 0 }}
                   transition={{ duration: 0.2 }}
@@ -67,7 +67,7 @@ export function SettingsSidebar() {
                   <ChevronLeft className="size-5!" />
                 </motion.span>
                 <span>Back</span>
-              </a>
+              </button>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

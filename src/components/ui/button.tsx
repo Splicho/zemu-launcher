@@ -36,13 +36,15 @@ const buttonVariants = cva(
           ring: "inset_0_1px_0_oklch(1_0_0/0.15)] relative overflow-visible bg-[linear-gradient(to_top,oklch(0.5_0.16_29.11)_0%,var(--primary)_100%)] text-foreground before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:rounded-[inherit] before:[box-shadow:0_0_0_0_transparent,0_0_0_0_transparent] before:transition-[box-shadow] before:duration-200 before:ease-out hover:bg-[linear-gradient(to_top,oklch(0.45_0.16_29.11)_0%,oklch(0.32_0.14_29.11)_100%)] focus-visible:ring-0 focus-visible:before:[box-shadow:0_0_0_2px_var(--background),0_0_0_4px_oklch(0.708_0_0)] active:bg-[linear-gradient(to_top,oklch(0.42_0.16_29.11)_0%,oklch(0.29_0.14_29.11)_100%)] active:before:[box-shadow:0_0_0_2px_var(--background),0_0_0_4px_oklch(0.708_0_0)] active:before:duration-100",
           oauth:
             "h-12! rounded-xl bg-[var(--oauth)] text-base font-normal text-white hover:bg-[var(--oauth-hover,var(--oauth))] active:bg-[var(--oauth-hover,var(--oauth))] [&_[data-slot=spinner]]:!text-white/80",
-        discord:
-          "bg-[#5865F2] text-white hover:bg-[#4752C4] shadow-[0_2px_8px_0_rgba(88,101,242,0.15)] border-t border-t-white/40 active:ring-2 active:ring-[#5865F2] active:ring-offset-3 active:ring-offset-background focus-visible:ring-1 focus-visible:ring-[#5865F2] focus-visible:ring-offset-4 focus-visible:ring-offset-background",
-        steam:
-          "bg-[#1b2838] text-white hover:bg-[#171a21] shadow-[0_2px_8px_0_rgba(27,40,56,0.25)] border-t border-t-white/20 active:ring-2 active:ring-[#1b2838] active:ring-offset-3 active:ring-offset-background focus-visible:ring-1 focus-visible:ring-[#1b2838] focus-visible:ring-offset-4 focus-visible:ring-offset-background",
-        email:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-[0_2px_8px_0_rgba(0,0,0,0.05)] border-t border-t-white/20 active:ring-2 active:ring-ring active:ring-offset-3 active:ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",
-      },
+          play:
+            "relative rounded-lg overflow-hidden text-white bg-[linear-gradient(to_top,oklch(0.70_0.27_145)_0%,oklch(0.56_0.22_145)_100%)] shadow-[0_0_28px_oklch(0.70_0.27_145_/_0.32),0_18px_26px_-3px_rgb(0_0_0/0.14),0_8px_14px_-4px_rgb(0_0_0/0.13),inset_0_2px_0_oklch(1_0_0/0.16)] hover:bg-[linear-gradient(to_top,oklch(0.61_0.23_145)_0%,oklch(0.45_0.17_145)_100%)] active:bg-[linear-gradient(to_top,oklch(0.56_0.21_145)_0%,oklch(0.40_0.12_145)_100%)]",
+          discord:
+            "bg-[#5865F2] text-white hover:bg-[#4752C4] shadow-[0_2px_8px_0_rgba(88,101,242,0.15)] border-t border-t-white/40 active:ring-2 active:ring-[#5865F2] active:ring-offset-3 active:ring-offset-background focus-visible:ring-1 focus-visible:ring-[#5865F2] focus-visible:ring-offset-4 focus-visible:ring-offset-background",
+          steam:
+            "bg-[#1b2838] text-white hover:bg-[#171a21] shadow-[0_2px_8px_0_rgba(27,40,56,0.25)] border-t border-t-white/20 active:ring-2 active:ring-[#1b2838] active:ring-offset-3 active:ring-offset-background focus-visible:ring-1 focus-visible:ring-[#1b2838] focus-visible:ring-offset-4 focus-visible:ring-offset-background",
+          email:
+            "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-[0_2px_8px_0_rgba(0,0,0,0.05)] border-t border-t-white/20 active:ring-2 active:ring-ring active:ring-offset-3 active:ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",
+        },
       size: {
         default:
           "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",

@@ -81,6 +81,20 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     }
   }, [state, hasAcknowledgedSteamInstructions])
 
+  // `buttonVariant` applies the green glow only when the launcher is
+  // ready to actually play — not during all the states that still
+  // return "Play" as a label.
+  const buttonVariant = useMemo(() => {
+    switch (state.type) {
+      case 'PLAYING':
+      case 'UPDATE_COMPLETE':
+      case 'UP_TO_DATE':
+        return 'play' as const
+      default:
+        return 'gradient' as const
+    }
+  }, [state.type])
+
   const isDisabled = useMemo(
     () =>
       state.type === 'CHECKING_FOR_UPDATE' ||
@@ -167,7 +181,7 @@ export function GameActionButton({ className }: GameActionButtonProps) {
         <Button
           size="lg"
           className={`rounded-lg min-w-[200px] p-6 text-lg px-10 ${className || ''}`}
-          variant="play"
+          variant={buttonVariant}
           onClick={handlePrimaryAction}
           disabled={isDisabled}
         >
