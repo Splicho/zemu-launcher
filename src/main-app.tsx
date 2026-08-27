@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-
 import { LoginPage } from '@/pages/login'
 import { HomePage } from '@/pages/home'
 import { MainLayout } from '@/components/main-layout'
@@ -43,32 +41,19 @@ function DownloadSpeedToast() {
   return null
 }
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      gcTime: 1000 * 60 * 30, // 30 minutes
-      retry: 2,
-      refetchOnWindowFocus: false,
-    },
-  },
-})
-
 export default function MainApp() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <UpdateProvider>
-          <LicenseProvider>
-            <GameStateProviderBridge>
-              <AuthedApp />
-              <DownloadSpeedToast />
-              <Toaster />
-            </GameStateProviderBridge>
-          </LicenseProvider>
-        </UpdateProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <AuthProvider>
+      <UpdateProvider>
+        <LicenseProvider>
+          <GameStateProviderBridge>
+            <AuthedApp />
+            <DownloadSpeedToast />
+            <Toaster />
+          </GameStateProviderBridge>
+        </LicenseProvider>
+      </UpdateProvider>
+    </AuthProvider>
   )
 }
 

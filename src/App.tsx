@@ -2,6 +2,7 @@ import '@/lib/tauri-bridge'
 
 import { lazy, Suspense } from 'react'
 import { HashRouter, Route, Routes } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { BootstrapPage } from '@/pages/bootstrap'
@@ -9,6 +10,17 @@ import { BootstrapPage } from '@/pages/bootstrap'
 const MainApp = lazy(() =>
   import('@/main-app').then((module) => ({ default: module.default })),
 )
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      gcTime: 1000 * 60 * 30, // 30 minutes
+      retry: 2,
+      refetchOnWindowFocus: false,
+    },
+  },
+})
 
 function AppLoader() {
   return (
@@ -67,12 +79,14 @@ export default function App() {
   }
 
   return (
-    <HashRouter>
-      <Suspense fallback={<AppLoader />}>
-        <Routes>
-          <Route path="*" element={<MainApp />} />
-        </Routes>
-      </Suspense>
-    </HashRouter>
+    <QueryClientProvider client={queryClient}>
+      <HashRouter>
+        <Suspense fallback={<AppLoader />}>
+          <Routes>
+            <Route path="*" element={<MainApp />} />
+          </Routes>
+        </Suspense>
+      </HashRouter>
+    </QueryClientProvider>
   )
 }
