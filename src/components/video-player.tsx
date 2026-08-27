@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { useTranslation } from "react-i18next"
 import { Volume2, VolumeX, Maximize, Minimize } from "lucide-react"
 import { Play, Pause, Rewind10, Forward10 } from "@/components/icons"
 import { motion } from "framer-motion"
@@ -53,6 +54,7 @@ function VideoPlayer({ className, ...videoProps }: VideoPlayerProps) {
 }
 
 function VideoPlayerImpl({ className, ...videoProps }: VideoPlayerProps) {
+  const { t } = useTranslation()
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const hideTimerRef = React.useRef<number | null>(null)
@@ -255,7 +257,7 @@ function VideoPlayerImpl({ className, ...videoProps }: VideoPlayerProps) {
       <div
         ref={containerRef}
         role="region"
-        aria-label="Video player"
+        aria-label={t('videoPlayer.ariaLabel')}
         tabIndex={0}
         onKeyDown={onKeyDown}
         onMouseEnter={armControls}
@@ -328,7 +330,7 @@ function VideoPlayerImpl({ className, ...videoProps }: VideoPlayerProps) {
 
         <button
           type="button"
-          aria-label={isPlaying ? "Pause" : "Play"}
+          aria-label={isPlaying ? t('context.pause') : t('context.play')}
           onClick={togglePlay}
           tabIndex={-1}
           className={cn(
@@ -365,12 +367,12 @@ function VideoPlayerImpl({ className, ...videoProps }: VideoPlayerProps) {
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center gap-2 text-white">
-            <ControlTooltip label={isPlaying ? "Pause (K)" : "Play"}>
+            <ControlTooltip label={isPlaying ? t('context.pauseKbd') : t('context.play')}>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={isPlaying ? "Pause" : "Play"}
+                aria-label={isPlaying ? t('context.pause') : t('context.play')}
                 onClick={togglePlay}
                 className="text-white hover:bg-white/15 hover:text-white"
               >
@@ -382,12 +384,12 @@ function VideoPlayerImpl({ className, ...videoProps }: VideoPlayerProps) {
               </Button>
             </ControlTooltip>
 
-            <ControlTooltip label={`Rewind ${SKIP_BACK_SECONDS}s`}>
+            <ControlTooltip label={t('videoPlayer.rewind', { seconds: SKIP_BACK_SECONDS })}>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={`Rewind ${SKIP_BACK_SECONDS} seconds`}
+                aria-label={t('videoPlayer.rewindAria', { seconds: SKIP_BACK_SECONDS })}
                 onClick={() => skip(-SKIP_BACK_SECONDS)}
                 className="text-white hover:bg-white/15 hover:text-white"
               >
@@ -395,12 +397,12 @@ function VideoPlayerImpl({ className, ...videoProps }: VideoPlayerProps) {
               </Button>
             </ControlTooltip>
 
-            <ControlTooltip label={`Forward ${SKIP_FORWARD_SECONDS}s`}>
+            <ControlTooltip label={t('videoPlayer.forward', { seconds: SKIP_FORWARD_SECONDS })}>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={`Forward ${SKIP_FORWARD_SECONDS} seconds`}
+                aria-label={t('videoPlayer.forwardAria', { seconds: SKIP_FORWARD_SECONDS })}
                 onClick={() => skip(SKIP_FORWARD_SECONDS)}
                 className="text-white hover:bg-white/15 hover:text-white"
               >
@@ -415,25 +417,25 @@ function VideoPlayerImpl({ className, ...videoProps }: VideoPlayerProps) {
                 max={seekable ? duration : 1}
                 step={0.1}
                 disabled={!seekable}
-                aria-label="Seek"
+                aria-label={t('videoPlayer.seek')}
                 onValueChange={(v) => setTime(v[0] ?? 0)}
                 className={SLIDER_CHROME_CLASSES}
               />
             </div>
 
             <span
-              aria-label="Playback time"
+              aria-label={t('videoPlayer.playbackTime')}
               className="font-mono text-xs whitespace-nowrap text-white/90 tabular-nums"
             >
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
 
-            <ControlTooltip label={isMuted ? "Unmute" : "Mute"}>
+            <ControlTooltip label={isMuted ? t('videoPlayer.unmute') : t('videoPlayer.mute')}>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={isMuted ? "Unmute" : "Mute"}
+                aria-label={isMuted ? t('videoPlayer.unmuteAria') : t('videoPlayer.muteAria')}
                 aria-pressed={isMuted}
                 onClick={toggleMute}
                 className="text-white hover:bg-white/15 hover:text-white"
@@ -452,20 +454,20 @@ function VideoPlayerImpl({ className, ...videoProps }: VideoPlayerProps) {
                 min={0}
                 max={1}
                 step={0.01}
-                aria-label="Volume"
+                aria-label={t('videoPlayer.volume')}
                 onValueChange={(v) => changeVolume(v[0] ?? 0)}
                 className={SLIDER_CHROME_CLASSES}
               />
             </div>
 
             <ControlTooltip
-              label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+              label={isFullscreen ? t('videoPlayer.exitFullscreen') : t('videoPlayer.fullscreen')}
             >
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                aria-label={isFullscreen ? t('videoPlayer.exitFullscreenAria') : t('videoPlayer.fullscreenAria')}
                 aria-pressed={isFullscreen}
                 onClick={() => void toggleFullscreen()}
                 className="text-white hover:bg-white/15 hover:text-white"

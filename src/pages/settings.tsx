@@ -1,21 +1,30 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { SUPPORTED_LANGUAGES, normalizeLanguageCode, setPersistedLanguage } from '@/lib/i18n'
 
 export type DiscordRpcMode = 'always' | 'playing_only' | 'never'
 
-const RPC_MODE_OPTIONS: { value: DiscordRpcMode; label: string; description: string }[] = [
+const RPC_MODE_OPTIONS: { value: DiscordRpcMode; labelKey: string; descriptionKey: string }[] = [
   {
     value: 'always',
-    label: 'Always',
-    description: 'Show activity in Discord when browsing the launcher and while in-game.',
+    labelKey: 'settings.general.rpcAlways',
+    descriptionKey: 'settings.general.rpcAlwaysDesc',
   },
   {
     value: 'playing_only',
-    label: 'Only when playing',
-    description: 'Only show activity when the game is running.',
+    labelKey: 'settings.general.rpcPlayingOnly',
+    descriptionKey: 'settings.general.rpcPlayingOnlyDesc',
   },
 ]
 
@@ -38,6 +47,7 @@ const RPC_MODE_OPTIONS: { value: DiscordRpcMode; label: string; description: str
  * so they don't belong in user-tunable settings.
  */
 export function GeneralPage() {
+  const { t, i18n } = useTranslation()
   const [discordEnabled, setDiscordEnabled] = useState<boolean | null>(null)
   const [rpcMode, setRpcMode] = useState<DiscordRpcMode | null>(null)
   const [autostartEnabled, setAutostartEnabled] = useState<boolean | null>(null)
@@ -72,12 +82,17 @@ export function GeneralPage() {
     window.launcherAPI?.setAutostartEnabled(next)
   }
 
+  const handleLanguageChange = (code: string) => {
+    setPersistedLanguage(code as typeof SUPPORTED_LANGUAGES[number]['code'])
+    void i18n.changeLanguage(code)
+  }
+
   return (
     <div className="flex flex-col gap-6 py-6">
       <header>
-        <h1 className="text-2xl font-bold">General</h1>
+        <h1 className="text-2xl font-bold">{t('settings.general.title')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          General launcher preferences.
+          {t('settings.general.description')}
         </p>
       </header>
 
@@ -85,13 +100,13 @@ export function GeneralPage() {
 
       <section className="flex flex-col gap-4">
         <div className="rounded-lg border border-border bg-card p-5">
-          <div className="flex items-start justify-between gap-6">
+              <div className="flex items-start justify-between gap-6">
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Discord Rich Presence</span>
+                <span className="text-sm font-medium">{t('settings.general.discordRichPresence')}</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Show your activity on Discord when you are in the launcher or in-game.
+                {t('settings.general.discordRichPresenceDesc')}
               </p>
             </div>
 
@@ -99,14 +114,14 @@ export function GeneralPage() {
               checked={discordEnabled ?? false}
               disabled={discordEnabled === null}
               onCheckedChange={handleDiscordChange}
-              aria-label="Toggle Discord Rich Presence"
+              aria-label={t('settings.general.discordRichPresence')}
             />
           </div>
 
           {discordEnabled === true && (
             <div className="mt-4 rounded-md border border-border/50 bg-muted/20 p-4">
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Activity setting
+                {t('settings.general.activitySetting')}
               </Label>
               <RadioGroup
                 className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2"
@@ -125,10 +140,10 @@ export function GeneralPage() {
                         htmlFor={opt.value}
                         className="cursor-pointer text-sm font-medium leading-tight"
                       >
-                        {opt.label}
+                        {t(opt.labelKey)}
                       </Label>
                       <span className="text-xs text-muted-foreground leading-tight">
-                        {opt.description}
+                        {t(opt.descriptionKey)}
                       </span>
                     </div>
                   </div>
@@ -142,10 +157,10 @@ export function GeneralPage() {
           <div className="flex items-start justify-between gap-6">
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Start ZEmu Launcher on startup</span>
+                <span className="text-sm font-medium">{t('settings.general.startOnStartup')}</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Automatically launch ZEmu when you sign in to Windows.
+                {t('settings.general.startOnStartupDesc')}
               </p>
             </div>
 
@@ -153,8 +168,37 @@ export function GeneralPage() {
               checked={autostartEnabled ?? false}
               disabled={autostartEnabled === null}
               onCheckedChange={handleAutostartChange}
-              aria-label="Toggle launch on system startup"
+              aria-label={t('settings.general.startOnStartup')}
             />
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-5">
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{t('settings.general.language')}</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {t('settings.general.languageDesc')}
+              </p>
+            </div>
+
+            <Select
+              value={normalizeLanguageCode(i18n.language)}
+              onValueChange={handleLanguageChange}
+            >
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder={t('common.selectLanguage')} />
+              </SelectTrigger>
+              <SelectContent>
+                {SUPPORTED_LANGUAGES.map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {t(lang.labelKey)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

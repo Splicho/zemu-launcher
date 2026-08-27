@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Copy, Check } from 'lucide-react'
 
 import {
@@ -58,6 +59,7 @@ export function SteamInstructionsModal({
   onOpenChange,
   onAcknowledge,
 }: SteamInstructionsModalProps) {
+  const { t } = useTranslation()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleAcknowledge = useCallback(async () => {
@@ -81,9 +83,9 @@ export function SteamInstructionsModal({
       */}
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Download the base game</DialogTitle>
+          <DialogTitle>{t('steamInstructions.downloadBaseGame')}</DialogTitle>
           <DialogDescription>
-            We are legally not allowed to ship KotK, so you need to download the base game via Steam's depot console.
+            {t('steamInstructions.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -92,7 +94,7 @@ export function SteamInstructionsModal({
         <DialogFooter className="-mx-4 -mb-4 mt-2 sm:justify-end">
           <DialogClose asChild>
             <Button variant="outline" type="button" disabled={isSubmitting} className="rounded-lg">
-              Cancel
+              {t('steamInstructions.cancel')}
             </Button>
           </DialogClose>
           <Button
@@ -103,7 +105,7 @@ export function SteamInstructionsModal({
             }}
             disabled={isSubmitting}
           >
-            {isSubmitting ? 'Closing...' : 'Got it'}
+            {isSubmitting ? t('steamInstructions.closing') : t('steamInstructions.gotIt')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -118,47 +120,53 @@ export function SteamInstructionsModal({
  * prose (or the helpers below).
  */
 export function SteamInstructionsSteps() {
+  const { t } = useTranslation()
   return (
     <ol className="space-y-3 text-sm text-popover-foreground">
       <li className="flex gap-3">
         <StepBadge>1</StepBadge>
-        <span>Open Steam on your computer.</span>
+        <span>{t('steamInstructions.openSteam')}</span>
       </li>
 
       <li className="flex gap-3">
         <StepBadge>2</StepBadge>
         <span>
-          Press <Kbd>Win</Kbd> + <Kbd>R</Kbd>, type{' '}
-          <Code>{STEAM_CONSOLE_URL}</Code>, then press <Kbd>Enter</Kbd>.
-          The Steam Console window will open.
+          {t('steamInstructions.step2OpenConsole')}{' '}
+          <Kbd>{t('steamInstructions.step2WinR')}</Kbd>,{' '}
+          {t('steamInstructions.step2Type')}{' '}
+          <Code>{STEAM_CONSOLE_URL}</Code>,{' '}
+          {t('steamInstructions.step2PressEnter')}{' '}
+          <Kbd>{t('steamInstructions.step2Enter')}</Kbd>.
+          {t('steamInstructions.step2ConsoleOpens')}
         </span>
       </li>
 
       <li className="flex gap-3">
         <StepBadge>3</StepBadge>
         <div className="min-w-0 flex-1 space-y-2">
-          In the Steam Console window, run:
+          {t('steamInstructions.step3RunCommand')}
           <CopyableCommand command={DOWNLOAD_DEPOT_COMMAND} />
-          then press <Kbd>Enter</Kbd>.
+          {t('steamInstructions.step3ThenEnter')}{' '}
+          <Kbd>{t('steamInstructions.step2Enter')}</Kbd>.
         </div>
       </li>
 
       <li className="flex gap-3">
         <StepBadge>4</StepBadge>
         <span>
-          Wait for the download to finish. The depot lands under{' '}
+          {t('steamInstructions.step4WaitDownload')}{' '}
           <Code>steamapps/content/app_433850/depot_433851/</Code>.
         </span>
       </li>
 
       <li className="flex gap-3">
         <StepBadge>5</StepBadge>
-        <span>You can close Steam once the download finishes.</span>
+        <span>{t('steamInstructions.step5CloseSteam')}</span>
       </li>
 
       <li className="flex gap-3">
         <StepBadge>6</StepBadge>
-        <span>Install ZEmu Patch.</span>
+        <span>{t('steamInstructions.step6InstallPatch')}</span>
       </li>
     </ol>
   )
@@ -210,6 +218,7 @@ export function Code({ children }: { children: React.ReactNode }) {
  * user can still copy the text by hand.
  */
 export function CopyableCommand({ command }: { command: string }) {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(async () => {
@@ -236,14 +245,14 @@ export function CopyableCommand({ command }: { command: string }) {
             onClick={() => {
               void handleCopy()
             }}
-            aria-label={copied ? 'Copied' : 'Copy command'}
+            aria-label={copied ? t('steamInstructions.copied') : t('steamInstructions.copyCommand')}
             className="shrink-0"
           >
             {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
           </Button>
         </TooltipTrigger>
         <TooltipContent side="right">
-          {copied ? 'Copied' : 'Copy command'}
+          {copied ? t('steamInstructions.copied') : t('steamInstructions.copyCommand')}
         </TooltipContent>
       </Tooltip>
     </div>

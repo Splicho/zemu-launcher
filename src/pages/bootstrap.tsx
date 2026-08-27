@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { invoke } from '@tauri-apps/api/core'
 import { type DownloadEvent, check } from '@tauri-apps/plugin-updater'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -70,6 +71,7 @@ const INITIAL_STATE: BootstrapState = {
  * trapped in the bootstrap window if the update server is down.
  */
 export function BootstrapPage() {
+  const { t } = useTranslation()
   const [state, setState] = useState<BootstrapState>(INITIAL_STATE)
   const mountedRef = useRef(true)
   const startedRef = useRef(false)
@@ -92,8 +94,8 @@ export function BootstrapPage() {
 
   const openLauncher = useCallback(async () => {
     updateState({
-      status: 'Opening launcher',
-      detail: 'Bootstrapping complete.',
+      status: t('bootstrap.openingLauncher'),
+      detail: t('bootstrap.bootstrappingComplete'),
       error: null,
     })
 
@@ -102,12 +104,12 @@ export function BootstrapPage() {
     } catch (error) {
       updateState({
         phase: 'check-error',
-        status: 'Could not open launcher',
-        detail: 'The main launcher window could not be created.',
-        error: formatError(error),
+        status: t('bootstrap.couldNotOpenLauncher'),
+        detail: t('bootstrap.launcherWindowFailed'),
+        error: formatError(error, t),
       })
     }
-  }, [updateState])
+  }, [updateState, t])
 
   const runBootstrap = useCallback(async () => {
     updateState(INITIAL_STATE)
@@ -116,8 +118,8 @@ export function BootstrapPage() {
     if (!packaged) {
       updateState({
         phase: 'development',
-        status: 'Updater skipped in development',
-        detail: 'Development builds open the launcher directly.',
+        status: t('bootstrap.updaterSkipped'),
+        detail: t('bootstrap.devBuildNote'),
         error: null,
         latestVersion: null,
         downloadedBytes: 0,
@@ -132,9 +134,9 @@ export function BootstrapPage() {
     const update = await check().catch((error) => {
       updateState({
         phase: 'check-error',
-        status: 'Could not check launcher updates',
-        detail: 'GitHub release metadata could not be fetched.',
-        error: formatError(error),
+        status: t('bootstrap.checkFailed'),
+        detail: t('bootstrap.checkFailedDetail'),
+        error: formatError(error, t),
         latestVersion: null,
         downloadedBytes: 0,
         totalBytes: null,
@@ -146,8 +148,8 @@ export function BootstrapPage() {
     if (!update) {
       updateState({
         phase: 'up-to-date',
-        status: 'Launcher is up to date',
-        detail: 'No newer launcher build is available.',
+        status: t('bootstrap.upToDate'),
+        detail: t('bootstrap.upToDateDetail'),
         error: null,
         latestVersion: null,
         downloadedBytes: 0,
@@ -161,8 +163,8 @@ export function BootstrapPage() {
 
     updateState({
       phase: 'downloading',
-      status: `Downloading launcher ${update.version}`,
-      detail: 'The launcher will restart automatically after the update finishes.',
+      status: t('bootstrap.downloading', { version: update.version }),
+      detail: t('bootstrap.downloadingDetail'),
       error: null,
       currentVersion: update.currentVersion,
       latestVersion: update.version,
@@ -206,8 +208,8 @@ export function BootstrapPage() {
 
       updateState({
         phase: 'restarting',
-        status: 'Restarting launcher',
-        detail: 'Installing the new build and reopening the launcher.',
+        status: t('bootstrap.restarting'),
+        detail: t('bootstrap.restartingDetail'),
         error: null,
         progress: 100,
       })
@@ -216,16 +218,16 @@ export function BootstrapPage() {
     } catch (error) {
       updateState({
         phase: 'install-error',
-        status: 'Launcher update failed',
-        detail: 'The update could not be downloaded or installed.',
-        error: formatError(error),
+        status: t('bootstrap.updateFailed'),
+        detail: t('bootstrap.updateFailedDetail'),
+        error: formatError(error, t),
         downloadedBytes,
         totalBytes,
       })
     } finally {
       await update.close().catch(() => undefined)
     }
-  }, [openLauncher, updateState])
+  }, [openLauncher, updateState, t])
 
   useEffect(() => {
     mountedRef.current = true
@@ -253,11 +255,11 @@ export function BootstrapPage() {
   const hasError = hasCheckError || hasInstallError
   const splashLabel =
     state.phase === 'checking'
-      ? 'Checking for updates...'
+      ? t('bootstrap.splashChecking')
       : state.phase === 'development' ||
           state.phase === 'up-to-date' ||
           state.phase === 'restarting'
-        ? 'Starting...'
+        ? t('bootstrap.splashStarting')
         : null
 
   return (
@@ -298,7 +300,7 @@ export function BootstrapPage() {
         {hasCheckError ? (
           <div className="mt-8 flex w-full gap-3">
             <Button className="flex-1" size="lg" onClick={retry}>
-              Retry
+              {t('common.retry')}
             </Button>
             <Button
               className="flex-1"
@@ -306,7 +308,7 @@ export function BootstrapPage() {
               variant="outline"
               onClick={() => void openLauncher()}
             >
-              Open launcher
+              {t('bootstrap.openLauncher')}
             </Button>
           </div>
         ) : null}
@@ -314,10 +316,10 @@ export function BootstrapPage() {
         {hasInstallError ? (
           <div className="mt-8 flex w-full gap-3">
             <Button className="flex-1" size="lg" onClick={retry}>
-              Retry
+              {t('common.retry')}
             </Button>
             <Button className="flex-1" size="lg" variant="outline" onClick={exitLauncher}>
-              Exit
+              {t('common.exit')}
             </Button>
           </div>
         ) : null}
@@ -347,12 +349,12 @@ function applyDownloadEvent(
   handlers.onFinish()
 }
 
-function formatError(error: unknown) {
+function formatError(error: unknown, t: ReturnType<typeof useTranslation>['t']) {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message
   }
 
-  return 'Unexpected updater error'
+  return t('bootstrap.unexpectedError')
 }
 
 function delay(ms: number) {

@@ -1,4 +1,5 @@
 import * as React from 'react'
+import i18n from '@/lib/i18n'
 
 export interface UpdateState {
   isUpdating: boolean
@@ -32,13 +33,13 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
   const startDemo = React.useCallback(() => {
     setIsUpdating(true)
     setProgress(0)
-    setPhase('Checking for updates...')
+    setPhase(i18n.t('update.checking'))
 
     const phases = [
-      'Downloading update...',
-      'Installing files...',
-      'Verifying integrity...',
-      'Almost done...',
+      i18n.t('update.downloading'),
+      i18n.t('update.installing'),
+      i18n.t('update.verifying'),
+      i18n.t('update.almostDone'),
     ]
 
     let phaseIndex = 0

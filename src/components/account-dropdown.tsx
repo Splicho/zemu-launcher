@@ -5,6 +5,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useAuthContext } from '@/contexts/auth-context'
+import { useTranslation } from 'react-i18next'
 
 /**
  * Account dropdown anchored to the user's avatar.
@@ -17,10 +18,11 @@ import { useAuthContext } from '@/contexts/auth-context'
  * the credentials login path.
  */
 export function AccountDropdown() {
+  const { t } = useTranslation()
   const { token, logout } = useAuthContext()
 
   const displayName =
-    token?.displayName ?? token?.username ?? token?.email ?? '?'
+    token?.displayName ?? token?.username ?? token?.email ?? t('account.unknownUser')
 
   const fallback = (displayName[0] ?? '?').toUpperCase()
 
@@ -29,7 +31,7 @@ export function AccountDropdown() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label="Open account menu"
+          aria-label={t('account.openMenu')}
           className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <AvatarRoot size="default">
@@ -41,7 +43,7 @@ export function AccountDropdown() {
 
       <DropdownMenuContent align="end" sideOffset={8} className="min-w-40">
         <DropdownMenuItem onSelect={() => logout()}>
-          Sign out
+          {t('account.signOut')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   Dialog,
@@ -39,6 +40,7 @@ export function PropertiesModal({
   gameDirectory,
   onChangeFolder,
 }: PropertiesModalProps) {
+  const { t } = useTranslation()
   const [activeSection, setActiveSection] =
     useState<PropertiesSectionId>(defaultSection)
 
@@ -76,9 +78,9 @@ export function PropertiesModal({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-4xl gap-0 p-0">
         <DialogHeader className="border-b p-4">
-          <DialogTitle>Properties</DialogTitle>
+          <DialogTitle>{t('properties.title')}</DialogTitle>
           <DialogDescription>
-            Configure ZEmu: King of the Kill
+            {t('properties.description')}
           </DialogDescription>
         </DialogHeader>
 

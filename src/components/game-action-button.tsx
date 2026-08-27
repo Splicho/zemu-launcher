@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,7 @@ interface GameActionButtonProps {
 }
 
 export function GameActionButton({ className }: GameActionButtonProps) {
+  const { t } = useTranslation()
   const {
     state,
     cancelDownload,
@@ -46,40 +48,40 @@ export function GameActionButton({ className }: GameActionButtonProps) {
 
   const buttonText = useMemo(() => {
     if (state.type === 'LICENSE_BINDING') {
-      return 'Activating...'
+      return t('play.activating')
     }
     if (state.type === 'LICENSE_REQUIRED') {
-      return 'Account Key Required'
+      return t('play.accountKeyRequired')
     }
     if (state.type === 'DOWNLOADING_UPDATE' && 'updateStatus' in state && state.updateStatus) {
       const progress = state.updateStatus.overallProgress.toFixed(0)
-      return `Updating...${progress}%`
+      return t('play.updateProgress', { progress })
     }
     if (state.type === 'APPLYING_PATCH') {
-      return 'Applying Patch...'
+      return t('play.applyingPatch')
     }
     if (state.type === 'NEEDS_DESTINATION') {
-      return hasAcknowledgedSteamInstructions ? 'Locate PS3 Folder' : 'Install'
+      return hasAcknowledgedSteamInstructions ? t('play.locatePs3Folder') : t('play.install')
     }
     if (state.type === 'UPDATE_AVAILABLE') {
-      return state.reason === 'NOT_INSTALLED' ? 'Install Patch' : 'Update available'
+      return state.reason === 'NOT_INSTALLED' ? t('play.installPatch') : t('play.updateAvailable')
     }
     switch (state.type) {
       case 'CHECKING_FOR_UPDATE':
-        return 'Checking...'
+        return t('play.checking')
       case 'LAUNCHING_GAME':
-        return 'Launching game...'
+        return t('play.launchingGame')
       case 'PLAYING':
-        return 'Playing'
+        return t('play.playing')
       case 'UPDATE_COMPLETE':
       case 'UP_TO_DATE':
-        return 'Play'
+        return t('play.play')
       case 'ERROR':
-        return 'Retry'
+        return t('play.retry')
       default:
-        return 'Install'
+        return t('play.install')
     }
-  }, [state, hasAcknowledgedSteamInstructions])
+  }, [state, hasAcknowledgedSteamInstructions, t])
 
   // `buttonVariant` applies the green glow only when the launcher is
   // ready to actually play — not during all the states that still
@@ -211,8 +213,8 @@ export function GameActionButton({ className }: GameActionButtonProps) {
                 size="icon-lg"
                 variant="destructive"
                 onClick={handleCancelDownload}
-                aria-label="Cancel download"
-                title="Cancel download"
+                aria-label={t('play.cancelDownload')}
+                title={t('play.cancelDownload')}
                 className="size-12 rounded-lg"
               >
                 <Cancel className="size-5" />
@@ -232,14 +234,14 @@ export function GameActionButton({ className }: GameActionButtonProps) {
       */}
       {state.type === 'NEEDS_DESTINATION' && !hasAcknowledgedSteamInstructions ? (
         <p className="text-sm text-muted-foreground">
-          Already installed?{' '}
+          {t('play.alreadyInstalled')}{' '}
           <button
             type="button"
             onClick={handlePrimaryAction}
             disabled={isDisabled}
             className="text-primary underline underline-offset-4 hover:text-primary/80 disabled:pointer-events-none disabled:opacity-50"
           >
-            Locate folder
+            {t('play.locateFolder')}
           </button>
         </p>
       ) : null}

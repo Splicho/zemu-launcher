@@ -1,28 +1,30 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Separator } from '@/components/ui/separator'
 import { Label } from '@/components/ui/label'
 
 export type AppTheme = 'system' | 'dark' | 'light'
 
-const THEME_OPTIONS: { value: AppTheme; label: string; description: string }[] = [
+const THEME_OPTIONS: { value: AppTheme; labelKey: string; descriptionKey: string }[] = [
   {
     value: 'system',
-    label: 'System',
-    description: 'Match your operating system\'s colour scheme.',
+    labelKey: 'settings.appearance.themeSystem',
+    descriptionKey: 'settings.appearance.themeSystemDesc',
   },
   {
     value: 'dark',
-    label: 'Dark',
-    description: 'Always use a dark theme.',
+    labelKey: 'settings.appearance.themeDark',
+    descriptionKey: 'settings.appearance.themeDarkDesc',
   },
   {
     value: 'light',
-    label: 'Light',
-    description: 'Always use a light theme.',
+    labelKey: 'settings.appearance.themeLight',
+    descriptionKey: 'settings.appearance.themeLightDesc',
   },
 ]
 
 export function AppearancePage() {
+  const { t } = useTranslation()
   const [theme, setTheme] = useState<AppTheme>('dark')
 
   useEffect(() => {
@@ -56,9 +58,9 @@ export function AppearancePage() {
   return (
     <div className="flex flex-col gap-6 py-6">
       <header>
-        <h1 className="text-2xl font-bold">Appearance</h1>
+        <h1 className="text-2xl font-bold">{t('settings.appearance.title')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Customise how ZEmu Launcher looks.
+          {t('settings.appearance.description')}
         </p>
       </header>
 
@@ -99,8 +101,8 @@ export function AppearancePage() {
                     )}
                   </span>
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium">{opt.label}</span>
-                    <span className="text-xs text-muted-foreground">{opt.description}</span>
+                    <span className="text-sm font-medium">{t(opt.labelKey)}</span>
+                    <span className="text-xs text-muted-foreground">{t(opt.descriptionKey)}</span>
                   </div>
                 </button>
               )

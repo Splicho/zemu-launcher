@@ -2,6 +2,7 @@ import * as React from 'react'
 import { ChevronRight, RefreshCw, FolderSearch, Settings } from 'lucide-react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useTranslation } from 'react-i18next'
 import {
   DiscordFilled,
   Home,
@@ -95,6 +96,7 @@ function useHashRoute() {
 }
 
 export function AppSidebar({ registerOpener }: AppSidebarProps) {
+  const { t } = useTranslation()
   const [socialOpen, setSocialOpen] = React.useState(false)
   const [hasAcknowledgedSteamInstructions, setHasAcknowledgedSteamInstructions] =
     React.useState<boolean>(hasSeenSteamInstructions)
@@ -154,9 +156,11 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
     try {
       await window.gameAPI.openInFileManager(gameDirectory)
     } catch (error) {
-      toast.error(`Failed to open folder: ${error instanceof Error ? error.message : String(error)}`)
+      toast.error(t('common.error'), {
+        description: String(error instanceof Error ? error.message : error),
+      })
     }
-  }, [gameDirectory])
+  }, [gameDirectory, t])
 
   const handleCheckForUpdates = React.useCallback(() => {
     // A menu-driven "Check for updates" is always an explicit user
@@ -229,19 +233,19 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                 <SidebarMenuButton asChild isActive={isActive('/')} size="lg" className="px-4">
                   <a href="#/">
                     <Home className="size-5!" />
-                    <span>Home</span>
+                    <span>{t('nav.home')}</span>
                   </a>
                 </SidebarMenuButton>
                 <SidebarMenuButton asChild isActive={isActive('/news')} size="lg" className="px-4">
                   <a href="#/news">
                     <News className="size-5!" />
-                    <span>News</span>
+                    <span>{t('nav.news')}</span>
                   </a>
                 </SidebarMenuButton>
                 <SidebarMenuButton asChild isActive={isActive('/leaderboard')} size="lg" className="px-4 opacity-50 cursor-not-allowed pointer-events-none">
                   <span>
                     <Leaderboard className="size-5!" />
-                    <span>Leaderboard</span>
+                    <span>{t('nav.leaderboard')}</span>
                   </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -250,7 +254,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
         </SidebarGroup>
         <SidebarGroup className="px-5 pb-2">
           <SidebarGroupLabel className="uppercase tracking-wider pl-4">
-            Play
+            {t('appSidebar.play')}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -294,7 +298,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                             )}
                           </AnimatePresence>
                         </span>
-                        <span>ZEmu: King of the Kill</span>
+                        <span>{t('appSidebar.gameName')}</span>
                       </a>
                     </SidebarMenuButton>
                   </ContextMenuTrigger>
@@ -314,7 +318,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                       }}
                     >
                       <RefreshCw className="size-4" />
-                      <span>Check for updates</span>
+                      <span>{t('appSidebar.checkForUpdates')}</span>
                     </ContextMenuItem>
                     <ContextMenuSeparator />
                     {gameDirectory ? (
@@ -325,7 +329,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                         }}
                       >
                         <FolderSearch className="size-4" />
-                        <span>Browse game files</span>
+                        <span>{t('appSidebar.browseGameFiles')}</span>
                       </ContextMenuItem>
                     ) : null}
                     <ContextMenuSeparator />
@@ -336,7 +340,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                       }}
                     >
                       <Settings className="size-4" />
-                      <span>Properties…</span>
+                      <span>{t('appSidebar.propertiesAction')}</span>
                     </ContextMenuItem>
                   </ContextMenuContent>
                 </ContextMenu>
@@ -357,7 +361,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
               aria-expanded={socialOpen}
             >
               <Socialize className="size-5!" />
-              <span>Socialize</span>
+              <span>{t('nav.socialize')}</span>
               <motion.div
                 animate={{ rotate: socialOpen ? 90 : 0 }}
                 transition={{ duration: 0.2 }}
@@ -390,7 +394,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                             // canonical path in Tauri.
                             event.preventDefault()
                             void openUrl(href).catch((error) => {
-                              toast.error(`Failed to open ${label}`, {
+                              toast.error(t('common.error'), {
                                 description: String(error),
                               })
                             })
@@ -415,7 +419,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
             <SidebarMenuButton asChild isActive={isActive('/settings')} size="lg" className="px-4">
               <a href="#/settings">
                 <Settings className="size-5!" />
-                <span>Settings</span>
+                <span>{t('nav.settings')}</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>

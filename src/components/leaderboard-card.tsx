@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import {
   Table,
   TableHeader,
@@ -66,6 +67,7 @@ function SkeletonRow() {
 }
 
 export function LeaderboardCard() {
+  const { t } = useTranslation()
   const [tierFilter, setTierFilterRaw] = useState<LeaderboardTier | 'all'>('all')
   const setTierFilter = (value: string) => {
     if (value === 'all' || TIER_VALUES.includes(value as LeaderboardTier)) {
@@ -87,19 +89,19 @@ export function LeaderboardCard() {
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-6">
-        <CardTitle className="uppercase tracking-wide">Top 5 Players</CardTitle>
+        <CardTitle className="uppercase tracking-wide">{t('leaderboard.topPlayers')}</CardTitle>
         <div className="flex flex-wrap items-center gap-2">          <Select value={tierFilter} onValueChange={setTierFilter}>
             <SelectTrigger className="w-28 h-7">
               <SelectValue placeholder="Tier" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Tiers</SelectItem>
-              <SelectItem value="bronze">Bronze</SelectItem>
-              <SelectItem value="silver">Silver</SelectItem>
-              <SelectItem value="gold">Gold</SelectItem>
-              <SelectItem value="platinum">Platinum</SelectItem>
-              <SelectItem value="diamond">Diamond</SelectItem>
-              <SelectItem value="master">Master</SelectItem>
+              <SelectItem value="all">{t('leaderboard.allTiers')}</SelectItem>
+              <SelectItem value="bronze">{t('leaderboard.bronze')}</SelectItem>
+              <SelectItem value="silver">{t('leaderboard.silver')}</SelectItem>
+              <SelectItem value="gold">{t('leaderboard.gold')}</SelectItem>
+              <SelectItem value="platinum">{t('leaderboard.platinum')}</SelectItem>
+              <SelectItem value="diamond">{t('leaderboard.diamond')}</SelectItem>
+              <SelectItem value="master">{t('leaderboard.master')}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -108,9 +110,9 @@ export function LeaderboardCard() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="EU">EU</SelectItem>
-              <SelectItem value="NA" disabled>NA (Soon)</SelectItem>
-              <SelectItem value="ASIA" disabled>ASIA (Soon)</SelectItem>
+              <SelectItem value="EU">{t('leaderboard.regionEU')}</SelectItem>
+              <SelectItem value="NA" disabled>{t('leaderboard.regionNA')}</SelectItem>
+              <SelectItem value="ASIA" disabled>{t('leaderboard.regionAsia')}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -119,9 +121,9 @@ export function LeaderboardCard() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Solo">Solo</SelectItem>
-              <SelectItem value="Duo">Duo</SelectItem>
-              <SelectItem value="Fives">Fives</SelectItem>
+              <SelectItem value="Solo">{t('leaderboard.modeSolo')}</SelectItem>
+              <SelectItem value="Duo">{t('leaderboard.modeDuo')}</SelectItem>
+              <SelectItem value="Fives">{t('leaderboard.modeFives')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -131,10 +133,10 @@ export function LeaderboardCard() {
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-12 text-center tracking-wide uppercase text-foreground/70">#</TableHead>
-              <TableHead className="tracking-wide uppercase text-foreground/70">Name</TableHead>
-              <TableHead className="w-20 tracking-wide uppercase text-foreground/70">Tier</TableHead>
+              <TableHead className="tracking-wide uppercase text-foreground/70">{t('leaderboard.colName')}</TableHead>
+              <TableHead className="w-20 tracking-wide uppercase text-foreground/70">{t('leaderboard.colTier')}</TableHead>
               <TableHead className="text-right tracking-wide uppercase text-foreground/70">
-                <span className="text-amber-400">Total Score</span>
+                <span className="text-amber-400">{t('leaderboard.colTotalScore')}</span>
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -160,7 +162,7 @@ export function LeaderboardCard() {
             {visibleEntries && visibleEntries.length === 0 && !error && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
-                  No players found.
+                  {t('leaderboard.noPlayersFound')}
                 </TableCell>
               </TableRow>
             )}

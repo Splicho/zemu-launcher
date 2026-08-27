@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { fetchNewsList, formatNewsDate } from '@/lib/news'
@@ -28,6 +29,7 @@ function NewsSliderSkeleton() {
 }
 
 export function NewsSlider() {
+  const { t } = useTranslation()
   const { navigate } = useHashRouter()
   const [index, setIndex] = useState(0)
   const [prevIndex, setPrevIndex] = useState<number | null>(null)
@@ -243,7 +245,7 @@ export function NewsSlider() {
             }}
           >
             <span className="inline-flex items-center gap-2">
-              <span>Read more</span>
+              <span>{t('news.readMore')}</span>
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
             </span>
           </Button>
@@ -266,7 +268,7 @@ export function NewsSlider() {
               <button
                 key={i}
                 type="button"
-                aria-label={`Show article ${i + 1}`}
+                aria-label={t('news.showArticle', { index: i + 1 })}
                 aria-current={isActive ? 'true' : undefined}
                 onClick={(e) => {
                   e.stopPropagation()

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,6 +11,7 @@ import { LAUNCHER_CONFIG } from '@/config/launcher'
 import type { Provider } from '@/lib/auth'
 
 export function LoginPage() {
+  const { t } = useTranslation()
   const { login, loginWithProvider } = useAuthContext()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -59,7 +61,7 @@ export function LoginPage() {
       <div className="relative flex flex-1 items-center justify-center bg-gradient-to-t from-background via-background to-[#121212]">
         <div className="flex flex-col items-center justify-center gap-4">
           <Spinner className="size-8 text-foreground" />
-          <p className="text-lg text-foreground">Logging in...</p>
+          <p className="text-lg text-foreground">{t('login.loggingIn')}</p>
         </div>
       </div>
     )
@@ -92,7 +94,7 @@ export function LoginPage() {
             className="mx-auto h-16 w-16"
           />
           <h1 className="text-2xl font-semibold text-foreground">
-            Login to {LAUNCHER_CONFIG.company}
+            {t('login.loginTo', { company: LAUNCHER_CONFIG.company })}
           </h1>
         </div>
 
@@ -126,7 +128,7 @@ export function LoginPage() {
             className="h-12 w-full justify-center rounded-sm"
           >
             <DiscordFilled className="!size-5" />
-            Continue with Discord
+            {t('login.continueDiscord')}
           </Button>
           <Button
             type="button"
@@ -136,7 +138,7 @@ export function LoginPage() {
             className="h-12 w-full justify-center rounded-sm"
           >
             <Steam className="!size-5" />
-            Continue with Steam
+            {t('login.continueSteam')}
           </Button>
           <Button
             type="button"
@@ -150,7 +152,7 @@ export function LoginPage() {
             className="h-12 w-full justify-center rounded-sm"
           >
             <Mail className="!size-5" />
-            Continue with Email
+            {t('login.continueEmail')}
           </Button>
         </div>
 
@@ -171,7 +173,7 @@ export function LoginPage() {
                     htmlFor="email"
                     className="text-sm font-medium text-foreground"
                   >
-                    Email
+                    {t('login.email')}
                   </label>
                   <Input
                     id="email"
@@ -191,7 +193,7 @@ export function LoginPage() {
                       htmlFor="password"
                       className="text-sm font-medium text-foreground"
                     >
-                      Password
+                      {t('login.password')}
                     </label>
                     <a
                       href={`${LAUNCHER_CONFIG.apiBaseUrl}/forgot-password`}
@@ -199,7 +201,7 @@ export function LoginPage() {
                       rel="noopener noreferrer"
                       className="text-sm text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      Forgot password?
+                      {t('login.forgotPassword')}
                     </a>
                   </div>
                   <Input
@@ -221,18 +223,18 @@ export function LoginPage() {
                   size="lg"
                   variant="gradient"
                   className="h-11 w-full rounded-lg"                >
-                  {isSubmitting ? 'Please wait...' : 'Login'}
+                  {isSubmitting ? t('login.pleaseWait') : t('login.loginBtn')}
                 </Button>
 
                 <p className="text-center text-sm text-muted-foreground">
-                  No account?{' '}
+                  {t('login.noAccount')}{' '}
                   <a
                     href={`${LAUNCHER_CONFIG.apiBaseUrl}/register`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    Create new account
+                    {t('login.createAccount')}
                   </a>
                 </p>
               </form>

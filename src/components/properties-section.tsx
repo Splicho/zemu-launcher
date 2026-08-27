@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FolderInput, FolderOpen } from 'lucide-react'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -40,11 +41,12 @@ export function PropertiesSection({
   gameDirectory,
   onChangeFolder,
 }: PropertiesSectionProps) {
-  const activeLabel =
+  const { t } = useTranslation()
+  const activeLabelKey =
     PROPERTIES_SECTIONS.find((section) => section.id === activeId)
       // `install` is the first rail entry today, so it doubles as a
       // safe fallback if an unknown id ever sneaks through.
-      ?.label ?? 'Installed Files'
+      ?.labelKey ?? 'properties.installedFiles'
 
   // `useLicenseContext` is called unconditionally so the rules of
   // hooks are satisfied. The license body itself only renders for
@@ -59,7 +61,7 @@ export function PropertiesSection({
           title reads as a peer of the now-larger rail links on the
           left instead of feeling undersized next to them. */}
         <h3 className="text-base font-medium text-foreground">
-          {activeLabel}
+          {t(activeLabelKey)}
         </h3>
         <Separator className="my-3" />
 
@@ -82,8 +84,7 @@ export function PropertiesSection({
           <InstallationGuideSection />
         ) : (
           <p className="text-sm text-muted-foreground">
-            Settings for this section will appear here. This is a
-            placeholder while the section content is being designed.
+            {t('properties.placeholderDesc')}
           </p>
         )}
       </div>
@@ -126,6 +127,7 @@ function InstalledFilesSection({
   gameDirectory,
   onChangeFolder,
 }: InstalledFilesSectionProps) {
+  const { t } = useTranslation()
   const [sizeBytes, setSizeBytes] = useState<number | null>(null)
   const [sizeError, setSizeError] = useState<string | null>(null)
   const [isLocating, setIsLocating] = useState(false)
@@ -173,9 +175,7 @@ function InstalledFilesSection({
   if (!gameDirectory) {
     return (
       <p className="text-sm text-muted-foreground">
-        No installation folder has been selected yet. Use{' '}
-        <span className="font-medium text-foreground">Change</span>{' '}
-        below to pick one.
+        {t('properties.noFolderSelected')}
       </p>
     )
   }
@@ -183,11 +183,11 @@ function InstalledFilesSection({
   return (
     <div className="space-y-5">
       <dl className="grid grid-cols-[8rem_1fr] gap-y-3 text-sm">
-        <dt className="text-muted-foreground">Size on disk</dt>
+        <dt className="text-muted-foreground">{t('properties.sizeOnDisk')}</dt>
         <dd className="font-medium tabular-nums">
           {sizeError ? (
             <span className="font-normal text-destructive">
-              Unable to calculate size
+              {t('properties.unableToCalculateSize')}
             </span>
           ) : sizeBytes === null ? (
             <Skeleton className="inline-block h-4 w-20 align-middle" />
@@ -196,12 +196,12 @@ function InstalledFilesSection({
           )}
           {sizeError ? (
             <span className="ml-2 text-xs text-muted-foreground">
-              {sizeError}
+              {t('properties.browseFailed', { error: sizeError })}
             </span>
           ) : null}
         </dd>
 
-        <dt className="text-muted-foreground">Location</dt>
+        <dt className="text-muted-foreground">{t('properties.location')}</dt>
         <dd
           className="truncate font-mono text-xs"
           title={gameDirectory}
@@ -211,7 +211,7 @@ function InstalledFilesSection({
       </dl>
 
       {locateError ? (
-        <p className="text-xs text-destructive">Browse failed: {locateError}</p>
+        <p className="text-xs text-destructive">{t('properties.browseFailed', { error: locateError })}</p>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
@@ -224,9 +224,7 @@ function InstalledFilesSection({
           disabled={isLocating}
         >
           <FolderOpen />
-          {/* Ellipsis follows the Windows convention for "opens
-            something else" — here, the OS file manager. */}
-          {isLocating ? 'Opening…' : 'Browse...'}
+          {isLocating ? t('properties.opening') : t('properties.browse')}
         </Button>
         <Button
           type="button"
@@ -234,7 +232,7 @@ function InstalledFilesSection({
           onClick={onChangeFolder}
         >
           <FolderInput />
-          Change
+          {t('properties.change')}
         </Button>
       </div>
     </div>

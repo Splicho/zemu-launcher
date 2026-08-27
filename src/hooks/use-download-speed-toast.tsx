@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useGameStateContext } from '@/contexts/game-state-context'
 import { useDownloadSpeed } from '@/hooks/use-download-speed'
 import { useDownloadEta } from '@/hooks/use-download-eta'
 
-function formatSpeed(bytesPerSecond: number | null, stalled: boolean): string {
-  if (stalled) return 'Stalled'
-  if (bytesPerSecond === null || bytesPerSecond <= 0) return 'Calculating…'
+function formatSpeed(bytesPerSecond: number | null, stalled: boolean, t: (key: string) => string): string {
+  if (stalled) return t('download.stalled')
+  if (bytesPerSecond === null || bytesPerSecond <= 0) return t('download.calculating')
   const mbps = bytesPerSecond / (1024 * 1024)
   if (mbps >= 1) return `${mbps.toFixed(1)} MB/s`
   return `${(bytesPerSecond / 1024).toFixed(0)} KB/s`
@@ -30,19 +31,20 @@ function formatSpeed(bytesPerSecond: number | null, stalled: boolean): string {
  * don't want a duplicate (or a misleading "complete" after a cancel).
  */
 export function useDownloadSpeedToast() {
+  const { t } = useTranslation()
   const { isUpdating, updateStatus } = useGameStateContext()
   const { kind, speed, stalled } = useDownloadSpeed()
   const eta = useDownloadEta()
 
   const isActive = isUpdating && kind === 'update'
 
-  const title = 'Updating KotK'
+  const title = t('update.updatingKotK')
   const description = useMemo(() => {
-    const speedText = formatSpeed(speed, stalled)
+    const speedText = formatSpeed(speed, stalled, t)
     if (stalled) return speedText
-    if (eta) return `${speedText} · ${eta} remaining`
+    if (eta) return `${speedText} · ${t('download.etaRemaining', { eta })}`
     return speedText
-  }, [speed, stalled, eta])
+  }, [speed, stalled, eta, t])
 
   // Snapshot the current terminal phase. Read directly from props in the
   // close-time effect below so we don't miss the terminal event arriving
@@ -88,7 +90,7 @@ export function useDownloadSpeedToast() {
         duration: Infinity,
       })
     }
-  }, [isActive, kind, title, description])
+  }, [isActive, kind, title, description, t])
 
   // When the active toast closes, show a brief follow-up only for clean
   // completions. Cancel/failure are deliberately silent here because the
@@ -104,7 +106,7 @@ export function useDownloadSpeedToast() {
       lastTerminalPhaseRef.current = null
 
       if (terminal === 'done') {
-        toast.success('Update complete', {
+        toast.success(t('update.updateComplete'), {
           id: '__download-speed-done__',
           duration: 3000,
         })
@@ -113,5 +115,5 @@ export function useDownloadSpeedToast() {
       toast.dismiss(activeToastIdRef.current)
       activeToastIdRef.current = null
     }
-  }, [isActive, currentTerminalPhase])
+  }, [isActive, currentTerminalPhase, t])
 }

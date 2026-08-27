@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 
 import { fetchNewsList, type NewsListItem } from '@/lib/news'
@@ -20,6 +21,7 @@ import { Button } from '@/components/ui/button'
  * home content.
  */
 export function NewsPage() {
+  const { t } = useTranslation()
   const { navigate } = useHashRouter()
   const [items, setItems] = useState<NewsListItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -32,7 +34,7 @@ export function NewsPage() {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load news')
+          setError(err instanceof Error ? err.message : null)
         }
       })
     return () => {
@@ -49,17 +51,17 @@ export function NewsPage() {
           className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Back
+          {t('common.back')}
         </Button>
       </div>
 
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-8 pb-8 pt-4">
         <header className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight">All news</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t('news.allNews')}</h1>
         </header>
 
         {error && (
-          <p className="text-sm text-muted-foreground">Couldn't load news: {error}</p>
+          <p className="text-sm text-muted-foreground">{t('news.failedLoadNews', { error })}</p>
         )}
 
         {items === null && !error && (
@@ -76,7 +78,7 @@ export function NewsPage() {
 
         {items && items.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            No news published yet — check back later.
+            {t('news.noNews')}
           </p>
         )}
 

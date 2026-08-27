@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 
 import { fetchNewsBySlug, formatNewsDate, type NewsFull } from '@/lib/news'
@@ -25,6 +26,7 @@ import { NewsBody } from '@/components/news-body'
  * error state.
  */
 export function NewsSlugPage({ slug }: { slug: string }) {
+  const { t } = useTranslation()
   const { navigate } = useHashRouter()
   const [post, setPost] = useState<NewsFull | null | 'loading' | 'missing'>('loading')
   const [error, setError] = useState<string | null>(null)
@@ -56,7 +58,7 @@ export function NewsSlugPage({ slug }: { slug: string }) {
           className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Back to news
+          {t('news.backToNews')}
         </Button>
       </div>
 
@@ -77,15 +79,15 @@ export function NewsSlugPage({ slug }: { slug: string }) {
 
           {error && (
             <p className="text-sm text-muted-foreground">
-              Couldn't load post: {error}
+              {t('news.failedLoadPost', { error })}
             </p>
           )}
 
           {post === 'missing' && (
             <div className="flex flex-col gap-3">
-              <h1 className="text-2xl font-semibold">Post not found</h1>
+              <h1 className="text-2xl font-semibold">{t('news.postNotFound')}</h1>
               <p className="text-sm text-muted-foreground">
-                This post doesn't exist or hasn't been published yet.
+                {t('news.postNotFoundDesc')}
               </p>
             </div>
           )}

@@ -1,4 +1,5 @@
 import { useHashRouter } from '@/hooks/use-hash'
+import { useTranslation } from 'react-i18next'
 
 export type NewsCardProps = {
   slug: string
@@ -32,6 +33,7 @@ export function NewsCard({
   compact,
 }: NewsCardProps) {
   const { navigate } = useHashRouter()
+  const { t } = useTranslation()
 
   return (
     <button
@@ -58,7 +60,7 @@ export function NewsCard({
         />
       ) : (
         <div className={compact ? 'flex h-36 items-center justify-center rounded-2xl bg-muted/40 text-sm' : 'flex h-48 w-full items-center justify-center overflow-hidden rounded-3xl bg-muted/40 text-sm'}>
-          No cover image
+          {t('news.noCoverImage')}
         </div>
       )}
 

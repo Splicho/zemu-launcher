@@ -18,6 +18,7 @@
  */
 
 import { useId, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { toast } from 'sonner'
 
@@ -76,14 +77,15 @@ interface LicenseSectionProps {
 // the local record has been cleared. When there's no record yet, the
 // table renders its empty-state row instead of a status cell.
 function keyStatusLabel(
+  t: (key: string) => string,
   record: LicenseRecord | null,
   status: LicenseStatus,
   revalidateError: LicenseFailure | null,
 ): string {
   if (!record) return ''
-  if (revalidateError === 'revoked') return 'Revoked'
-  if (status === 'binding') return 'Checking…'
-  return 'Active'
+  if (revalidateError === 'revoked') return t('license.statusRevoked')
+  if (status === 'binding') return t('license.statusChecking')
+  return t('license.statusActive')
 }
 
 function StatusBadge({ statusLabel }: { statusLabel: string }) {
@@ -117,6 +119,7 @@ export function LicenseSection({
   onRedeem,
   onRevalidate,
 }: LicenseSectionProps) {
+  const { t } = useTranslation()
   // Format the cached key for display. When there's no record,
   // the table renders its empty state instead.
   const formattedKey = useMemo(
@@ -130,6 +133,7 @@ export function LicenseSection({
   return (
     <div className="space-y-6">
       <RedeemForm
+        t={t}
         redeemError={redeemError}
         isSubmitting={isBinding}
         onSubmit={onRedeem}
@@ -140,14 +144,14 @@ export function LicenseSection({
 
       <Card>
         <CardHeader className="px-6">
-          <CardTitle className="uppercase tracking-wide">Account key</CardTitle>
+          <CardTitle className="uppercase tracking-wide">{t('properties.accountKey')}</CardTitle>
         </CardHeader>
         <CardContent className="px-6 pb-6">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Account key</TableHead>
-                <TableHead className="w-0 text-right">Status</TableHead>
+                <TableHead>{t('properties.accountKeyLabel')}</TableHead>
+                <TableHead className="w-0 text-right">{t('properties.status')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -157,7 +161,7 @@ export function LicenseSection({
                     {formattedKey}
                   </TableCell>
                   <TableCell className="text-right text-xs">
-                    <StatusBadge statusLabel={keyStatusLabel(record, status, revalidateError)} />
+                    <StatusBadge statusLabel={keyStatusLabel(t, record, status, revalidateError)} />
                   </TableCell>
                 </TableRow>
               ) : status === 'binding' ? (
@@ -175,7 +179,7 @@ export function LicenseSection({
                     colSpan={2}
                     className="py-6 text-center text-xs text-muted-foreground"
                   >
-                    No account keys redeemed yet.
+                    {t('license.noAccountKeys')}
                   </TableCell>
                 </TableRow>
               )}
@@ -194,6 +198,7 @@ function RedeemForm({
   isSubmitting,
   onSubmit,
   onRevalidate,
+  t,
 }: {
   redeemError: LicenseFailure | null
   isSubmitting: boolean
@@ -201,6 +206,7 @@ function RedeemForm({
     rawKey: string,
   ) => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
   onRevalidate: () => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
+  t: (key: string) => string
 }) {
   const [value, setValue] = useState('')
   const inputId = useId()
@@ -225,20 +231,20 @@ function RedeemForm({
       revalidateResult = submitResult
     }
     if (revalidateResult.ok) {
-      toast.success('Key redeemed.')
+      toast.success(t('license.keyRedeemed'))
     } else {
-      toast.error(redeemErrorMessage(revalidateResult.failure))
+      toast.error(redeemErrorMessage(t, revalidateResult.failure))
     }
   }
 
   const errorMessage = redeemError
-    ? redeemErrorMessage(redeemError)
+    ? redeemErrorMessage(t, redeemError)
     : null
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor={inputId}>Account key</Label>
+        <Label htmlFor={inputId}>{t('properties.accountKeyLabel')}</Label>
         <Input
           id={inputId}
           type="text"
@@ -264,22 +270,22 @@ function RedeemForm({
 
       <div className="flex flex-wrap items-center gap-3 w-full!">
         <Button type="submit" variant="gradient" disabled={!valid || isSubmitting} className="w-full!">
-          Redeem
+          {t('license.redeem')}
         </Button>
       </div>
     </form>
   )
 }
 
-function redeemErrorMessage(reason: UiFailureReason): string {
+function redeemErrorMessage(t: (key: string) => string, reason: UiFailureReason): string {
   switch (reason) {
     case 'not_found':
-      return 'This account key was not found. Please try again.'
+      return t('license.accountKeyNotFound')
     case 'revoked':
-      return 'This account key has been revoked.'
+      return t('license.accountKeyRevoked')
     case 'already_bound':
-      return 'This account key is bound to a different machine.'
+      return t('license.accountKeyBoundToOther')
     case 'unreachable':
-      return "Couldn't reach the account key server."
+      return t('license.couldNotReachServer')
   }
 }

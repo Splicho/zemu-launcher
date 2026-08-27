@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { useTranslation } from 'react-i18next'
 
 import { WindowClose, WindowMinimize } from '@/components/icons'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
@@ -28,6 +29,7 @@ import { LAUNCHER_CONFIG } from '@/config/launcher'
  * wired up in `src-tauri/src/commands.rs`, so we just invoke them.
  */
 export function TitleBar() {
+  const { t } = useTranslation()
   const handleMinimize = () => {
     void invoke('window_minimize')
   }
@@ -62,7 +64,7 @@ export function TitleBar() {
         <button
           type="button"
           onClick={handleMinimize}
-          aria-label="Minimize"
+          aria-label={t('common.minimize')}
           className="flex h-full w-12 items-center justify-center text-muted-foreground transition-colors hover:bg-muted-foreground/10"
         >
           <WindowMinimize size={16} />
@@ -70,7 +72,7 @@ export function TitleBar() {
         <button
           type="button"
           onClick={handleClose}
-          aria-label="Close"
+          aria-label={t('common.close')}
           className="flex h-full w-12 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
         >
           <WindowClose size={16} />

@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import { BookOpen, FolderTree, KeySquare } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import {
   SidebarMenu,
@@ -18,12 +19,12 @@ import {
  *  - `guide`:   read-only copy of the Steam depot install steps.
  */
 export const PROPERTIES_SECTIONS = [
-  { id: 'install', label: 'Installed Files', Icon: FolderTree },
-  { id: 'license', label: 'Account Key', Icon: KeySquare },
-  { id: 'guide', label: 'Installation Guide', Icon: BookOpen },
+  { id: 'install', labelKey: 'properties.installedFiles', Icon: FolderTree },
+  { id: 'license', labelKey: 'properties.accountKey', Icon: KeySquare },
+  { id: 'guide', labelKey: 'properties.installationGuide', Icon: BookOpen },
 ] as const satisfies ReadonlyArray<{
   id: string
-  label: string
+  labelKey: string
   Icon: ComponentType<{ className?: string }>
 }>
 
@@ -47,13 +48,14 @@ export function PropertiesSidebar({
   activeId,
   onSelect,
 }: PropertiesSidebarProps) {
+  const { t } = useTranslation()
   return (
     <nav
       aria-label="Property categories"
       className="w-60 shrink-0 border-r bg-muted/30 p-2"
     >
       <SidebarMenu>
-        {PROPERTIES_SECTIONS.map(({ id, label, Icon }) => {
+        {PROPERTIES_SECTIONS.map(({ id, labelKey, Icon }) => {
           const isActive = id === activeId
           return (
             <SidebarMenuItem key={id}>
@@ -72,7 +74,7 @@ export function PropertiesSidebar({
                 className="w-full justify-start"
               >
                 <Icon className="size-5" />
-                <span>{label}</span>
+                <span>{t(labelKey)}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           )

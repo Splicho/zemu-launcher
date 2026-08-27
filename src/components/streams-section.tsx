@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import useEmblaCarousel from 'embla-carousel-react'
 import { Button } from '@/components/ui/button'
 import { Eye } from '@/components/icons'
@@ -14,6 +15,7 @@ function formatViewers(count: number): string {
 }
 
 export function StreamsSection() {
+  const { t } = useTranslation()
   const { data, isLoading } = useQuery({
     queryKey: ['streams'],
     queryFn: fetchStreams,
@@ -29,7 +31,7 @@ export function StreamsSection() {
   return (
     <section className="px-8">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Streams</h2>
+        <h2 className="text-xl font-semibold">{t('streams.title')}</h2>
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={scrollPrev} className="rounded-full">
             <ChevronLeft className="size-5" />
@@ -74,7 +76,7 @@ export function StreamsSection() {
           </div>
         </div>
       ) : streams.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">Nobody is streaming ZEmu right now. Check back later!</p>
+        <p className="mt-4 text-sm text-muted-foreground">{t('streams.noStreams')}</p>
       ) : (
         <div ref={emblaRef} className="mt-4 overflow-hidden">
           <div className="flex gap-4">
@@ -106,7 +108,7 @@ export function StreamsSection() {
                   </p>
                 </div>
                 <span className="absolute left-2 top-2 rounded bg-red-500 px-1.5 py-0.5 text-xs font-medium text-white">
-                  LIVE
+                  {t('streams.liveBadge')}
                 </span>
               </a>
             ))}
