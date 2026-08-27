@@ -21,7 +21,7 @@ import { useId, useMemo, useState } from 'react'
 
 import { toast } from 'sonner'
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -32,6 +32,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -67,6 +68,7 @@ interface LicenseSectionProps {
   onRedeem: (
     rawKey: string,
   ) => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
+  onRevalidate: () => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
 }
 
 // The Status column reflects the *key's own state* (Active / Revoked),
@@ -86,6 +88,28 @@ function keyStatusLabel(
   return 'Active'
 }
 
+function StatusBadge({ statusLabel }: { statusLabel: string }) {
+  if (statusLabel === 'Active') {
+    return (
+      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+        Active
+      </span>
+    )
+  }
+  if (statusLabel === 'Revoked') {
+    return (
+      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-400">
+        Revoked
+      </span>
+    )
+  }
+  return (
+    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+      {statusLabel}
+    </span>
+  )
+}
+
 export function LicenseSection({
   status,
   record,
@@ -93,6 +117,7 @@ export function LicenseSection({
   revalidateError,
   isBinding,
   onRedeem,
+  onRevalidate,
 }: LicenseSectionProps) {
   // Format the cached key for display. When there's no record,
   // the table renders its empty state instead.
@@ -110,6 +135,7 @@ export function LicenseSection({
         redeemError={redeemError}
         isSubmitting={isBinding}
         onSubmit={onRedeem}
+        onRevalidate={onRevalidate}
       />
 
       <Separator />
@@ -133,7 +159,16 @@ export function LicenseSection({
                     {formattedKey}
                   </TableCell>
                   <TableCell className="text-right text-xs">
-                    {keyStatusLabel(record, status, revalidateError)}
+                    <StatusBadge statusLabel={keyStatusLabel(record, status, revalidateError)} />
+                  </TableCell>
+                </TableRow>
+              ) : status === 'binding' ? (
+                <TableRow>
+                  <TableCell className="py-4">
+                    <Skeleton className="h-3 w-48" />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Skeleton className="ml-auto h-3 w-12" />
                   </TableCell>
                 </TableRow>
               ) : (
@@ -142,7 +177,7 @@ export function LicenseSection({
                     colSpan={2}
                     className="py-6 text-center text-xs text-muted-foreground"
                   >
-                    No license bound yet. Use the form above to redeem a key.
+                    No account keys redeemed yet.
                   </TableCell>
                 </TableRow>
               )}
@@ -151,27 +186,7 @@ export function LicenseSection({
         </CardContent>
       </Card>
 
-      {revalidateError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Couldn't verify license</AlertTitle>
-          <AlertDescription>
-            {revalidateErrorMessage(revalidateError.reason)} The launcher
-            will keep using the cached key until the server is reachable
-            again.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {status === 'other-pc' && record ? (
-        <Alert>
-          <AlertTitle>Bound to a different PC</AlertTitle>
-          <AlertDescription>
-            This license is bound to another machine. To move it to
-            this PC, please contact an admin — re-binding is not
-            currently a self-service option.
-          </AlertDescription>
-        </Alert>
-      ) : null}
+      {/* Table status cell handles all revalidate feedback (Active / Revoked / Checking…); no supplementary alert needed. */}
     </div>
   )
 }
@@ -180,12 +195,14 @@ function RedeemForm({
   redeemError,
   isSubmitting,
   onSubmit,
+  onRevalidate,
 }: {
   redeemError: LicenseFailure | null
   isSubmitting: boolean
   onSubmit: (
     rawKey: string,
   ) => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
+  onRevalidate: () => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
 }) {
   const [value, setValue] = useState('')
   const inputId = useId()
@@ -201,14 +218,19 @@ function RedeemForm({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!valid || isSubmitting) return
-    toast.promise(onSubmit(raw), {
-      loading: 'Activating…',
-      success: () => {
-        // Sonner toast is shown automatically on success; nothing extra needed.
-        return 'License activated.'
-      },
-      error: (failure: LicenseFailure) => redeemErrorMessage(failure.reason),
-    })
+    // Await revalidate first so we get the fresh failure for the toast message.
+    const submitResult = await onSubmit(raw)
+    let revalidateResult: { ok: true } | { ok: false; failure: LicenseFailure }
+    if (submitResult.ok) {
+      revalidateResult = await onRevalidate()
+    } else {
+      revalidateResult = submitResult
+    }
+    if (revalidateResult.ok) {
+      toast.success('Key redeemed.')
+    } else {
+      toast.error(redeemErrorMessage(revalidateResult.failure.reason))
+    }
   }
 
   const errorMessage = redeemError
@@ -242,8 +264,8 @@ function RedeemForm({
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="gradient" disabled={!valid || isSubmitting}>
+      <div className="flex flex-wrap items-center gap-3 w-full!">
+        <Button type="submit" variant="gradient" disabled={!valid || isSubmitting} className="w-full!">
           Redeem
         </Button>
       </div>
@@ -254,25 +276,12 @@ function RedeemForm({
 function redeemErrorMessage(reason: UiFailureReason): string {
   switch (reason) {
     case 'not_found':
-      return 'This key was not recognized. Double-check the characters and try again.'
+      return 'This account key was not found. Please try again.'
     case 'revoked':
-      return 'This license has been revoked. Please contact an admin if you believe this is a mistake.'
+      return 'This account key has been revoked.'
     case 'already_bound':
-      return 'This license is bound to a different machine. Please contact an admin to move it.'
+      return 'This account key is bound to a different machine.'
     case 'unreachable':
-      return "Couldn't reach the license server. Check your connection and try again."
+      return "Couldn't reach the account key server."
   }
-}
-
-function revalidateErrorMessage(reason: UiFailureReason): string {
-  if (reason === 'revoked') {
-    return 'This key has been revoked on the server.'
-  }
-  if (reason === 'already_bound') {
-    return 'This key is now bound to a different machine.'
-  }
-  if (reason === 'not_found') {
-    return 'The server no longer recognises this key.'
-  }
-  return "Couldn't reach the license server."
 }

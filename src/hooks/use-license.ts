@@ -92,8 +92,10 @@ export interface UseLicenseResult {
   /**
    * Re-run validate against the currently-cached record. Saves the
    * updated record (with fresh `validatedAt`) to disk on success.
+   * Returns the failure reason if the key is no longer valid, so
+   * callers can surface a contextual message.
    */
-  revalidate: () => Promise<LicenseStatus>
+  revalidate: () => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
   /**
    * Drop everything — used on logout. Clears both in-memory state and
    * the persisted record on disk.
@@ -223,13 +225,13 @@ export function useLicense(options: UseLicenseOptions = {}): UseLicenseResult {
 
   // ── Revalidate ────────────────────────────────────────────────────────────
 
-  const revalidate = useCallback(async (): Promise<LicenseStatus> => {
-    if (!enabled) return 'unbound'
+  const revalidate = useCallback(async (): Promise<{ ok: true } | { ok: false; failure: LicenseFailure }> => {
+    if (!enabled) return { ok: false, failure: { reason: 'unreachable' } }
     const cachedKey = record?.licenseKey
     if (!cachedKey) {
       setStatus((prev) => (prev === 'unknown' ? prev : 'unbound'))
       setRevalidateError(null)
-      return 'unbound'
+      return { ok: false, failure: { reason: 'unreachable' } }
     }
     setStatus('binding')
     const result = await runValidate(cachedKey, record)
@@ -237,30 +239,23 @@ export function useLicense(options: UseLicenseOptions = {}): UseLicenseResult {
       setRecord(result.record)
       setStatus('bound')
       setRevalidateError(null)
-      return 'bound'
+      return { ok: true }
     }
     if (result.failure.reason === 'already_bound') {
-      // Cached locally but the server says it's bound to a different PC.
-      // Keep the record so the user can see what happened, but gate
-      // downloads.
       setStatus('other-pc')
       setRevalidateError(result.failure)
-      return 'other-pc'
+      return { ok: false, failure: result.failure }
     }
     if (result.failure.reason === 'unreachable') {
-      // Can't reach the server — keep using the cached record so the
-      // user isn't cut off mid-session. Surface the error non-destructively.
       setStatus(record ? 'bound' : 'unbound')
       setRevalidateError(result.failure)
-      return record ? 'bound' : 'unbound'
+      return { ok: false, failure: result.failure }
     }
-    // not_found / revoked: the key is no longer valid. Drop it.
-    await clearFromDisk()
-    setRecord(null)
+    // not_found / revoked: keep the record so the table can show the badge.
     setStatus('unbound')
     setRevalidateError(result.failure)
-    return 'unbound'
-  }, [enabled, record, runValidate, clearFromDisk])
+    return { ok: false, failure: result.failure }
+  }, [enabled, record, runValidate])
 
   // ── Mount: load from disk, then revalidate if present ────────────────────
 
@@ -304,9 +299,7 @@ export function useLicense(options: UseLicenseOptions = {}): UseLicenseResult {
         setStatus('bound')
         setRevalidateError(result.failure)
       } else {
-        // not_found / revoked — drop it.
-        await clearFromDisk()
-        setRecord(null)
+        // not_found / revoked — keep the record so the table can show the badge.
         setStatus('unbound')
         setRevalidateError(result.failure)
       }

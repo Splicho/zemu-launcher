@@ -75,6 +75,7 @@ export function PropertiesSection({
             revalidateError={license.revalidateError}
             isBinding={license.status === 'binding'}
             onRedeem={license.redeem}
+            onRevalidate={license.revalidate}
           />
         ) : (
           <p className="text-sm text-muted-foreground">

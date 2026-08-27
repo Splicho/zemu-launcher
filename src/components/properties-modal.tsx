@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import {
   Dialog,
@@ -46,13 +46,22 @@ export function PropertiesModal({
     setActiveSection(id)
   }, [])
 
+  // Sync `activeSection` to `defaultSection` whenever the dialog is open
+  // and `defaultSection` changes (e.g. user clicks "License required" while
+  // the modal is closed — the sidebar sets `defaultSection='license'` and
+  // opens it; the modal lands on the right pane immediately). Without this
+  // effect, the stale `defaultSection` baked into the close-reset callback
+  // would win on the next close/open cycle.
+  useEffect(() => {
+    if (open) {
+      setActiveSection(defaultSection)
+    }
+  }, [open, defaultSection])
+
   // Reset the active section on close so reopening always lands the
   // user on `defaultSection` (Install by default; License when the
   // modal was opened from the "License required" CTA) rather than
-  // wherever they last left off. Hooking into onOpenChange (rather
-  // than an effect on `open`) keeps the reset coupled to the
-  // user-initiated close path, which is the only path that matters
-  // here.
+  // wherever they last left off.
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (!nextOpen) {

@@ -19,6 +19,7 @@ export function GameActionButton({ className }: GameActionButtonProps) {
   const {
     state,
     cancelDownload,
+    launchGame,
     startUpdate,
     selectDirectory,
   } = useGameStateContext()
@@ -48,7 +49,7 @@ export function GameActionButton({ className }: GameActionButtonProps) {
       return 'Activating...'
     }
     if (state.type === 'LICENSE_REQUIRED') {
-      return 'License required'
+      return 'Account Key Required'
     }
     if (state.type === 'DOWNLOADING_UPDATE' && 'updateStatus' in state && state.updateStatus) {
       const progress = state.updateStatus.overallProgress.toFixed(0)
@@ -87,7 +88,6 @@ export function GameActionButton({ className }: GameActionButtonProps) {
       state.type === 'APPLYING_PATCH' ||
       state.type === 'LAUNCHING_GAME' ||
       state.type === 'PLAYING' ||
-      state.type === 'CDN_UNAVAILABLE' ||
       state.type === 'LICENSE_BINDING',
     [state.type]
   )
@@ -142,11 +142,22 @@ export function GameActionButton({ className }: GameActionButtonProps) {
       startUpdate()
       return
     }
+    if (state.type === 'UP_TO_DATE' || state.type === 'UPDATE_COMPLETE') {
+      // The game is installed and the launcher thinks it's ready to
+      // run. Fire the Rust-side launcher, which spawns H1Z1.exe and
+      // flips `gameLaunchState` to `isLaunching` -> `isRunning`. The
+      // state machine then re-derives to `LAUNCHING_GAME` /
+      // `PLAYING`, which disables this button. The `PLAYING` state
+      // is unreachable here because the button is already disabled.
+      await launchGame()
+      return
+    }
   }, [
     state.type,
     openProperties,
     selectDirectory,
     startUpdate,
+    launchGame,
     hasAcknowledgedSteamInstructions,
   ])
 

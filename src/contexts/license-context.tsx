@@ -19,6 +19,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   type ReactNode,
 } from 'react'
 
@@ -38,12 +39,25 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
   // page and the modal would be unreachable anyway).
   const license = useLicense({ enabled: authStatus === 'authed' })
 
-  // Clear on logout. We don't include `license` in the deps because
-  // `reset` is stable; the effect should fire only when auth flips.
+  // Clear the persisted record on a real sign-out — but only when we
+  // transition out of an authed state, not during the startup loading
+  // window. On a cold launch `authStatus` starts at `'loading'` (we're
+  // introspecting a persisted token) and only flips to `'authed'`
+  // after the introspect resolves. If the previous render was `'authed'`
+  // and now it's anything else, that's a genuine logout — the user
+  // explicitly chose to sign out (or their session was rejected) and we
+  // should clear the disk record. Anything else (initial mount, the
+  // `loading` window, a non-authed page tab) leaves the cached record
+  // alone so the next sign-in picks it up. Without this guard the
+  // loading window would call `reset()` and delete `license-store.json`
+  // before `useLicense`'s mount effect could read it back.
+  const previousAuthedRef = useRef(authStatus === 'authed')
   useEffect(() => {
-    if (authStatus !== 'authed') {
+    const isAuthedNow = authStatus === 'authed'
+    if (previousAuthedRef.current && !isAuthedNow) {
       license.reset()
     }
+    previousAuthedRef.current = isAuthedNow
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authStatus])
 

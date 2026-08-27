@@ -41,7 +41,38 @@ export function StreamsSection() {
       </div>
 
       {isLoading ? (
-        <p className="mt-4 text-sm text-muted-foreground">Loading streams...</p>
+        <div className="mt-4 flex gap-4 overflow-hidden">
+          <div className="w-80 shrink-0 overflow-hidden rounded-xl bg-muted/50">
+            <div className="aspect-video w-full animate-pulse bg-muted" />
+            <div className="flex items-center gap-3 p-3">
+              <div className="size-6 shrink-0 animate-pulse rounded-full bg-muted" />
+              <div className="min-w-0 flex-1">
+                <div className="h-3.5 animate-pulse rounded bg-muted" />
+              </div>
+              <div className="h-3.5 w-12 animate-pulse rounded bg-muted" />
+            </div>
+          </div>
+          <div className="w-80 shrink-0 overflow-hidden rounded-xl bg-muted/50">
+            <div className="aspect-video w-full animate-pulse bg-muted" />
+            <div className="flex items-center gap-3 p-3">
+              <div className="size-6 shrink-0 animate-pulse rounded-full bg-muted" />
+              <div className="min-w-0 flex-1">
+                <div className="h-3.5 animate-pulse rounded bg-muted" />
+              </div>
+              <div className="h-3.5 w-12 animate-pulse rounded bg-muted" />
+            </div>
+          </div>
+          <div className="w-80 shrink-0 overflow-hidden rounded-xl bg-muted/50">
+            <div className="aspect-video w-full animate-pulse bg-muted" />
+            <div className="flex items-center gap-3 p-3">
+              <div className="size-6 shrink-0 animate-pulse rounded-full bg-muted" />
+              <div className="min-w-0 flex-1">
+                <div className="h-3.5 animate-pulse rounded bg-muted" />
+              </div>
+              <div className="h-3.5 w-12 animate-pulse rounded bg-muted" />
+            </div>
+          </div>
+        </div>
       ) : streams.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">Nobody is streaming ZEmu right now. Check back later!</p>
       ) : (

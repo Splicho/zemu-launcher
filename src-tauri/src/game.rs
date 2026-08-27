@@ -82,17 +82,18 @@ pub fn get_folder_size_bytes(directory: &str) -> Result<u64> {
     Ok(total)
 }
 
-/// Open the user's OS file manager pointed at `directory`. Uses the
-/// `webbrowser` crate, which dispatches to ShellExecute on Windows,
-/// Finder on macOS, and xdg-open on Linux — exactly what a user
-/// expects when they click "Locate game files".
+/// Open the user's OS file manager pointed at `directory`. Uses
+/// `webbrowser` with a `file://` URI so the OS dispatches to
+/// ShellExecute (Windows), Finder (macOS), or xdg-open (Linux).
 pub fn open_in_file_manager(directory: &str) -> Result<()> {
     let path = Path::new(directory);
     if !path.exists() {
         return Err(anyhow!("Directory does not exist: {directory}"));
     }
 
-    webbrowser::open(directory).map_err(|error| anyhow!(error))?;
+    let file_url = url::Url::from_file_path(path)
+        .map_err(|_| anyhow!("Failed to build file:// URL for {directory}"))?;
+    webbrowser::open(file_url.as_str()).map_err(|error| anyhow!(error))?;
     Ok(())
 }
 
