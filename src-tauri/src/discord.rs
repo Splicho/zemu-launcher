@@ -90,6 +90,12 @@ fn is_enabled(app: &AppHandle) -> bool {
         .unwrap_or(true)
 }
 
+fn rpc_mode(app: &AppHandle) -> crate::models::DiscordRpcMode {
+    crate::storage::load_launcher_config(app)
+        .map(|config| config.discord_rpc_mode)
+        .unwrap_or(crate::models::DiscordRpcMode::Always)
+}
+
 fn worker_loop(app: AppHandle, rx: std::sync::mpsc::Receiver<DiscordCommand>) {
     let mut client: Option<DiscordIpcClient> = None;
     let mut desired: Option<DesiredActivity> = None;
@@ -104,6 +110,14 @@ fn worker_loop(app: AppHandle, rx: std::sync::mpsc::Receiver<DiscordCommand>) {
             }
             Ok(DiscordCommand::SetLauncher) => {
                 if !is_enabled(&app) {
+                    if let Some(mut active) = client.take() {
+                        let _ = active.close();
+                    }
+                    desired = None;
+                    continue;
+                }
+                // "Playing only" mode suppresses the launcher presence.
+                if rpc_mode(&app) == crate::models::DiscordRpcMode::PlayingOnly {
                     if let Some(mut active) = client.take() {
                         let _ = active.close();
                     }

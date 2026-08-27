@@ -234,6 +234,16 @@ function setupCompatibilityBridge() {
         })
       })
     },
+    getMode: () =>
+      invoke<string>('discord_get_mode').catch((error) => {
+        writeDebugLog('discord', 'getMode failed', { error: safeStringify(error) })
+        return 'always'
+      }),
+    setMode: (mode: string) => {
+      void invoke('discord_set_mode', { mode }).catch((error) => {
+        writeDebugLog('discord', 'setMode failed', { mode, error: safeStringify(error) })
+      })
+    },
   }
 
   window.authAPI = {
@@ -373,6 +383,8 @@ declare global {
       setActivity: (details: string, state: string) => void
       getEnabled: () => Promise<boolean>
       setEnabled: (enabled: boolean) => void
+      getMode: () => Promise<string>
+      setMode: (mode: string) => void
     }
     authAPI: {
       getToken: () => Promise<AuthToken | null>

@@ -64,6 +64,18 @@ pub struct AuthStore {
     pub oauth_states: HashMap<String, OAuthState>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DiscordRpcMode {
+    Always,
+    PlayingOnly,
+    Never,
+}
+
+fn default_rpc_mode() -> DiscordRpcMode {
+    DiscordRpcMode::Always
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LauncherConfig {
@@ -88,6 +100,12 @@ pub struct LauncherConfig {
     /// explicit choice.
     #[serde(default = "default_true")]
     pub discord_rpc_enabled: bool,
+    /// Controls when Discord Rich Presence is visible. `always` shows
+    /// presence in both the launcher and in-game; `playing-only` shows
+    /// it only while the game is running; `never` is equivalent to
+    /// disabling the feature entirely.
+    #[serde(default = "default_rpc_mode")]
+    pub discord_rpc_mode: DiscordRpcMode,
 }
 
 impl Default for LauncherConfig {
@@ -101,6 +119,7 @@ impl Default for LauncherConfig {
             oauth_callback_protocol: None,
             game_executable: None,
             discord_rpc_enabled: true,
+            discord_rpc_mode: DiscordRpcMode::Always,
         }
     }
 }

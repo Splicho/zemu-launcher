@@ -1,6 +1,23 @@
 import { useEffect, useState } from 'react'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+
+export type DiscordRpcMode = 'always' | 'playing_only' | 'never'
+
+const RPC_MODE_OPTIONS: { value: DiscordRpcMode; label: string; description: string }[] = [
+  {
+    value: 'always',
+    label: 'Always',
+    description: 'Show activity in Discord when browsing the launcher and while in-game.',
+  },
+  {
+    value: 'playing_only',
+    label: 'Only when playing',
+    description: 'Only show activity when the game is running.',
+  },
+]
 
 /**
  * User launcher settings.
@@ -22,11 +39,17 @@ import { Switch } from '@/components/ui/switch'
  */
 export function SettingsPage() {
   const [discordEnabled, setDiscordEnabled] = useState<boolean | null>(null)
+  const [rpcMode, setRpcMode] = useState<DiscordRpcMode | null>(null)
   const [autostartEnabled, setAutostartEnabled] = useState<boolean | null>(null)
 
   useEffect(() => {
     if (!window.discordAPI) return
     void window.discordAPI.getEnabled().then(setDiscordEnabled)
+  }, [])
+
+  useEffect(() => {
+    if (!window.discordAPI) return
+    void window.discordAPI.getMode().then((m) => setRpcMode(m as DiscordRpcMode))
   }, [])
 
   useEffect(() => {
@@ -37,6 +60,11 @@ export function SettingsPage() {
   const handleDiscordChange = (next: boolean) => {
     setDiscordEnabled(next)
     window.discordAPI?.setEnabled(next)
+  }
+
+  const handleModeChange = (next: DiscordRpcMode) => {
+    setRpcMode(next)
+    window.discordAPI?.setMode(next)
   }
 
   const handleAutostartChange = (next: boolean) => {
@@ -63,7 +91,7 @@ export function SettingsPage() {
                 <span className="text-sm font-medium">Discord Rich Presence</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Show your activity on discord when you are in the launcher or in-game.
+                Show your activity on Discord when you are in the launcher or in-game.
               </p>
             </div>
 
@@ -74,6 +102,40 @@ export function SettingsPage() {
               aria-label="Toggle Discord Rich Presence"
             />
           </div>
+
+          {discordEnabled === true && (
+            <div className="mt-4 rounded-md border border-border/50 bg-muted/20 p-4">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Show activity
+              </Label>
+              <RadioGroup
+                className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2"
+                value={rpcMode ?? 'always'}
+                onValueChange={(v) => handleModeChange(v as DiscordRpcMode)}
+              >
+                {RPC_MODE_OPTIONS.map((opt) => (
+                  <div
+                    key={opt.value}
+                    className="flex items-start gap-3 rounded-md border border-border bg-card p-3 cursor-pointer hover:border-primary/50 transition-colors"
+                    onClick={() => handleModeChange(opt.value)}
+                  >
+                    <RadioGroupItem value={opt.value} id={opt.value} />
+                    <div className="flex flex-col gap-0.5">
+                      <Label
+                        htmlFor={opt.value}
+                        className="cursor-pointer text-sm font-medium leading-tight"
+                      >
+                        {opt.label}
+                      </Label>
+                      <span className="text-xs text-muted-foreground leading-tight">
+                        {opt.description}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </RadioGroup>
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border border-border bg-card p-5">

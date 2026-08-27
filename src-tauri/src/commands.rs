@@ -4,8 +4,8 @@ use crate::debug_log;
 use crate::discord;
 use crate::game;
 use crate::models::{
-    AuthToken, CommandResult, GameLaunchState, LicenseRecord, OAuthCallbackPayload,
-    UpdateCheckResult, UpdateStatus, VersionManifest,
+    AuthToken, CommandResult, DiscordRpcMode, GameLaunchState, LicenseRecord,
+    OAuthCallbackPayload, UpdateCheckResult, UpdateStatus, VersionManifest,
 };
 use crate::pc_identifier;
 use crate::state::AppState;
@@ -307,6 +307,30 @@ pub fn discord_set_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), S
     Ok(())
 }
 
+#[tauri::command]
+pub fn discord_get_mode(app: tauri::AppHandle) -> Result<String, String> {
+    storage::load_launcher_config(&app)
+        .map(|config| match config.discord_rpc_mode {
+            DiscordRpcMode::Always => "always".to_owned(),
+            DiscordRpcMode::PlayingOnly => "playing_only".to_owned(),
+            DiscordRpcMode::Never => "never".to_owned(),
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn discord_set_mode(app: tauri::AppHandle, mode: String) -> Result<(), String> {
+    let rpc_mode = match mode.as_str() {
+        "always" => DiscordRpcMode::Always,
+        "playing_only" => DiscordRpcMode::PlayingOnly,
+        "never" => DiscordRpcMode::Never,
+        other => return Err(format!("unknown discord_rpc_mode: {other}")),
+    };
+    let mut config = storage::load_launcher_config(&app).map_err(|e| e.to_string())?;
+    config.discord_rpc_mode = rpc_mode;
+    storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())
+}
+
 /// Frontend-facing log append. The renderer uses this to mirror console
 /// errors / auth traces / etc. into a file under the user's
 /// app-data directory so the launcher's `debugLog.read()` command can
@@ -467,6 +491,8 @@ pub fn register_commands(
         discord_set_activity,
         discord_get_enabled,
         discord_set_enabled,
+        discord_get_mode,
+        discord_set_mode,
         debug_log_write,
         debug_log_path,
         debug_log_read,
