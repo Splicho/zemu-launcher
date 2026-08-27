@@ -238,11 +238,11 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                     <span>News</span>
                   </a>
                 </SidebarMenuButton>
-                <SidebarMenuButton asChild isActive={isActive('/leaderboard')} size="lg" className="px-4">
-                  <a href="#/leaderboard">
+                <SidebarMenuButton asChild isActive={isActive('/leaderboard')} size="lg" className="px-4 opacity-50 cursor-not-allowed pointer-events-none">
+                  <span>
                     <Leaderboard className="size-5!" />
                     <span>Leaderboard</span>
-                  </a>
+                  </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
