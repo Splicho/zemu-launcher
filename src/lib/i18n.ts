@@ -58,11 +58,7 @@ i18n
       'pt-BR': ptBR,
     },
     supportedLngs: SUPPORTED_LANGUAGES.map((l) => l.code),
-    nonExplicitSupportedLngs: true,
     fallbackLng: 'en',
-    // Skip auto-loading resources for codes outside our supported set;
-    // i18next will fall back to `en` instead.
-    load: 'languageOnly',
 
     // Language detector order: user-persisted → OS language → English
     detection: {

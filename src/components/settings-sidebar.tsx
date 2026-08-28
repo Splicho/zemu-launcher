@@ -1,5 +1,6 @@
 import { ChevronLeft } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useTranslation } from 'react-i18next'
 import { useHash } from '@/hooks/use-hash'
 
 import {
@@ -14,11 +15,12 @@ import {
 } from '@/components/ui/sidebar'
 
 const SETTINGS_NAV = [
-  { href: '#/settings', label: 'General' },
-  { href: '#/settings/appearance', label: 'Appearance' },
+  { href: '#/settings', labelKey: 'settings.general.title' },
+  { href: '#/settings/appearance', labelKey: 'settings.appearance.title' },
 ] as const
 
 export function SettingsSidebar() {
+  const { t } = useTranslation()
   const hash = useHash()
   const activeHref = hash ? `#${hash}` : '#/settings'
   const activeId = SETTINGS_NAV.find((n) => activeHref === n.href)?.href ?? '#/settings'
@@ -31,11 +33,11 @@ export function SettingsSidebar() {
         </div>
         <SidebarGroup className="px-5 pb-2">
           <SidebarGroupLabel className="uppercase tracking-wider pl-4">
-            Settings
+            {t('nav.settings')}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {SETTINGS_NAV.map(({ href, label }) => (
+              {SETTINGS_NAV.map(({ href, labelKey }) => (
                 <SidebarMenuItem key={href}>
                   <SidebarMenuButton
                     asChild
@@ -44,7 +46,7 @@ export function SettingsSidebar() {
                     className="px-4"
                   >
                     <a href={href}>
-                      <span>{label}</span>
+                      <span>{t(labelKey)}</span>
                     </a>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -66,7 +68,7 @@ export function SettingsSidebar() {
                 >
                   <ChevronLeft className="size-5!" />
                 </motion.span>
-                <span>Back</span>
+                <span>{t('common.back')}</span>
               </button>
             </SidebarMenuButton>
           </SidebarMenuItem>
