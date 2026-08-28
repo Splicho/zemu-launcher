@@ -172,6 +172,7 @@ export default {
       statusActive: 'Active',
       statusRevoked: 'Revoked',
       statusChecking: 'Checking…',
+      installationGuide: 'Installation Guide',
       placeholderTitle: 'Game Settings',
       placeholderDesc: 'Settings for this section will appear here. This is a placeholder while the section content is being designed.',
     },

@@ -1,7 +1,7 @@
 import { ChevronLeft } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
-import { useHash } from '@/hooks/use-hash'
+import { useHash, useHashRouter } from '@/hooks/use-hash'
 
 import {
   Sidebar,
@@ -22,6 +22,7 @@ const SETTINGS_NAV = [
 export function SettingsSidebar() {
   const { t } = useTranslation()
   const hash = useHash()
+  const { navigate } = useHashRouter()
   const activeHref = hash ? `#${hash}` : '#/settings'
   const activeId = SETTINGS_NAV.find((n) => activeHref === n.href)?.href ?? '#/settings'
 
@@ -61,7 +62,7 @@ export function SettingsSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg" className="px-4">
-              <button type="button" onClick={() => window.history.back()}>
+              <button type="button" onClick={() => navigate('/')}>
                 <motion.span
                   animate={{ x: 0 }}
                   transition={{ duration: 0.2 }}
