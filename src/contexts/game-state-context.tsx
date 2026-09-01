@@ -1,10 +1,10 @@
-import { createContext, useContext } from 'react'
+import { createContext } from 'react'
 import { useGameState } from '@/hooks/use-game-state'
 import type { LicenseStatus } from '@/hooks/use-license'
 
-type GameStateStore = ReturnType<typeof useGameState>
+export type GameStateStore = ReturnType<typeof useGameState>
 
-const GameStateContext = createContext<GameStateStore | null>(null)
+export const GameStateContext = createContext<GameStateStore | null>(null)
 
 export function GameStateProvider({
   children,
@@ -21,12 +21,4 @@ export function GameStateProvider({
 }) {
   const store = useGameState({ licenseStatus })
   return <GameStateContext.Provider value={store}>{children}</GameStateContext.Provider>
-}
-
-export function useGameStateContext(): GameStateStore {
-  const ctx = useContext(GameStateContext)
-  if (!ctx) {
-    throw new Error('useGameStateContext must be used within <GameStateProvider />')
-  }
-  return ctx
 }

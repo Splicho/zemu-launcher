@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { useGameStateContext } from '@/contexts/game-state-context'
+import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { useDownloadSpeed } from '@/hooks/use-download-speed'
 import { useDownloadEta } from '@/hooks/use-download-eta'
 

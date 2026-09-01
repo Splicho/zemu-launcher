@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { clearSteamInstructionsSeen } from '@/lib/steam-instructions'
@@ -88,6 +89,7 @@ const DEFAULT_GAME_LAUNCH_STATE: GameLaunchState = {
  */
 export function useGameState(options: { licenseStatus: LicenseStatus }) {
   const { licenseStatus } = options
+  const { t } = useTranslation()
   const [gameDirectory, setGameDirectory] = useState<string | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
@@ -106,6 +108,17 @@ export function useGameState(options: { licenseStatus: LicenseStatus }) {
   const isCheckingRef = useRef(false)
   const lastCheckedDirectoryRef = useRef<string | null>(null)
   const hasAutoCheckedOnStartupRef = useRef(false)
+  // Mirror of `justCompletedUpdate` so the `checkForUpdates` callback
+  // (whose own deps would otherwise have to include the state setter)
+  // can read the latest "we just finished" flag without rebuilding.
+  const justCompletedUpdateRef = useRef(false)
+
+  // Keep the ref in sync with the state so any async callback
+  // (notably `checkForUpdates`) sees the latest value without us
+  // having to thread it through deps or close over a stale setter.
+  useEffect(() => {
+    justCompletedUpdateRef.current = justCompletedUpdate
+  }, [justCompletedUpdate])
 
   // Load initial state on mount
   useEffect(() => {
@@ -221,21 +234,35 @@ export function useGameState(options: { licenseStatus: LicenseStatus }) {
         window.gameAPI.checkUpdate(),
         window.gameAPI.isInstalled(),
       ])
-      setUpdateInfo(info)
-      setIsInstalled(installed)
+
+      // If an update just completed, the Rust side may briefly report
+      // stale values while it catches up to the new on-disk state.
+      // Trust the optimistic clear from the progress handler — writing
+      // back `hasUpdate: true` here is what traps the user on the
+      // "Update available" button until they restart the launcher.
+      if (!justCompletedUpdateRef.current) {
+        setUpdateInfo(info)
+        setIsInstalled(installed)
+      }
 
       lastCheckedDirectoryRef.current = gameDirectory
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to check for updates'
-      lastCheckedDirectoryRef.current = gameDirectory
+      // Same reasoning as the success path: a just-completed update
+      // means we already know the install is good and up to date.
+      // Don't clobber it back to "needs install / has update" — that
+      // is exactly the bug that traps users on the wrong button.
+      if (!justCompletedUpdateRef.current) {
+        const errorMsg = err instanceof Error ? err.message : 'Failed to check for updates'
+        lastCheckedDirectoryRef.current = gameDirectory
 
-      // If the CDN is unavailable, allow proceeding with base game installation
-      // The patch can be installed later when the CDN is back
-      setUpdateInfo({ hasUpdate: true, cdnAvailable: false })
-      setIsInstalled(false)
-      toast.warning('CDN unavailable', {
-        description: `${errorMsg}. You can still download the base game. Patches will be applied when the CDN is back.`,
-      })
+        // If the CDN is unavailable, allow proceeding with base game installation
+        // The patch can be installed later when the CDN is back
+        setUpdateInfo({ hasUpdate: true, cdnAvailable: false })
+        setIsInstalled(false)
+        toast.warning(t('toasts.cdnUnavailable'), {
+          description: t('toasts.cdnUnavailableDescription', { error: errorMsg }),
+        })
+      }
     } finally {
       isCheckingRef.current = false
       setIsChecking(false)
@@ -351,12 +378,12 @@ const handleProgress = (status: UpdateStatus) => {
       }
       return null
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to select directory'
+      const errorMsg = err instanceof Error ? err.message : t('toasts.failedToSelectDirectory')
       setError(errorMsg)
-      toast.error('Failed to select directory', { description: errorMsg })
+      toast.error(t('toasts.failedToSelectDirectory'), { description: errorMsg })
       return null
     }
-  }, [])
+  }, [t])
 
   const cancelDownload = useCallback(() => {
     if (!window.gameAPI) return
@@ -380,12 +407,12 @@ const handleProgress = (status: UpdateStatus) => {
       }
       } catch (err) {
         setIsApplyingPatch(false)
-        const errorMsg = err instanceof Error ? err.message : 'Patch application failed'
+        const errorMsg = err instanceof Error ? err.message : t('toasts.patchApplicationFailed')
         setError(errorMsg)
-        toast.error('Patch application failed', { description: errorMsg })
+        toast.error(t('toasts.patchApplicationFailed'), { description: errorMsg })
         throw err
       }
-  }, [gameDirectory])
+  }, [gameDirectory, t])
 
   const startUpdate = useCallback(async (): Promise<void> => {
     if (!gameDirectory || !window.gameAPI) {
@@ -400,25 +427,22 @@ const handleProgress = (status: UpdateStatus) => {
 
     try {
       console.log('[useGameState] Calling window.gameAPI.downloadUpdate...')
-      toast.info('Starting update download...')
       const result = await window.gameAPI.downloadUpdate(gameDirectory)
       console.log('[useGameState] downloadUpdate result:', result)
-      toast.info('Update download initiated, waiting for progress...')
 
       if (!result.success) {
         const error = new Error(result.error || 'Update failed')
         setIsUpdating(false)
         setError(error.message)
-        toast.error('Update failed: ' + error.message)
+        toast.error(t('toasts.updateFailed', { error: error.message }))
         throw error
       }
-      toast.success('Update started successfully')
     } catch (err) {
       console.error('[useGameState] startUpdate error:', err)
       setIsUpdating(false)
       const errorMsg = err instanceof Error ? err.message : 'Update failed'
       setError(errorMsg)
-      toast.error('Update failed: ' + errorMsg)
+      toast.error(t('toasts.updateFailed', { error: errorMsg }))
       throw err
     }
   }, [gameDirectory])
@@ -443,12 +467,12 @@ const handleProgress = (status: UpdateStatus) => {
       if (nextState) {
         setGameLaunchState(nextState)
       }
-      toast.success('Game launched!')
+      toast.success(t('toasts.gameLaunched'))
     } catch (err) {
       setGameLaunchState(DEFAULT_GAME_LAUNCH_STATE)
-      const errorMsg = err instanceof Error ? err.message : 'Failed to launch game'
+      const errorMsg = err instanceof Error ? err.message : t('toasts.failedToLaunchGame')
       setError(errorMsg)
-      toast.error('Failed to launch game')
+      toast.error(t('toasts.failedToLaunchGame'))
       throw err
     }
   }, [])

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 
 import { Button } from '@/components/ui/button'
-import { useGameStateContext } from '@/contexts/game-state-context'
+import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { usePropertiesModalOpener } from '@/contexts/open-properties-context'
 import { Cancel } from '@/components/icons'
 import { SteamInstructionsModal } from '@/components/steam-instructions-modal'

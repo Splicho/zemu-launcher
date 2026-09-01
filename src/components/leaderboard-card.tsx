@@ -42,15 +42,16 @@ function formatNumber(value: number): string {
 }
 
 function RankBadge({ tier }: { tier: LeaderboardTier }) {
+  const { t } = useTranslation()
   const assets = RANK_ASSETS[tier]
   return (
     <div className="flex items-center gap-1.5">
       <img
         src={assets.medal}
-        alt={tier}
+        alt={t(`leaderboard.${tier}`)}
         className="h-5 w-5 object-contain"
       />
-      <span className="text-xs font-semibold uppercase">{tier}</span>
+      <span className="text-xs font-semibold uppercase">{t(`leaderboard.${tier}`)}</span>
     </div>
   )
 }
@@ -101,7 +102,7 @@ export function LeaderboardCard() {
               <SelectItem value="gold">{t('leaderboard.gold')}</SelectItem>
               <SelectItem value="platinum">{t('leaderboard.platinum')}</SelectItem>
               <SelectItem value="diamond">{t('leaderboard.diamond')}</SelectItem>
-              <SelectItem value="master">{t('leaderboard.master')}</SelectItem>
+              <SelectItem value="master">{t('leaderboard.royalty')}</SelectItem>
             </SelectContent>
           </Select>
 

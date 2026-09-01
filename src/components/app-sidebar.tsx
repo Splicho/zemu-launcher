@@ -42,7 +42,7 @@ import {
   markSteamInstructionsSeen,
 } from '@/lib/steam-instructions'
 import { useUpdate } from '@/contexts/update-context'
-import { useGameStateContext } from '@/contexts/game-state-context'
+import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { useLicenseContext } from '@/hooks/use-license'
 import { CircularProgress } from '@/components/circular-progress'
 import type { PropertiesSectionId } from '@/components/properties-sidebar'

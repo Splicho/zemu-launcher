@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useGameStateContext } from '@/contexts/game-state-context'
+import { useGameStateContext } from '@/hooks/use-game-state-context'
 import type { UpdateProgressFile } from '@/lib/tauri-bridge'
 
 const EMA_ALPHA = 0.35

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useGameStateContext } from '@/contexts/game-state-context'
+import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { useDownloadSpeed } from '@/hooks/use-download-speed'
 import { formatEta } from '@/lib/format-eta'
 
