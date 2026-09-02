@@ -46,18 +46,30 @@ pub fn run() {
             // Both windows load the same `index.html` and route via
             // `getCurrentWindow().label` inside `App.tsx`. We construct
             // them explicitly (with `create: false` in `tauri.conf.json`)
-            // so we control the URL handed to WebView2.
+            // so we control the URL handed to the webview.
             //
-            // `WebviewUrl::External` is used instead of `WebviewUrl::App`
-            // because Tauri 2's URL resolver strips the `index.html`
-            // segment from `WebviewUrl::App("index.html")`, leaving the
-            // webview at the asset-protocol origin with no document.
-            // `tauri.localhost` is rewritten by WebView2 to the bundled
-            // asset handler in production, so it serves `dist/index.html`
-            // verbatim.
-            let index_url = resolve_index_url(app.config().build.dev_url.as_ref())?;
-            let parsed_index = Url::parse(&index_url)
-                .map_err(|e| format!("invalid index url {index_url:?}: {e}"))?;
+            // URL strategy:
+            //
+            //   * `tauri dev` — point both windows at the Vite dev server
+            //     defined by `build.devUrl` in `tauri.conf.json`
+            //     (typically `http://localhost:5173`).
+            //
+            //   * release builds — use `WebviewUrl::App("index.html")`,
+            //     which goes through Tauri's in-process asset protocol
+            //     handler and is webview-agnostic.
+            //
+            // Why not the obvious "http://tauri.localhost/index.html"
+            // form? That host is a Tauri-runtime convention: WebView2
+            // (Windows) and WKWebView (macOS) rewrite it to the asset
+            // protocol automatically. **WebKitGTK (Linux) does not.**
+            // On Linux, that URL is sent out as a real HTTP request to
+            // `127.0.0.1:80`, where anything bound (commonly nginx,
+            // serving its "Welcome to nginx!" default page) answers and
+            // the React app never loads. `WebviewUrl::App` bypasses the
+            // magic host and routes directly to the asset handler on
+            // every backend.
+            let bootstrap_url = build_index_url(app.config().build.dev_url.as_ref())?;
+            let main_url = bootstrap_url.clone();
 
             // Bootstrap window: 460x430, frameless, transparent, always
             // on top. The React tree draws the rounded card; the OS
@@ -67,32 +79,28 @@ pub fn run() {
             // construct the window ourselves with `create: false` in
             // tauri.conf.json — the config's `transparent` field is
             // only honored when Tauri auto-creates the window.
-            WebviewWindowBuilder::new(
-                app,
-                "bootstrap",
-                WebviewUrl::External(parsed_index.clone()),
-            )
-            .title("ZEmu Launcher")
-            .inner_size(460.0, 430.0)
-            .resizable(false)
-            .maximizable(false)
-            .minimizable(false)
-            .closable(true)
-            .decorations(false)
-            .shadow(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .transparent(true)
-            .center()
-            .visible(true)
-            .build()?;
+            WebviewWindowBuilder::new(app, "bootstrap", bootstrap_url)
+                .title("ZEmu Launcher")
+                .inner_size(460.0, 430.0)
+                .resizable(false)
+                .maximizable(false)
+                .minimizable(false)
+                .closable(true)
+                .decorations(false)
+                .shadow(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .transparent(true)
+                .center()
+                .visible(true)
+                .build()?;
             app_state.mark_bootstrap_active();
 
             // Main window: 1280x800, frameless. The React tree draws
             // the rounded wrapper + close/minimize buttons. The
             // surround is also transparent for visual parity with the
             // bootstrap window.
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(parsed_index))
+            WebviewWindowBuilder::new(app, "main", main_url)
                 .title("ZEmu Launcher")
                 .inner_size(1280.0, 800.0)
                 .resizable(false)
@@ -142,14 +150,15 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-/// The URL WebView2 should load for both windows.
+/// Build the `WebviewUrl` both windows should load.
 ///
 /// In `tauri dev`, `tauri.conf.json`'s `build.devUrl` is `Some(...)`
-/// (e.g. `http://localhost:5173`) and `tauri.localhost` does not route
-/// anywhere, so we point straight at the Vite dev server. In a release
-/// build, `devUrl` is `None` and the asset protocol serves
-/// `dist/index.html` from `tauri.localhost`, so we use that.
-fn resolve_index_url(dev_url: Option<&url::Url>) -> tauri::Result<String> {
+/// (e.g. `http://localhost:5173`) and we point straight at the Vite
+/// dev server. In a release build, `devUrl` is `None` and we use
+/// `WebviewUrl::App("index.html")`, which routes through Tauri's
+/// in-process asset protocol handler — webview-agnostic, works on
+/// WebView2, WKWebView, and WebKitGTK alike.
+fn build_index_url(dev_url: Option<&url::Url>) -> tauri::Result<WebviewUrl> {
     #[cfg(dev)]
     {
         let base = dev_url
@@ -159,17 +168,21 @@ fn resolve_index_url(dev_url: Option<&url::Url>) -> tauri::Result<String> {
                 ))
             })?
             .to_string();
-        return Ok(if base.ends_with('/') {
+        let url = if base.ends_with('/') {
             format!("{base}index.html")
         } else {
             format!("{base}/index.html")
-        });
+        };
+        let parsed = Url::parse(&url).map_err(|e| {
+            tauri::Error::Anyhow(anyhow::anyhow!("invalid index url {url:?}: {e}"))
+        })?;
+        return Ok(WebviewUrl::External(parsed));
     }
 
     #[cfg(not(dev))]
     {
         let _ = dev_url;
-        Ok("http://tauri.localhost/index.html".to_string())
+        Ok(WebviewUrl::App("index.html".into()))
     }
 }
 
