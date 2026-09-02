@@ -71,15 +71,39 @@ pub fn run() {
             let bootstrap_url = build_index_url(app.config().build.dev_url.as_ref())?;
             let main_url = bootstrap_url.clone();
 
-            // Bootstrap window: 460x430, frameless, transparent, always
-            // on top. The React tree draws the rounded card; the OS
-            // window is the surrounding (transparent) layer.
+            // Bootstrap window: 460x430, frameless, always on top.
+            // The React tree draws the rounded card; the OS window is
+            // the surrounding layer.
             //
-            // `transparent(true)` MUST be set on the builder because we
-            // construct the window ourselves with `create: false` in
-            // tauri.conf.json — the config's `transparent` field is
-            // only honored when Tauri auto-creates the window.
-            WebviewWindowBuilder::new(app, "bootstrap", bootstrap_url)
+            // On Windows and macOS we set `transparent(true)` so the
+            // React tree's `bg-transparent` outer div lets the desktop
+            // show through, leaving only the rounded card visible.
+            // Wry implements that via a `softbuffer` composite layer
+            // (see `tauri-runtime-wry-2.11.4/src/lib.rs:4700`).
+            //
+            // On Linux WebKitGTK there is no equivalent layer — wry
+            // skips the softbuffer path on this platform (the
+            // `is_window_transparent` branch in wry is `#[cfg(windows)]`).
+            // Passing `transparent(true)` there asks GTK to create an
+            // alpha-transparent surface that WebKitGTK then renders an
+            // opaque `bg-background` card on top of, and the surround
+            // shows as solid black (because no compositor-level alpha
+            // is available). We drop `transparent(true)` on Linux and
+            // rely on WebKitGTK's default opaque surface; the bootstrap
+            // card's own `bg-background` colour paints the surround.
+            //
+            // `decorations(false)` and `shadow(false)` stay enabled on
+            // every platform — they don't require a transparency
+            // pipeline and produce the intended frameless look on
+            // Linux, where the surround simply shows as opaque white
+            // (or whatever the dark-mode `bg-background` resolves to).
+            //
+            // `transparent(true)` MUST be set on the builder because
+            // we construct the window ourselves with `create: false`
+            // in tauri.conf.json — the config's `transparent` field
+            // is only honored when Tauri auto-creates the window.
+            #[allow(unused_mut)]
+            let mut bootstrap_builder = WebviewWindowBuilder::new(app, "bootstrap", bootstrap_url)
                 .title("ZEmu Launcher")
                 .inner_size(460.0, 430.0)
                 .resizable(false)
@@ -90,17 +114,20 @@ pub fn run() {
                 .shadow(false)
                 .always_on_top(true)
                 .skip_taskbar(true)
-                .transparent(true)
                 .center()
-                .visible(true)
-                .build()?;
+                .visible(true);
+            #[cfg(not(target_os = "linux"))]
+            {
+                bootstrap_builder = bootstrap_builder.transparent(true);
+            }
+            bootstrap_builder.build()?;
             app_state.mark_bootstrap_active();
 
             // Main window: 1280x800, frameless. The React tree draws
-            // the rounded wrapper + close/minimize buttons. The
-            // surround is also transparent for visual parity with the
-            // bootstrap window.
-            WebviewWindowBuilder::new(app, "main", main_url)
+            // the rounded wrapper + close/minimize buttons. Same
+            // transparency caveat as the bootstrap window above.
+            #[allow(unused_mut)]
+            let mut main_builder = WebviewWindowBuilder::new(app, "main", main_url)
                 .title("ZEmu Launcher")
                 .inner_size(1280.0, 800.0)
                 .resizable(false)
@@ -109,10 +136,13 @@ pub fn run() {
                 .closable(true)
                 .decorations(false)
                 .shadow(false)
-                .transparent(true)
                 .center()
-                .visible(false)
-                .build()?;
+                .visible(false);
+            #[cfg(not(target_os = "linux"))]
+            {
+                main_builder = main_builder.transparent(true);
+            }
+            main_builder.build()?;
 
             discord::initialize(app.handle());
             if let Err(error) = discord::set_in_launcher(app.handle()) {
