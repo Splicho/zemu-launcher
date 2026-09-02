@@ -249,7 +249,18 @@ export function useLicense({
       setRevalidateError(result.reason)
       return
     }
-    // not_found / revoked: keep the record so the table can show the badge.
+    // not_found / revoked: the server has definitively rejected this
+    // key. The record on disk is now stale — an admin may have
+    // revoked the key, or a stray row may have been deleted out from
+    // under us. Clearing `record` (and the persisted
+    // `license-store.json`) makes the table render its empty-state
+    // row instead of a ghost key wearing an "Active" badge, and
+    // prevents the periodic revalidate from re-checking a key that
+    // will never come back. The "License required" gate already
+    // opened via `setStatus('unbound')` below; this just keeps the
+    // cached display in sync with the authoritative server answer.
+    void clearRecord()
+    setRecord(null)
     setStatus('unbound')
     setRevalidateError(result.reason)
   }
@@ -284,6 +295,18 @@ export function useLicense({
   // record and the PC identifier. Re-runs when either changes so a
   // late-arriving PC id doesn't strand the cached record on "bound"
   // forever — we always want to confirm the server still agrees.
+  //
+  // IMPORTANT: depend on the stable *fields* of `record`, not on
+  // the record object itself. `applyValidationResult` builds a
+  // fresh `LicenseRecord` on every successful validate and calls
+  // `setRecord(newObj)` — so depending on `record` by reference
+  // would treat every successful validate as a "change", the effect
+  // would re-fire, and we'd loop validate→setRecord→validate at
+  // ~1 round-trip per render (≈tens of requests per second, see the
+  // backend logs). Depending on `record.licenseKey` keeps the effect
+  // locked to the actual key the user is bound to — it re-fires
+  // only when a different key shows up (redeem, sign-in rebind,
+  // logout→signin clearing the cache).
   useEffect(() => {
     if (!enabled || !record || !pcIdentifier) return
     let cancelled = false
@@ -295,26 +318,31 @@ export function useLicense({
     return () => {
       cancelled = true
     }
-    // We intentionally re-run only when `record` or `pcIdentifier`
-    // changes — not on every render. Periodic refresh below handles
-    // the steady-state cadence.
+    // We intentionally re-run only when the *identity* of the bound
+    // key changes — not on every render, and not when validate()
+    // produces a fresh record reference. Periodic refresh below
+    // handles the steady-state cadence.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, record, pcIdentifier])
+  }, [enabled, record?.licenseKey, pcIdentifier])
 
   // Periodic revalidation. Cleans itself up on unmount and on
   // sign-out (`enabled` flips false). Only ticks while a record
   // exists — no point pinging the server for an unbound launcher.
+  //
+  // Same dep-stability caveat as the effect above: depend on the
+  // key, not on the record object, so a successful validate doesn't
+  // reset the 60-second timer back to zero on every tick.
   useEffect(() => {
     if (!enabled || !record || !pcIdentifier) return
     const interval = setInterval(() => {
       void revalidate()
     }, REVALIDATE_INTERVAL_MS)
     return () => clearInterval(interval)
-    // Re-arm only when the inputs change. `revalidate` reads the
-    // current record/identifier through closure; the next tick
-    // (within 60s) will pick up any new values.
+    // Re-arm only when the bound key (or pc id) changes. `revalidate`
+    // reads the current record/identifier through closure; the next
+    // tick (within 60s) will pick up any new values.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, record, pcIdentifier])
+  }, [enabled, record?.licenseKey, pcIdentifier])
 
   return {
     status,

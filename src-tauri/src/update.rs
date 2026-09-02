@@ -637,9 +637,23 @@ async fn download_and_install(
         update_runtime_status(state, &status, false);
         emit_status(app, &status);
 
-        // Persist manifest if we have a new version (even if no files or folders changed)
-        if local_version.is_none() {
-            let _ = persist_installed_manifest(app, game_directory, &remote_manifest);
+        // Persist the freshly-downloaded manifest whenever PART 1
+        // applied file-level changes — not only when the local
+        // manifest was missing entirely. Without this, the legacy
+        // `local_version.is_none()` guard left file-only installs in
+        // a permanent "needs update" loop: the next
+        // `check_for_updates` loaded the stale `version.json` (with
+        // the pre-install file entries), compared the stale local
+        // checksum against the now-correct remote checksum, and
+        // reported `has_update=true, files_to_update=1` forever —
+        // even though the bytes on disk were already correct.
+        if finalize_total_files > 0 {
+            persist_installed_manifest(app, game_directory, &remote_manifest)?;
+        } else if local_version.is_none() {
+            // No file-level changes and no folders — keep the prior
+            // behavior of back-filling an on-disk manifest when there
+            // wasn't one, so subsequent checks have something to read.
+            persist_installed_manifest(app, game_directory, &remote_manifest)?;
         }
 
         let _ = fs::remove_dir_all(&temp_dir);

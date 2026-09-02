@@ -78,10 +78,10 @@ export default defineConfig({
             return undefined
           }
 
-          // Put React + ReactDOM + react-router + scheduler in the same
-          // chunk so the runtime can resolve circular imports between
-          // react-dom (consumer) and react (dependency) without hitting
-          // a TDZ/undefined-reference error at module-eval time.
+          // Put React + ReactDOM + scheduler in the same chunk so the
+          // runtime can resolve circular imports between react-dom
+          // (consumer) and react (dependency) without hitting a
+          // TDZ/undefined-reference error at module-eval time.
           if (
             id.includes(`${path.sep}react${path.sep}`) ||
             id.includes(`${path.sep}react-dom${path.sep}`) ||
@@ -91,7 +91,27 @@ export default defineConfig({
           }
 
           if (id.includes('react-router') || id.includes('@tanstack/react-query')) {
-            return 'routing-vendor'
+            // Folding react-router / react-query into the react-vendor
+            // chunk eliminates a real cross-chunk import cycle that
+            // crashed the Linux Chromium build at module-eval time.
+            // The cyclic edge looked like:
+            //
+            //   react-vendor → vendor           (sync import in source)
+            //   routing-vendor → react-vendor   (sync import in source)
+            //
+            // Once routing-vendor is its own file, Rollup emits a
+            // top-level `import { c as l } from "./react-vendor..."`
+            // that evaluates before react-vendor's exports finish
+            // binding on stricter module evaluators (Linux Chromium
+            // pins older than ~M127 hits this). With everything in
+            // one chunk, the binding is internal to a single file and
+            // no top-level cross-chunk `import` is emitted.
+            //
+            // The downside is a single larger chunk, but react-router
+            // and react-query already depend on react anyway, so the
+            // net wire cost is roughly the same and we avoid the
+            // module-eval TDZ crash on Linux.
+            return 'react-vendor'
           }
 
           if (id.includes('@tauri-apps')) {
