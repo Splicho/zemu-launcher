@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_STREAMS_API_BASE_URL ?? 'http://localhost:3002'
+const API_BASE = import.meta.env.VITE_STREAMS_API_BASE_URL ?? 'https://api.zemu.uk'
 
 export type StreamInfo = {
   id: string
