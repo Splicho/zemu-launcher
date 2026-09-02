@@ -112,6 +112,21 @@ export function useGameState(options: { licenseStatus: LicenseStatus }) {
   // (whose own deps would otherwise have to include the state setter)
   // can read the latest "we just finished" flag without rebuilding.
   const justCompletedUpdateRef = useRef(false)
+  // Synchronous re-entry guard for `startUpdate`. `isUpdating` is
+  // a React state value, so it does not flip to `true` until the
+  // next render — a rapid double-click on the "Update available"
+  // button can fire `startUpdate` twice before the second click
+  // sees the disabled state, which then bounces on the Rust side
+  // with an "Update is already running" error. This ref is set
+  // synchronously on entry and cleared on terminal success/error,
+  // so the second click no-ops cleanly with no toast spam.
+  const startUpdateInFlightRef = useRef(false)
+  // Dedupes the error toasts fired from `handleProgress`. Without
+  // this, a single Rust-side error string would re-toast on every
+  // subsequent progress event (download errors fire many emits per
+  // second), drowning the UI. Cleared when Rust emits a clean
+  // (`error: null`) status.
+  const lastErrorRef = useRef<string | null>(null)
 
   // Keep the ref in sync with the state so any async callback
   // (notably `checkForUpdates`) sees the latest value without us
@@ -312,7 +327,29 @@ export function useGameState(options: { licenseStatus: LicenseStatus }) {
 const handleProgress = (status: UpdateStatus) => {
       setUpdateStatus(status)
       setIsUpdating(status.isUpdating)
-      setError(null)
+
+      // Errors from Rust arrive via the `update-progress` event with
+      // `is_updating=false` and `error` populated. The previous code
+      // unconditionally cleared the error string here (`setError(null)`)
+      // and relied on the toast fired inside `startUpdate`'s catch
+      // block — but Rust can emit error events outside of an awaited
+      // `startUpdate` call (e.g. cancellation, or an error that
+      // surfaces from inside a spawned task), in which case no toast
+      // ever fires and the user just sees the button re-enable with
+      // no explanation. Surface the error ourselves here, deduped via
+      // `lastErrorRef` so the same message doesn't spam toasts on
+      // every subsequent progress event.
+      if (status.error) {
+        const previousError = lastErrorRef.current
+        if (previousError !== status.error) {
+          lastErrorRef.current = status.error
+          setError(status.error)
+          toast.error(t('toasts.updateFailed', { error: status.error }))
+        }
+      } else {
+        setError(null)
+        lastErrorRef.current = null
+      }
 
       const hasUpdates =
         status.totalFolders > 0 || (status.totalFiles && status.totalFiles > 0)
@@ -434,11 +471,30 @@ const handleProgress = (status: UpdateStatus) => {
       throw new Error('Game directory is required')
     }
 
+    // Synchronous re-entry guard. The `disabled` prop on the button
+    // already prevents most double-fires, but `onClick` returns before
+    // React re-renders, so a fast double-click can land two
+    // `startUpdate` invocations within the same microtask. The second
+    // one would otherwise reach Rust, see `is_updating=true`, and
+    // bounce with "Update is already running" — surfacing as a
+    // confusing toast and looking like the button "didn't register"
+    // the click. Bailing silently here matches what the user
+    // expects from a disabled button.
+    if (startUpdateInFlightRef.current) {
+      return
+    }
+    startUpdateInFlightRef.current = true
+
     console.log('[useGameState] startUpdate called, gameDirectory:', gameDirectory)
     setIsUpdating(true)
     setUpdateStatus(null)
     setError(null)
     setJustCompletedUpdate(false)
+    // Clear the dedupe ref so a retry of the SAME error string still
+    // surfaces as a fresh toast — without this, a user retrying after
+    // a size-mismatch error would see the button re-enable but no
+    // toast, because `lastErrorRef` still holds the previous message.
+    lastErrorRef.current = null
 
     try {
       console.log('[useGameState] Calling window.gameAPI.downloadUpdate...')
@@ -459,6 +515,12 @@ const handleProgress = (status: UpdateStatus) => {
       setError(errorMsg)
       toast.error(t('toasts.updateFailed', { error: errorMsg }))
       throw err
+    } finally {
+      // Release the synchronous guard regardless of outcome. Errors
+      // leave the button enabled (via `setIsUpdating(false)` and the
+      // state machine falling out of `DOWNLOADING_UPDATE`), so the
+      // user can retry without the guard swallowing their next click.
+      startUpdateInFlightRef.current = false
     }
   }, [gameDirectory])
 

@@ -56,6 +56,7 @@ impl UpdateClient {
     async fn download(
         &self,
         relative_path: &str,
+        expected_size: Option<u64>,
         mut on_progress: impl FnMut(u64, u64, Option<f64>),
         cancel_check: impl Fn() -> bool,
     ) -> Result<Vec<u8>> {
@@ -97,6 +98,38 @@ impl UpdateClient {
             };
 
             on_progress(loaded, total, speed);
+        }
+
+        // Validate the downloaded stream against whatever authoritative
+        // size we have for this artifact. The CDN is the source of
+        // truth, so we prefer `Content-Length`. The manifest's
+        // `compressed_size` is a second line of defence: if the server
+        // omits Content-Length (some static-file hosts do) or sends a
+        // wrong value, the manifest can still catch a truncated
+        // payload. Without this check, a prematurely-closed HTTP
+        // stream would silently feed a truncated `tar.zst` to zstd,
+        // which can produce a short extract instead of an error — the
+        // decompressed file would then overwrite the on-disk target
+        // before the size check at the end of `update_single_file`
+        // runs, leaving the launcher stuck on a broken install that
+        // reports `has_update=true` forever.
+        if let Some(expected) = expected_size {
+            if expected > 0 && loaded != expected {
+                return Err(anyhow!(
+                    "downloaded payload for {relative_path} has unexpected size: \
+                     expected {} bytes (manifest), got {} bytes",
+                    expected,
+                    loaded
+                ));
+            }
+        }
+        if total > 0 && loaded != total {
+            return Err(anyhow!(
+                "downloaded payload for {relative_path} is truncated: \
+                 Content-Length said {} bytes, got {} bytes",
+                total,
+                loaded
+            ));
         }
 
         Ok(buffer)
@@ -711,6 +744,7 @@ async fn update_single_folder(
     let data = client
         .download(
             &download_path,
+            Some(folder_info.compressed_size.unwrap_or(0)),
             |loaded, total, speed| {
                 if let Some(folder) = status.folders.get_mut(folder_index) {
                     folder.stage = "downloading".to_string();
@@ -796,6 +830,7 @@ async fn update_single_file(
     let data = client
         .download(
             &download_path,
+            Some(file_item.entry.compressed_size),
             |loaded, total, speed| {
                 if let Some(files) = status.files.as_mut() {
                     if let Some(file) = files.get_mut(file_index) {
@@ -834,9 +869,38 @@ async fn update_single_file(
     update_runtime_status(state, status, true);
     emit_status(app, status);
 
+    // Defer cleanup so a checksum / size mismatch leaves no garbage in
+    // the temp dir. The actual swap into `target_file` happens below
+    // only after every verification step passes; if we bail early we
+    // never touch `target_file`, so a corrupted previous install
+    // stays usable and the next `check_for_updates` will keep
+    // reporting the file as needing an update.
     let extract_dir = temp_dir.join(format!("extract_{}", file_index));
-    fs::create_dir_all(&extract_dir)?;
-    extract_archive(app, &temp_file, &extract_dir, true)?;
+
+    if let Err(e) = fs::create_dir_all(&extract_dir) {
+        let _ = fs::remove_file(&temp_file);
+        return Err(e).with_context(|| {
+            format!(
+                "failed to create extract dir {} for {}",
+                extract_dir.display(),
+                file_item.file_path
+            )
+        });
+    }
+    let extract_result = extract_archive(app, &temp_file, &extract_dir, true);
+    if let Err(e) = extract_result {
+        let _ = fs::remove_file(&temp_file);
+        let _ = fs::remove_dir_all(&extract_dir);
+        return Err(e).with_context(|| {
+            format!(
+                "failed to extract {} into {} — the archive is truncated, \
+                 corrupt, or its compressed payload did not match the size \
+                 declared in the manifest",
+                temp_file.display(),
+                extract_dir.display()
+            )
+        });
+    }
 
     let target_name = target_file
         .file_name()
@@ -844,29 +908,112 @@ async fn update_single_file(
         .ok_or_else(|| anyhow!("invalid target file name"))?;
 
     let extracted_file = find_extracted_file(&extract_dir, target_name)
-        .ok_or_else(|| anyhow!("Extracted file not found for {}", file_item.file_path))?;
+        .ok_or_else(|| {
+            let _ = fs::remove_file(&temp_file);
+            let _ = fs::remove_dir_all(&extract_dir);
+            anyhow!("Extracted file not found for {}", file_item.file_path)
+        })?;
 
-    fs::copy(&extracted_file, &target_file)?;
-
-    let decompressed = fs::read(&target_file)?;
+    // Verify the extracted payload against the manifest BEFORE we touch
+    // the on-disk target. The old code copied first and verified after,
+    // which meant a truncated extraction overwrote the real file and
+    // left the launcher wedged in an infinite "needs update" loop —
+    // `get_files_to_update` then saw a 1455-byte file where the manifest
+    // said 1458, trusted the local manifest's checksum, and refused to
+    // mark the file as up-to-date forever. Verifying on `extracted_file`
+    // first means we only swap the real target into place when we
+    // already know the bytes are correct.
+    let decompressed = match fs::read(&extracted_file) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            let _ = fs::remove_file(&temp_file);
+            let _ = fs::remove_dir_all(&extract_dir);
+            return Err(e).with_context(|| {
+                format!(
+                    "failed to read extracted file {} before verification",
+                    extracted_file.display()
+                )
+            });
+        }
+    };
     if decompressed.len() as u64 != file_item.entry.size {
+        let _ = fs::remove_file(&temp_file);
+        let _ = fs::remove_dir_all(&extract_dir);
         return Err(anyhow!(
-            "Size mismatch for {}: expected {}, got {}",
+            "Size mismatch for {}: expected {} bytes (manifest), got {} bytes \
+             from extraction — the archive is truncated; the on-disk file at \
+             {} has NOT been modified",
             file_item.file_path,
             file_item.entry.size,
-            decompressed.len()
+            decompressed.len(),
+            target_file.display()
         ));
     }
 
     let actual_checksum = calculate_checksum(&decompressed);
     let expected_checksum = normalize_checksum(&file_item.entry.checksum);
     if actual_checksum != expected_checksum {
+        let _ = fs::remove_file(&temp_file);
+        let _ = fs::remove_dir_all(&extract_dir);
         return Err(anyhow!(
-            "Checksum mismatch for {}: expected {}, got {}",
+            "Checksum mismatch for {}: expected {}, got {} — the archive is \
+             corrupt; the on-disk file at {} has NOT been modified",
             file_item.file_path,
             expected_checksum,
-            actual_checksum
+            actual_checksum,
+            target_file.display()
         ));
+    }
+
+    // Both verifications passed. Stage the new file alongside the
+    // target, then atomically rename it into place so the publish is a
+    // single atomic step. If the rename fails (locked file, AV
+    // interference, perms) we leave the previous file untouched and
+    // surface the error — the launcher keeps running on whatever was
+    // there before.
+    //
+    // `Path::with_extension` REPLACES the extension rather than
+    // appending, which would turn `ClientConfig.ini` into
+    // `ClientConfig.zemu-new` (dropping the `.ini`). Append to the
+    // stem explicitly instead.
+    let sibling_name = match target_file.file_name().and_then(|n| n.to_str()) {
+        Some(name) => format!("{name}.zemu-new"),
+        None => {
+            let _ = fs::remove_file(&temp_file);
+            let _ = fs::remove_dir_all(&extract_dir);
+            return Err(anyhow!(
+                "target file {} has no usable filename component",
+                target_file.display()
+            ));
+        }
+    };
+    let sibling = match target_file.parent() {
+        Some(parent) => parent.join(sibling_name),
+        None => PathBuf::from(sibling_name),
+    };
+    if let Err(e) = fs::write(&sibling, &decompressed) {
+        let _ = fs::remove_file(&sibling);
+        let _ = fs::remove_file(&temp_file);
+        let _ = fs::remove_dir_all(&extract_dir);
+        return Err(e).with_context(|| {
+            format!(
+                "failed to write staged replacement {} for {}",
+                sibling.display(),
+                target_file.display()
+            )
+        });
+    }
+    if let Err(e) = fs::rename(&sibling, &target_file) {
+        let _ = fs::remove_file(&sibling);
+        let _ = fs::remove_file(&temp_file);
+        let _ = fs::remove_dir_all(&extract_dir);
+        return Err(e).with_context(|| {
+            format!(
+                "failed to atomically replace {} with the freshly downloaded \
+                 and verified file",
+                target_file.display()
+            )
+        });
     }
 
     if let Some(files) = status.files.as_mut() {
@@ -883,6 +1030,7 @@ async fn update_single_file(
     update_runtime_status(state, status, true);
     emit_status(app, status);
 
+    // Atomic rename succeeded; safe to remove the temp artefacts.
     let _ = fs::remove_file(&temp_file);
     let _ = fs::remove_dir_all(&extract_dir);
     Ok(())

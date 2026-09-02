@@ -67,7 +67,6 @@ interface LicenseSectionProps {
   onRedeem: (
     rawKey: string,
   ) => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
-  onRevalidate: () => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
 }
 
 // The Status column reflects the *key's own state* (Active / Revoked),
@@ -117,7 +116,6 @@ export function LicenseSection({
   revalidateError,
   isBinding,
   onRedeem,
-  onRevalidate,
 }: LicenseSectionProps) {
   const { t } = useTranslation()
   // Format the cached key for display. When there's no record,
@@ -137,7 +135,6 @@ export function LicenseSection({
         redeemError={redeemError}
         isSubmitting={isBinding}
         onSubmit={onRedeem}
-        onRevalidate={onRevalidate}
       />
 
       <Separator />
@@ -197,7 +194,6 @@ function RedeemForm({
   redeemError,
   isSubmitting,
   onSubmit,
-  onRevalidate,
   t,
 }: {
   redeemError: LicenseFailure | null
@@ -205,7 +201,6 @@ function RedeemForm({
   onSubmit: (
     rawKey: string,
   ) => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
-  onRevalidate: () => Promise<{ ok: true } | { ok: false; failure: LicenseFailure }>
   t: (key: string) => string
 }) {
   const [value, setValue] = useState('')
@@ -219,22 +214,39 @@ function RedeemForm({
   // If a redeem attempt fails, we keep the user's input intact so they
   // can edit instead of re-typing. The promise resolves to the raw
   // result so the parent can still drive state (bound/unbound).
+  //
+  // We deliberately do NOT call `onRevalidate` after a successful
+  // redeem. Two reasons:
+  //
+  //   1. The redeem response is authoritative: the server just bound
+  //      the key to this PC and returned `{ valid: true }`. Running
+  //      `validate` immediately afterwards can race against the
+  //      server's read-after-write consistency — the validate
+  //      endpoint may briefly report `not_found` for a key that was
+  //      just redeemed, which then surfaces as a misleading
+  //      "Key was not found" toast even though the bind actually
+  //      succeeded (and the user can see the bound record in the
+  //      table below).
+  //
+  //   2. If the bind actually failed on the server side, `/redeem`
+  //      would have returned a denial (or thrown, which the hook
+  //      maps to `unreachable`). A redundant validate round-trip
+  //      adds a second failure path that can disagree with the
+  //      redeem result for transient reasons and overwrite the
+  //      authoritative success with a confusing failure.
+  //
+  // The 60-second periodic revalidation in `use-license` will catch
+  // any genuine divergence (e.g. the key is revoked seconds later)
+  // on its next tick.
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!valid || isSubmitting) return
-    // Await revalidate first so we get the fresh failure for the toast message.
     const submitResult = await onSubmit(raw)
-    let revalidateResult: { ok: true } | { ok: false; failure: LicenseFailure }
     if (submitResult.ok) {
-      revalidateResult = await onRevalidate()
-    } else {
-      revalidateResult = submitResult
-    }
-    if (revalidateResult.ok) {
       toast.success(t('license.keyRedeemed'))
-    } else {
-      toast.error(redeemErrorMessage(t, revalidateResult.failure))
+      return
     }
+    toast.error(redeemErrorMessage(t, submitResult.failure))
   }
 
   const errorMessage = redeemError

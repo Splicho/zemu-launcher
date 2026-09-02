@@ -78,7 +78,6 @@ export function PropertiesSection({
             revalidateError={license.revalidateError}
             isBinding={license.status === 'binding'}
             onRedeem={license.redeem}
-            onRevalidate={license.revalidate}
           />
         ) : activeId === 'guide' ? (
           <InstallationGuideSection />
