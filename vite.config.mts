@@ -90,10 +90,16 @@ export default defineConfig({
             return 'react-vendor'
           }
 
-          if (id.includes('react-router') || id.includes('@tanstack/react-query')) {
-            // Folding react-router / react-query into the react-vendor
-            // chunk eliminates a real cross-chunk import cycle that
-            // crashed the Linux Chromium build at module-eval time.
+          if (
+            id.includes('react-router') ||
+            id.includes('@tanstack/react-query') ||
+            id.includes('@tanstack/query-core') ||
+            id.includes('@floating-ui')
+          ) {
+            // Folding react-router / react-query and their shared
+            // React-adjacent dependencies into the react-vendor chunk
+            // eliminates a real cross-chunk import cycle that crashed
+            // the Linux Chromium build at module-eval time.
             // The cyclic edge looked like:
             //
             //   react-vendor → vendor           (sync import in source)

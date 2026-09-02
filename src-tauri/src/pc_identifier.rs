@@ -35,8 +35,7 @@ pub fn get_or_create_pc_identifier(app: &AppHandle) -> Result<String> {
     rand::thread_rng().fill_bytes(&mut bytes);
     let id = hex::encode(bytes);
 
-    fs::write(&path, &id)
-        .with_context(|| format!("failed writing pc id to {}", path.display()))?;
+    fs::write(&path, &id).with_context(|| format!("failed writing pc id to {}", path.display()))?;
 
     Ok(id)
 }

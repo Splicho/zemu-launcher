@@ -36,9 +36,8 @@
  *   response; it is NOT used as a gating mechanism any more — the
  *   server stopped returning `discord_required` for redeem.
  */
-
 import { createContext, useContext, useEffect, useState } from 'react'
-import { validateLicense, redeemLicense } from '@/lib/license'
+import { validateLicense, redeemLicense, logLicenseDebug } from '@/lib/license'
 import type {
   ValidateFailureReason,
   RedeemFailureReason,
@@ -120,6 +119,7 @@ export function useLicense({
         if (!cancelled) setPcIdentifier(id)
       })
       .catch((error) => {
+        logLicenseDebug(`getPcIdentifier failed: ${String(error)}`)
         console.warn('[license] getPcIdentifier failed', error)
       })
     return () => {
@@ -148,6 +148,7 @@ export function useLicense({
   ): Promise<{ ok: true } | { ok: false; failure: LicenseFailure }> {
     setRedeemError(null)
     if (!pcIdentifier) {
+      logLicenseDebug('redeem aborted: pcIdentifier is not available')
       const failure: LicenseFailure = 'unreachable'
       setRedeemError(failure)
       setStatus('unbound')

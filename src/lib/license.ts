@@ -30,6 +30,25 @@
  */
 
 import { LAUNCHER_CONFIG } from '@/config/launcher'
+import { invoke } from '@tauri-apps/api/core'
+import { logToTerminal } from '@/lib/terminal-log'
+
+export function logLicenseDebug(message: string): void {
+  logToTerminal('license', message)
+}
+
+function describeRequest(request: ValidateRequest): string {
+  return `keyLength=${request.licenseKey.length}, pcIdentifier=${maskValue(request.pcIdentifier)}`
+}
+
+function maskValue(value: string): string {
+  if (value.length <= 8) return `${value.length} chars`
+  return `${value.slice(0, 4)}...${value.slice(-4)}`
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
 
 export interface ValidateRequest {
   licenseKey: string
@@ -119,30 +138,62 @@ async function postLicenseEndpoint<
   R extends { kind: 'ok'; response: ValidateSuccess } | { kind: 'denied'; response: { valid: false; reason: F } } | { kind: 'unreachable' },
 >(path: string, request: ValidateRequest, expectedReasons: readonly F[]): Promise<R> {
   const base = await getApiBaseUrl()
+  const url = `${base}${path}`
+  logLicenseDebug(`POST ${url} (${describeRequest(request)})`)
+
+  let payload: unknown
+  if (isTauriRuntime()) {
+    try {
+      payload = await invoke('license_post_endpoint', {
+        baseUrl: base,
+        path,
+        licenseKey: request.licenseKey,
+        pcIdentifier: request.pcIdentifier,
+      })
+    } catch (error) {
+      logLicenseDebug(`POST ${url} failed in Rust HTTP client: ${String(error)}`)
+      return { kind: 'unreachable' } as R
+    }
+
+    return parseLicensePayload<F, R>(url, request, expectedReasons, payload)
+  }
+
   let response: Response
   try {
-    response = await fetch(`${base}${path}`, {
+    response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     })
-  } catch {
+  } catch (error) {
+    logLicenseDebug(`POST ${url} failed before response: ${String(error)}`)
     return { kind: 'unreachable' } as R
   }
 
-  let payload: unknown
+  logLicenseDebug(`POST ${url} -> HTTP ${response.status} ${response.statusText}`)
+
   try {
     payload = await response.json()
-  } catch {
+  } catch (error) {
+    logLicenseDebug(`POST ${url} returned non-JSON response: ${String(error)}`)
     return { kind: 'unreachable' } as R
   }
 
+  return parseLicensePayload<F, R>(url, request, expectedReasons, payload)
+}
+
+function parseLicensePayload<
+  F extends string,
+  R extends { kind: 'ok'; response: ValidateSuccess } | { kind: 'denied'; response: { valid: false; reason: F } } | { kind: 'unreachable' },
+>(url: string, request: ValidateRequest, expectedReasons: readonly F[], payload: unknown): R {
   if (typeof payload !== 'object' || payload === null) {
+    logLicenseDebug(`POST ${url} returned invalid payload type: ${typeof payload}`)
     return { kind: 'unreachable' } as R
   }
 
   const obj = payload as Record<string, unknown>
   if (obj.valid === true) {
+    logLicenseDebug(`POST ${url} accepted key`)
     return {
       kind: 'ok',
       response: {
@@ -156,6 +207,7 @@ async function postLicenseEndpoint<
   if (obj.valid === false) {
     const reason = obj.reason
     if (typeof reason === 'string' && (expectedReasons as readonly string[]).includes(reason)) {
+      logLicenseDebug(`POST ${url} denied key: ${reason}`)
       return {
         kind: 'denied',
         response: { valid: false, reason: reason as F },
@@ -166,6 +218,7 @@ async function postLicenseEndpoint<
   // Server contract drift (unknown reason, unexpected shape) — treat as
   // unreachable so the caller doesn't silently treat an unknown deny
   // reason as a success.
+  logLicenseDebug(`POST ${url} returned unexpected payload: ${JSON.stringify(obj)}`)
   return { kind: 'unreachable' } as R
 }
 

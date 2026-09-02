@@ -22,6 +22,7 @@ pub fn run() {
     let app_state = AppState::default();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             commands::focus_primary_window(app);
 
@@ -203,9 +204,8 @@ fn build_index_url(dev_url: Option<&url::Url>) -> tauri::Result<WebviewUrl> {
         } else {
             format!("{base}/index.html")
         };
-        let parsed = Url::parse(&url).map_err(|e| {
-            tauri::Error::Anyhow(anyhow::anyhow!("invalid index url {url:?}: {e}"))
-        })?;
+        let parsed = Url::parse(&url)
+            .map_err(|e| tauri::Error::Anyhow(anyhow::anyhow!("invalid index url {url:?}: {e}")))?;
         return Ok(WebviewUrl::External(parsed));
     }
 

@@ -11,8 +11,12 @@ use crate::pc_identifier;
 use crate::state::AppState;
 use crate::storage;
 use crate::update;
+use serde_json::json;
+use std::time::Duration;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
+
+const LICENSE_HTTP_TIMEOUT_SECS: u64 = 20;
 
 #[tauri::command]
 pub fn window_minimize(window: tauri::WebviewWindow) -> Result<(), String> {
@@ -383,6 +387,69 @@ pub fn debug_log_clear(app: tauri::AppHandle) -> Result<(), String> {
     debug_log::clear(&app).map_err(|e| e.to_string())
 }
 
+/// Frontend-facing terminal log. Useful while running `pnpm dev`
+/// because renderer code normally logs to the WebView console, not to
+/// the shell that launched Tauri.
+#[tauri::command]
+pub fn log_to_terminal(message: String) {
+    eprintln!("[renderer] {message}");
+}
+
+#[tauri::command]
+pub async fn license_post_endpoint(
+    base_url: String,
+    path: String,
+    license_key: String,
+    pc_identifier: String,
+) -> Result<serde_json::Value, String> {
+    if path != "/v1/licenses/validate" && path != "/v1/licenses/redeem" {
+        return Err(format!("unsupported license endpoint: {path}"));
+    }
+
+    let base = base_url.trim_end_matches('/');
+    let url = format!("{base}{path}");
+    eprintln!(
+        "[license] rust POST {url} (licenseKey={}, keyLength={}, pcIdentifier={})",
+        license_key,
+        license_key.len(),
+        mask_value(&pc_identifier)
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(LICENSE_HTTP_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| format!("failed to create license HTTP client: {e}"))?;
+
+    let response = client
+        .post(&url)
+        .json(&json!({
+            "licenseKey": license_key,
+            "pcIdentifier": pc_identifier,
+        }))
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("[license] rust POST {url} failed before response: {e}");
+            e.to_string()
+        })?;
+
+    let status = response.status();
+    eprintln!("[license] rust POST {url} -> HTTP {status}");
+
+    let text = response.text().await.map_err(|e| {
+        eprintln!("[license] rust POST {url} failed reading response body: {e}");
+        e.to_string()
+    })?;
+
+    serde_json::from_str(&text).map_err(|e| {
+        eprintln!(
+            "[license] rust POST {url} returned non-JSON response: {e}; body={}",
+            truncate_for_log(&text)
+        );
+        e.to_string()
+    })
+}
+
 #[tauri::command]
 pub async fn api_get(
     app: tauri::AppHandle,
@@ -425,10 +492,7 @@ pub fn license_get_record(app: tauri::AppHandle) -> Result<Option<LicenseRecord>
 /// after every successful redeem or validate so the record survives
 /// launcher restarts.
 #[tauri::command]
-pub fn license_save_record(
-    app: tauri::AppHandle,
-    record: LicenseRecord,
-) -> Result<(), String> {
+pub fn license_save_record(app: tauri::AppHandle, record: LicenseRecord) -> Result<(), String> {
     storage::save_license_store(&app, &record).map_err(|e| e.to_string())
 }
 
@@ -449,9 +513,7 @@ pub fn license_clear_record(app: tauri::AppHandle) -> Result<(), String> {
 /// not check `LauncherConfig`.
 #[tauri::command]
 pub fn launcher_get_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
-    app.autolaunch()
-        .is_enabled()
-        .map_err(|e| e.to_string())
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
 }
 
 /// Register or unregister the launcher with the OS autostart mechanism
@@ -459,10 +521,7 @@ pub fn launcher_get_autostart_enabled(app: tauri::AppHandle) -> Result<bool, Str
 /// directly through here so the persisted state always matches what
 /// the OS will actually do at logon.
 #[tauri::command]
-pub fn launcher_set_autostart_enabled(
-    app: tauri::AppHandle,
-    enabled: bool,
-) -> Result<(), String> {
+pub fn launcher_set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
     let manager = app.autolaunch();
     if enabled {
         manager.enable().map_err(|e| e.to_string())
@@ -471,8 +530,8 @@ pub fn launcher_set_autostart_enabled(
     }
 }
 
-pub fn register_commands(
-) -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
+pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static
+{
     tauri::generate_handler![
         window_minimize,
         window_maximize,
@@ -523,6 +582,8 @@ pub fn register_commands(
         debug_log_path,
         debug_log_read,
         debug_log_clear,
+        log_to_terminal,
+        license_post_endpoint,
         api_get,
         api_post,
         launcher_get_pc_identifier,
@@ -581,4 +642,28 @@ fn focus_window(window: &tauri::WebviewWindow) {
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();
+}
+
+fn mask_value(value: &str) -> String {
+    let char_count = value.chars().count();
+    if char_count <= 8 {
+        return format!("{char_count} chars");
+    }
+
+    let start: String = value.chars().take(4).collect();
+    let mut end_chars: Vec<char> = value.chars().rev().take(4).collect();
+    end_chars.reverse();
+    let end: String = end_chars.into_iter().collect();
+
+    format!("{start}...{end}")
+}
+
+fn truncate_for_log(value: &str) -> String {
+    const MAX_LEN: usize = 500;
+    if value.chars().count() <= MAX_LEN {
+        return value.replace(['\r', '\n'], " ");
+    }
+
+    let truncated: String = value.chars().take(MAX_LEN).collect();
+    format!("{}...", truncated.replace(['\r', '\n'], " "))
 }

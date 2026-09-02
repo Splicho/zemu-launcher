@@ -428,21 +428,32 @@ pub async fn start_download_and_install(
     let _ = debug_log::append(
         &app,
         "update",
-        &format!("start_download_and_install runtime.lock acquired, is_updating={}", {
-            let r = state.update_runtime.lock().ok();
-            r.map(|g| g.is_updating).unwrap_or(false)
-        }),
+        &format!(
+            "start_download_and_install runtime.lock acquired, is_updating={}",
+            {
+                let r = state.update_runtime.lock().ok();
+                r.map(|g| g.is_updating).unwrap_or(false)
+            }
+        ),
     );
 
     let app_handle = app.clone();
-    let _ = debug_log::append(&app, "update", "start_download_and_install spawning async task...");
+    let _ = debug_log::append(
+        &app,
+        "update",
+        "start_download_and_install spawning async task...",
+    );
     eprintln!("[RUST_DEBUG] About to spawn async task");
     tauri::async_runtime::spawn(async move {
         eprintln!("[RUST_DEBUG] ASYNC_TASK: started");
         let _ = debug_log::append(&app_handle, "update", "ASYNC_TASK: started");
         let result = download_and_install(&app_handle, &state, &game_directory).await;
         eprintln!("[RUST_DEBUG] ASYNC_TASK: download_and_install returned");
-        let _ = debug_log::append(&app_handle, "update", "ASYNC_TASK: download_and_install returned");
+        let _ = debug_log::append(
+            &app_handle,
+            "update",
+            "ASYNC_TASK: download_and_install returned",
+        );
         match result {
             Ok(()) => {
                 eprintln!("[RUST_DEBUG] ASYNC_TASK: result is Ok, completed");
@@ -496,7 +507,10 @@ async fn download_and_install(
     let _ = debug_log::append(
         app,
         "update",
-        &format!("download_and_install manifest received version={}", remote_manifest.version),
+        &format!(
+            "download_and_install manifest received version={}",
+            remote_manifest.version
+        ),
     );
 
     let local_version = load_local_manifest(game_directory)?;
@@ -921,12 +935,11 @@ async fn update_single_file(
         .and_then(|n| n.to_str())
         .ok_or_else(|| anyhow!("invalid target file name"))?;
 
-    let extracted_file = find_extracted_file(&extract_dir, target_name)
-        .ok_or_else(|| {
-            let _ = fs::remove_file(&temp_file);
-            let _ = fs::remove_dir_all(&extract_dir);
-            anyhow!("Extracted file not found for {}", file_item.file_path)
-        })?;
+    let extracted_file = find_extracted_file(&extract_dir, target_name).ok_or_else(|| {
+        let _ = fs::remove_file(&temp_file);
+        let _ = fs::remove_dir_all(&extract_dir);
+        anyhow!("Extracted file not found for {}", file_item.file_path)
+    })?;
 
     // Verify the extracted payload against the manifest BEFORE we touch
     // the on-disk target. The old code copied first and verified after,
@@ -1067,8 +1080,12 @@ fn extract_archive(
 
     let file = fs::File::open(archive_file)
         .with_context(|| format!("failed to open archive {}", archive_file.display()))?;
-    let decoder = zstd::Decoder::new(file)
-        .with_context(|| format!("failed to start zstd decoder for {}", archive_file.display()))?;
+    let decoder = zstd::Decoder::new(file).with_context(|| {
+        format!(
+            "failed to start zstd decoder for {}",
+            archive_file.display()
+        )
+    })?;
     let mut archive = tar::Archive::new(decoder);
     archive.set_preserve_permissions(false);
     archive.set_overwrite(true);
@@ -1372,8 +1389,8 @@ fn calculate_overall_progress(status: &UpdateStatus) -> f64 {
     // Each in-progress item contributes its progress as a fraction of total.
     // Completed items count as 100% each. This is monotonically increasing
     // because completed_items only grows.
-    let total_progress = completed_items as f64
-        + (in_progress_pct / 100.0 * in_progress_items as f64);
+    let total_progress =
+        completed_items as f64 + (in_progress_pct / 100.0 * in_progress_items as f64);
     (total_progress / total_items as f64) * 100.0
 }
 

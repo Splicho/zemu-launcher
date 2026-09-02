@@ -209,9 +209,7 @@ fn worker_loop(app: AppHandle, rx: std::sync::mpsc::Receiver<DiscordCommand>) {
     }
 }
 
-fn ensure_connected(
-    client: &mut Option<DiscordIpcClient>,
-) -> Result<&mut DiscordIpcClient> {
+fn ensure_connected(client: &mut Option<DiscordIpcClient>) -> Result<&mut DiscordIpcClient> {
     if client.is_none() {
         let mut new_client = DiscordIpcClient::new(DISCORD_CLIENT_ID);
         new_client

@@ -42,6 +42,7 @@ walkdir = "2.5"
 webbrowser = "1.0"
 zip = "8"
 zstd = "0.13"
+tauri-plugin-fs = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
