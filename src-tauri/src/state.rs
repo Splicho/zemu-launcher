@@ -124,6 +124,7 @@ impl AppState {
         GameLaunchState::default()
     }
 
+    #[cfg(target_os = "windows")]
     pub fn clear_game_launch_if_pid_matches(&self, pid: u32) -> Option<GameLaunchState> {
         let mut guard = self.game_runtime.lock().ok()?;
         if guard.active_pid != Some(pid) {
