@@ -2,7 +2,7 @@ export const LAUNCHER_CONFIG = {
   name: 'ZEmu Launcher',
   version: '0.1.17',
   company: 'ZEmu',
-  // Public URL the launcher hits to fetch version.json + .arc archives.
+  // Public URL the launcher hits to fetch version.json + .tar.zst archives.
   // Bundled into update-config.json by scripts/sync-launcher-config.cjs.
   updateBaseUrl: 'https://assets.zemu.uk',
   // Auth.js (Next.js) on id.zemu.uk. The web-session cookie is scoped to

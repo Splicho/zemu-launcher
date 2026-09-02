@@ -329,9 +329,24 @@ const handleProgress = (status: UpdateStatus) => {
         setUpdateInfo((prev) =>
           prev ? { ...prev, hasUpdate: false } : { hasUpdate: false, cdnAvailable: true }
         )
+        // Schedule a deferred re-check so `version.json` on disk and
+        // any cloud-side state get re-read. We guard both writes with
+        // `justCompletedUpdateRef.current` because Rust may still be
+        // finishing the `version.json` write when this fires — if we
+        // trust its `isInstalled()` reply unconditionally, a transient
+        // `false` here flips the state machine back to `NOT_INSTALLED`
+        // and traps the user on the "Install" button until they
+        // refresh the launcher. Optimistic state stays authoritative
+        // until the user starts a new update cycle (which resets
+        // `justCompletedUpdate` to `false`).
         setTimeout(async () => {
+          if (!justCompletedUpdateRef.current) {
+            return
+          }
           const installed = await window.gameAPI.isInstalled()
-          setIsInstalled(installed)
+          if (justCompletedUpdateRef.current) {
+            setIsInstalled(installed || true)
+          }
           await checkForUpdates(true)
         }, 500)
       } else if (!status.isUpdating && !hasUpdates && !justCompletedUpdate) {

@@ -10,12 +10,9 @@ use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Instant;
-use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
 
 const TEMP_DIR_NAME: &str = "zemu-updates";
@@ -49,11 +46,11 @@ impl UpdateClient {
     }
 
     fn folder_download_path(&self, folder_name: &str, version: &str) -> String {
-        format!("{}/{folder_name}-{version}.arc", folder_name)
+        format!("{folder_name}-{version}.tar.zst")
     }
 
     fn file_download_path(&self, file_path: &str) -> String {
-        format!("{file_path}.arc")
+        format!("{file_path}.tar.zst")
     }
 
     async fn download(
@@ -62,7 +59,7 @@ impl UpdateClient {
         mut on_progress: impl FnMut(u64, u64, Option<f64>),
         cancel_check: impl Fn() -> bool,
     ) -> Result<Vec<u8>> {
-        let clean_path = relative_path.trim_start_matches('/').trim_start_matches("root/");
+        let clean_path = relative_path.trim_start_matches('/');
         let url = format!("{}/{}", self.base_url, clean_path);
         eprintln!("[RUST_DEBUG] DOWNLOAD: url={}", url);
 
@@ -492,6 +489,16 @@ async fn download_and_install(
     let local_version = load_local_manifest(game_directory)?;
 
     // PART 1: Download base game files (file-level content)
+    //
+    // `finalize_total_files` is hoisted so the completion emit at the
+    // end of the function can populate `total_files` even when there
+    // are no folders to download. The frontend's optimistic flip on
+    // 100% progress keys off `totalFolders > 0 || totalFiles > 0`;
+    // without it, file-only installs (e.g. a fresh `libcef.dll`
+    // download) hit `overall_progress = 100` with both counters at 0,
+    // the optimistic flip is skipped, and the launcher stays on
+    // "Install Patch" until the user refreshes.
+    let mut finalize_total_files: usize = 0;
     if is_file_level {
         let verify_on_disk = local_version.is_none();
         if verify_on_disk {
@@ -517,6 +524,7 @@ async fn download_and_install(
         );
 
         if !files_to_update.is_empty() {
+            finalize_total_files = files_to_update.len();
             let mut status = UpdateStatus {
                 is_updating: true,
                 total_files: files_to_update.len(),
@@ -579,17 +587,25 @@ async fn download_and_install(
         ),
     );
     if folders_to_update.is_empty() {
-        // No files or folders to update - we're done
+        // No folders to update - we're done. Carry the file count
+        // forward so the completion emit has `total_files > 0` when
+        // PART 1 actually downloaded files; otherwise the frontend's
+        // optimistic state flip on `overall_progress === 100` is
+        // skipped (it requires either `totalFolders > 0` or
+        // `totalFiles > 0`) and the user is stuck on "Install Patch"
+        // until they refresh the launcher.
         let status = UpdateStatus {
             is_updating: false,
             overall_progress: 100.0,
+            total_files: finalize_total_files,
+            completed_files: finalize_total_files,
             ..UpdateStatus::default()
         };
         update_runtime_status(state, &status, false);
         emit_status(app, &status);
 
-        // Persist manifest if we downloaded files (even if no folders)
-        if is_file_level && local_version.is_none() {
+        // Persist manifest if we have a new version (even if no files or folders changed)
+        if local_version.is_none() {
             let _ = persist_installed_manifest(app, game_directory, &remote_manifest);
         }
 
@@ -600,6 +616,13 @@ async fn download_and_install(
     let mut status = UpdateStatus {
         is_updating: true,
         total_folders: folders_to_update.len(),
+        // Carry the file count from PART 1 so the completion emit at
+        // the end of this function still reports the work that was
+        // already done — without it, the final `overall_progress: 100`
+        // status has `total_files: 0` and the frontend's optimistic
+        // flip is at the mercy of `total_folders` happening to be > 0.
+        total_files: finalize_total_files,
+        completed_files: finalize_total_files,
         folders: folders_to_update
             .iter()
             .map(|folder| FolderProgress {
@@ -682,7 +705,7 @@ async fn update_single_folder(
         "update",
         &format!("update_single_folder start folder={folder_name} path={download_path}"),
     );
-    let temp_file = temp_dir.join(format!("{folder_name}-{}.arc", remote_manifest.version));
+    let temp_file = temp_dir.join(format!("{folder_name}-{}.tar.zst", remote_manifest.version));
     let target_folder = PathBuf::from(game_directory).join(folder_name);
 
     let data = client
@@ -762,8 +785,8 @@ async fn update_single_file(
     status: &mut UpdateStatus,
     file_index: usize,
 ) -> Result<()> {
-    let download_path = client.file_download_path(&file_item.file_path);
-    let temp_file = temp_dir.join(format!("{}.arc", file_item.file_path.replace('/', "_")));
+    let download_path = client.file_download_path(&file_item.entry.path);
+    let temp_file = temp_dir.join(format!("{}.tar.zst", file_item.file_path.replace('/', "_")));
     let target_file = PathBuf::from(game_directory).join(&file_item.file_path);
 
     if let Some(parent) = target_file.parent() {
@@ -865,154 +888,35 @@ async fn update_single_file(
     Ok(())
 }
 
-/// Invokes the bundled FreeArc `unarc.exe` to extract an `.arc` archive.
+/// Streams a `.tar.zst` archive into `destination`. Pure Rust via the
+/// `tar` + `zstd` crates — no external extractor binary required.
 ///
-/// Format: `unarc.exe x <archive> -dp<destination> -o+`
-/// `-o+` overwrites existing files. `-dp` is the destination path.
+/// `tar::Archive::set_overwrite(true)` matches the previous FreeArc `-o+`
+/// behavior. `set_preserve_permissions(false)` keeps Windows happy when
+/// tar entries carry Unix mode bits.
 fn extract_archive(
-    app: &AppHandle,
+    _app: &AppHandle,
     archive_file: &Path,
     destination: &Path,
     _single_file_mode: bool,
 ) -> Result<()> {
-    fs::create_dir_all(destination)?;
+    fs::create_dir_all(destination)
+        .with_context(|| format!("failed to create destination {}", destination.display()))?;
 
-    let unarc = resolve_unarc_path(app)?;
-
-    let args = vec![
-        "x".to_string(),
-        archive_file.to_string_lossy().to_string(),
-        format!("-dp{}", destination.to_string_lossy()),
-        "-o+".to_string(),
-    ];
-
-    let mut command = Command::new(&unarc);
-    command.args(args);
-    #[cfg(windows)]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-
-    let output = command
-        .output()
-        .with_context(|| format!("Failed to spawn FreeArc at {}", unarc.display()))?;
-
-    if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!(
-            "FreeArc extraction failed (code {:?}):\nstdout: {}\nstderr: {}",
-            output.status.code(),
-            stdout,
-            stderr
-        ));
-    }
-
+    let file = fs::File::open(archive_file)
+        .with_context(|| format!("failed to open archive {}", archive_file.display()))?;
+    let decoder = zstd::Decoder::new(file)
+        .with_context(|| format!("failed to start zstd decoder for {}", archive_file.display()))?;
+    let mut archive = tar::Archive::new(decoder);
+    archive.set_preserve_permissions(false);
+    archive.set_overwrite(true);
+    archive
+        .unpack(destination)
+        .with_context(|| format!("failed to unpack archive {}", archive_file.display()))?;
     Ok(())
 }
 
-/// Walks a wide candidate list so FreeArc resolves correctly in dev, in
-/// the bundled installer (`resources/`), and under the NSIS updater layout
-/// (`_up_/`).
-fn resolve_unarc_path(app: &AppHandle) -> Result<PathBuf> {
-    let mut candidates = vec![
-        PathBuf::from("unarc.exe"),
-        PathBuf::from("assets/bin/unarc.exe"),
-        PathBuf::from("_up_/unarc.exe"),
-        PathBuf::from("_up_/assets/bin/unarc.exe"),
-        PathBuf::from("../unarc.exe"),
-        PathBuf::from("../assets/bin/unarc.exe"),
-        PathBuf::from("../../assets/bin/unarc.exe"),
-    ];
-
-    if let Ok(path) = app.path().resolve("unarc.exe", BaseDirectory::Resource) {
-        candidates.push(path);
-    }
-    if let Ok(path) = app
-        .path()
-        .resolve("_up_/unarc.exe", BaseDirectory::Resource)
-    {
-        candidates.push(path);
-    }
-    if let Ok(path) = app
-        .path()
-        .resolve("assets/bin/unarc.exe", BaseDirectory::Resource)
-    {
-        candidates.push(path);
-    }
-    if let Ok(path) = app
-        .path()
-        .resolve("_up_/assets/bin/unarc.exe", BaseDirectory::Resource)
-    {
-        candidates.push(path);
-    }
-
-    if let Ok(resource_dir) = app.path().resource_dir() {
-        candidates.push(resource_dir.join("unarc.exe"));
-        candidates.push(resource_dir.join("_up_").join("unarc.exe"));
-        candidates.push(resource_dir.join("assets").join("bin").join("unarc.exe"));
-        candidates.push(
-            resource_dir
-                .join("_up_")
-                .join("assets")
-                .join("bin")
-                .join("unarc.exe"),
-        );
-    }
-
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            candidates.push(parent.join("unarc.exe"));
-            candidates.push(parent.join("_up_").join("unarc.exe"));
-            candidates.push(parent.join("assets/bin/unarc.exe"));
-            candidates.push(
-                parent
-                    .join("_up_")
-                    .join("assets")
-                    .join("bin")
-                    .join("unarc.exe"),
-            );
-            candidates.push(parent.join("resources").join("unarc.exe"));
-            candidates.push(
-                parent
-                    .join("resources")
-                    .join("assets")
-                    .join("bin")
-                    .join("unarc.exe"),
-            );
-            candidates.push(parent.join("resources").join("_up_").join("unarc.exe"));
-            candidates.push(
-                parent
-                    .join("resources")
-                    .join("_up_")
-                    .join("assets")
-                    .join("bin")
-                    .join("unarc.exe"),
-            );
-        }
-    }
-
-    for candidate in &candidates {
-        if candidate.exists() {
-            return Ok(candidate.clone());
-        }
-    }
-
-    let checked_paths = candidates
-        .iter()
-        .map(|path| path.to_string_lossy().to_string())
-        .collect::<Vec<_>>()
-        .join(" | ");
-
-    Err(anyhow!(
-        "FreeArc executable not found. Ensure unarc.exe is bundled as a resource. checked_paths={checked_paths}"
-    ))
-}
-
 fn find_extracted_file(root: &Path, target_name: &str) -> Option<PathBuf> {
-    let mut files = Vec::new();
-
     for entry in WalkDir::new(root)
         .into_iter()
         .filter_map(|entry| entry.ok())
@@ -1020,22 +924,15 @@ fn find_extracted_file(root: &Path, target_name: &str) -> Option<PathBuf> {
         if !entry.file_type().is_file() {
             continue;
         }
-        let path = entry.path().to_path_buf();
-        if path
+        if entry
             .file_name()
-            .and_then(|name| name.to_str())
+            .to_str()
             .map(|name| name.eq_ignore_ascii_case(target_name))
             .unwrap_or(false)
         {
-            return Some(path);
+            return Some(entry.path().to_path_buf());
         }
-        files.push(path);
     }
-
-    if files.len() == 1 {
-        return files.into_iter().next();
-    }
-
     None
 }
 
@@ -1060,15 +957,20 @@ fn uses_file_level_manifest(manifest: &VersionManifest) -> bool {
 }
 
 fn get_folders_to_update(remote: &VersionManifest, local: Option<&VersionManifest>) -> Vec<String> {
-    if local.is_none() {
-        return remote.folders.keys().cloned().collect();
-    }
-
-    let local = local.expect("checked above");
     let mut result = Vec::new();
 
     for (folder_name, folder_info) in &remote.folders {
-        let local_folder = local.folders.get(folder_name);
+        // Skip folders already covered by per-file downloads. The compressor
+        // GUI uploads each file individually (e.g. `BEClient_x64.dll.tar.zst`
+        // at the bucket root) and writes per-file entries under the folder,
+        // but it does NOT upload the aggregate `folder-<version>.tar.zst`.
+        // Trying to fetch that aggregate would 404, so exclude any folder
+        // whose per-file entries already cover its contents.
+        if !folder_info.files.is_empty() {
+            continue;
+        }
+
+        let local_folder = local.and_then(|manifest| manifest.folders.get(folder_name));
         if folder_needs_update(local_folder, folder_info) {
             result.push(folder_name.clone());
         }
@@ -1285,20 +1187,32 @@ fn calculate_checksum(bytes: &[u8]) -> String {
 }
 
 fn calculate_overall_progress(status: &UpdateStatus) -> f64 {
-    if let Some(files) = &status.files {
-        if files.is_empty() {
-            return 0.0;
-        }
-        let total: f64 = files.iter().map(|file| file.progress).sum();
-        return total / files.len() as f64;
-    }
-
-    if status.folders.is_empty() {
+    let total_items = status.total_folders + status.total_files;
+    if total_items == 0 {
         return 0.0;
     }
 
-    let total: f64 = status.folders.iter().map(|folder| folder.progress).sum();
-    total / status.folders.len() as f64
+    // Count every fully-done item (completed after both download AND extract).
+    // The in-progress item's partial progress is blended in to keep the bar
+    // smooth and monotonically increasing — it never resets when download
+    // finishes and decompress begins.
+    let completed_items = status.completed_folders + status.completed_files;
+    let in_progress_items = total_items - completed_items;
+
+    let in_progress_pct = if let Some(files) = &status.files {
+        files.iter().map(|f| f.progress).sum::<f64>() / files.len().max(1) as f64
+    } else if !status.folders.is_empty() {
+        status.folders.iter().map(|f| f.progress).sum::<f64>() / status.folders.len() as f64
+    } else {
+        0.0
+    };
+
+    // Each in-progress item contributes its progress as a fraction of total.
+    // Completed items count as 100% each. This is monotonically increasing
+    // because completed_items only grows.
+    let total_progress = completed_items as f64
+        + (in_progress_pct / 100.0 * in_progress_items as f64);
+    (total_progress / total_items as f64) * 100.0
 }
 
 fn emit_status(app: &AppHandle, status: &UpdateStatus) {

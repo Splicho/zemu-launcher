@@ -3,14 +3,14 @@
 A Tauri 2 + React + TypeScript launcher for the Zemu client. Modeled on the
 self-updating patterns from `abyssal-gate-launcher`: a single-instance Tauri
 shell that hosts the React UI, talks to the zemu-website Auth.js backend
-for login, and pulls game assets down as FreeArc `.arc` archives.
+for login, and pulls game assets down as `.tar.zst` archives.
 
 ## Project status
 
 | Layer | Status |
 | --- | --- |
 | Tauri 2 backend (Rust) | ✅ scaffolded — `src-tauri/src/` mirrors abyssal-gate |
-| Self-update (Tauri updater + `version.json`/`unarc.exe`) | ✅ scaffolded |
+| Self-update (Tauri updater + `version.json`/`.tar.zst`) | ✅ scaffolded |
 | GitHub Actions release pipeline (NSIS + updater JSON) | ✅ scaffolded |
 | Discord Rich Presence | ✅ scaffolded (placeholder client ID) |
 | Auth.js / OAuth integration with zemu-website | ✅ wired (Discord / Steam hosted + JSON credentials login) |
@@ -25,8 +25,9 @@ built on top of a working IPC surface.
   Framer Motion, React Router 7, TanStack Query, react-markdown, swiper
 - **Backend**: Tauri 2 (Rust) + `tauri-plugin-single-instance` +
   `tauri-plugin-deep-link` + `tauri-plugin-updater`
-- **Update extractor**: FreeArc (`unarc.exe`) — same `x <archive> -dp<dest> -o+`
-  invocation as the abyssal-gate launcher
+- **Update extractor**: in-process `tar` + `zstd` (pure Rust via the
+  `tar` and `zstd` crates). No external extractor binary is shipped
+  with the launcher.
 - **Auth**: bearer-token exchange with `id.zemu.uk/api/launcher/*`
   (Auth.js Discord / Steam providers on the website, plus a JSON
   credentials endpoint the launcher's React login form POSTs to). The
@@ -41,8 +42,7 @@ built on top of a working IPC surface.
 ```
 .
 ├── assets/                       # Bundled non-code resources
-│   └── bin/
-│       └── README.md             # Place unarc.exe here before tauri build
+│   └── icon/                     # App icon (referenced by tauri.conf.json)
 ├── scripts/
 │   ├── sync-launcher-config.cjs  # Single source of truth for version + protocol
 │   ├── assert-release-tag.cjs    # CI guard: tag must match src/config/launcher.ts
@@ -66,7 +66,7 @@ built on top of a working IPC surface.
 │       ├── state.rs              # Shared AppState (update runtime, game runtime, oauth)
 │       ├── auth.rs               # Token persistence, OAuth state machine, deep-link handling
 │       ├── oauth_server.rs       # tiny_http server on 127.0.0.1:31337 for dev callbacks
-│       ├── update.rs             # FreeArc-based update pipeline (.arc → game dir)
+│       ├── update.rs             # tar+zstd-based update pipeline (.tar.zst → game dir)
 │       ├── game.rs               # Game directory mgmt + H1Z1.exe launch + process-tree monitor
 │       ├── api.rs                # Generic bearer-auth passthrough to zemu-website
 │       ├── discord.rs            # Discord Rich Presence worker thread
@@ -78,7 +78,7 @@ built on top of a working IPC surface.
 ├── package.json
 ├── tsconfig.json
 ├── vite.config.mts
-├── update-config.json            # CDN URL the launcher fetches version.json + .arc from
+├── update-config.json            # CDN URL the launcher fetches version.json + .tar.zst from
 └── README.md
 ```
 
@@ -97,9 +97,10 @@ different purposes:
 2. **The Rust `update` module** (`src-tauri/src/update.rs`) updates the
    **game content**. The launcher fetches `<updateBaseUrl>/version.json`,
    compares it to the local `<game-directory>/version.json`, and downloads
-   any changed folders/files as `.arc` archives. `unarc.exe` is invoked
-   with `x <archive> -dp<dest> -o+` to extract them. Configuration lives in
-   `update-config.json` (synced from `src/config/launcher.ts`).
+   any changed folders/files as `.tar.zst` archives. The Rust `tar` and
+   `zstd` crates extract them in-process — no external extractor binary
+   is needed. Configuration lives in `update-config.json` (synced from
+   `src/config/launcher.ts`).
 
 ## Single source of truth
 
@@ -161,9 +162,9 @@ normal gaming session doesn't get interrupted by re-auth.
   and builds both halves so the cache is hot when a tag push triggers a
   release.
 - **`release.yml`** — runs on `v*` tag push. Verifies the tag matches the
-  launcher version (`scripts/assert-release-tag.cjs`), downloads FreeArc
-  `unarc.exe` into `assets/bin/`, and invokes `tauri-action` to build NSIS
-  installers + upload the updater JSON to `zemu-uk/zemu-launcher-releases`.
+  launcher version (`scripts/assert-release-tag.cjs`) and invokes
+  `tauri-action` to build NSIS installers + upload the updater JSON to
+  `zemu-uk/zemu-launcher-releases`.
 
 ### Required repository secrets
 
@@ -194,8 +195,8 @@ pnpm dev
 `tauri.conf.json`, and `Cargo.toml` agree on the version + protocol), then
 spawns the Tauri dev shell which starts Vite at `localhost:5173`.
 
-You'll need `unarc.exe` in `assets/bin/` for the game update flow to work —
-see `assets/bin/README.md`.
+No external extractor binary is required — game content updates use the
+in-process `tar` + `zstd` extractor.
 
 ## Backend → frontend contract
 

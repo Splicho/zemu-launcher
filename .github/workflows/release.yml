@@ -93,53 +93,6 @@ jobs:
             Write-Host "Release pre-created successfully."
           }
 
-      - name: Download FreeArc unarc.exe
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          # If the binary is already vendored in the repo, verify and skip the download.
-          if (Test-Path 'assets\bin\unarc.exe') {
-            $size = (Get-Item 'assets\bin\unarc.exe').Length
-            Write-Host "Found vendored unarc.exe ($size bytes), skipping download."
-          } else {
-            $zipPath = Join-Path $env:RUNNER_TEMP 'freeArc-0.666-windows.zip'
-            $extractDir = Join-Path $env:RUNNER_TEMP 'freearc-extract'
-            if (-not (Test-Path $extractDir)) { New-Item -ItemType Directory -Path $extractDir -Force | Out-Null }
-            Write-Host 'Downloading FreeArc 0.666...'
-
-            # SourceForge's "download" endpoint returns an HTML stub that requires a JS redirect.
-            # Resolve the real CDN URL via their mirror API, then download that. This avoids the
-            # OperationStopped errors you saw from a raw Invoke-WebRequest on the stub page.
-            $mirror = Invoke-RestMethod -Uri 'https://sourceforge.net/projects/freearc/best_release.json' -UseBasicParsing
-            $url = $mirror.release.url
-            Write-Host "Resolved mirror: $url"
-
-            # Use a plain HTTP client so we don't run into IE engine parsing of SourceForge's HTML.
-            $client = New-Object System.Net.WebClient
-            $client.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-            $client.Headers.Add('Accept', '*/*')
-            $client.DownloadFile($url, $zipPath)
-
-            if (-not (Test-Path $zipPath) -or (Get-Item $zipPath).Length -lt 100KB) {
-              throw "FreeArc zip download looks broken (size=$([math]::Round((Get-Item $zipPath).Length/1KB,1)) KB). Got HTML instead of zip?"
-            }
-
-            Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
-            $unarc = Get-ChildItem -Path $extractDir -Recurse -Filter 'unarc.exe' | Select-Object -First 1
-            if (-not $unarc) { throw 'unarc.exe not found in FreeArc archive' }
-            New-Item -ItemType Directory -Path 'assets\bin' -Force | Out-Null
-            Copy-Item $unarc.FullName 'assets\bin\unarc.exe' -Force
-            Write-Host "Installed unarc.exe to assets\bin\ ($((Get-Item 'assets\bin\unarc.exe').Length) bytes)"
-          }
-
-          # Sanity-check the binary actually exists before tauri build tries to bundle it.
-          if (-not (Test-Path 'assets\bin\unarc.exe')) {
-            throw 'unarc.exe is missing from assets\bin\ after install step'
-          }
-          $hash = (Get-FileHash 'assets\bin\unarc.exe' -Algorithm SHA256).Hash
-          Write-Host "unarc.exe sha256: $hash"
-
       - name: Build and publish release artifacts
         uses: tauri-apps/tauri-action@v0
         env:

@@ -6346,6 +6346,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
@@ -6360,6 +6361,7 @@ dependencies = [
  "webbrowser",
  "windows-sys 0.61.2",
  "zip 8.6.0",
+ "zstd",
 ]
 
 [[package]]

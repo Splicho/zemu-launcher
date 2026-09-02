@@ -35,11 +35,13 @@ tauri-plugin-opener = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-updater = "2.10.0"
 tiny_http = "0.12"
+tar = "0.4"
 tokio = { version = "1", features = ["full"] }
 url = "2.5"
 walkdir = "2.5"
 webbrowser = "1.0"
 zip = "8"
+zstd = "0.13"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [

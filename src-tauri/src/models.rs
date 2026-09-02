@@ -166,6 +166,12 @@ pub struct FolderManifestEntry {
     pub file_count: u64,
     #[serde(default)]
     pub files: HashMap<String, FileManifestEntry>,
+    /// Compression algorithm used for the archive that backs this folder
+    /// or its files. Currently always `"zstd"`. Optional for backward
+    /// compatibility with manifests that pre-date the field — an absent
+    /// value is treated as `"zstd"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compression: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -26,7 +26,7 @@ function copyRecursive(src: string, dest: string) {
   }
 }
 
-// Copies anything under ./assets (backgrounds, icons, unarc.exe, ...) into
+// Copies anything under ./assets (backgrounds, icons, ...) into
 // the production bundle so the Tauri resource bundler can pick it up.
 const copyAssetsPlugin = () => {
   return {
@@ -52,6 +52,19 @@ export default defineConfig({
   base: './',
   server: {
     port: 5173,
+    // Vite's default watcher walks the whole project root, so it picks
+    // up the dll/pdb files cargo produces in `src-tauri/target/`. Those
+    // files are held open by the running Tauri process on Windows and
+    // the watcher dies with EBUSY. Restricting the watcher to the
+    // frontend tree keeps Vite responsive and avoids the spurious
+    // crashes when the Rust side is mid-rebuild.
+    watch: {
+      ignored: [
+        '**/src-tauri/target/**',
+        '**/src-tauri/Cargo.lock',
+        '**/.git/**',
+      ],
+    },
   },
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(packageJson.version),
