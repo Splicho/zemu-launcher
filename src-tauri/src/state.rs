@@ -141,7 +141,11 @@ impl AppState {
     pub fn set_runtime_update_url(&self, url: String) {
         let trimmed = url.trim().trim_end_matches('/').to_string();
         if let Ok(mut guard) = self.runtime_update_url.lock() {
-            *guard = if trimmed.is_empty() { None } else { Some(trimmed) };
+            *guard = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            };
         }
     }
 

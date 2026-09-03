@@ -114,10 +114,7 @@ pub fn load_license_store(app: &AppHandle) -> Result<Option<crate::models::Licen
     }
 }
 
-pub fn save_license_store(
-    app: &AppHandle,
-    record: &crate::models::LicenseRecord,
-) -> Result<()> {
+pub fn save_license_store(app: &AppHandle, record: &crate::models::LicenseRecord) -> Result<()> {
     let path = license_store_path(app)?;
     write_json(&path, record)
 }

@@ -149,7 +149,10 @@ pub fn set_game_executable(app: &AppHandle, executable: String) -> Result<()> {
         "config",
         &format!(
             "set_game_executable value={}",
-            config.game_executable.as_deref().unwrap_or(DEFAULT_GAME_EXECUTABLE)
+            config
+                .game_executable
+                .as_deref()
+                .unwrap_or(DEFAULT_GAME_EXECUTABLE)
         ),
     );
     Ok(())

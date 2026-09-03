@@ -48,11 +48,7 @@ pub fn append(app: &AppHandle, source: &str, message: &str) -> Result<()> {
     };
     let timestamp = chrono::Utc::now().to_rfc3339();
     let line = format!("[{}] [{}] {}\n", timestamp, source, sanitize_line(message));
-    match OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
+    match OpenOptions::new().create(true).append(true).open(&path) {
         Ok(mut file) => {
             if let Err(err) = file.write_all(line.as_bytes()) {
                 eprintln!("[debug_log] write_all failed for {}: {err}", path.display());
@@ -60,10 +56,7 @@ pub fn append(app: &AppHandle, source: &str, message: &str) -> Result<()> {
             }
         }
         Err(err) => {
-            eprintln!(
-                "[debug_log] open failed for {}: {err}",
-                path.display()
-            );
+            eprintln!("[debug_log] open failed for {}: {err}", path.display());
             return Err(anyhow::anyhow!(err));
         }
     }
