@@ -408,9 +408,13 @@ pub async fn license_post_endpoint(
 
     let base = base_url.trim_end_matches('/');
     let url = format!("{base}{path}");
+    // License keys are user credentials. Echo only a masked form to
+    // stderr so neither the dev terminal nor any process-wide stderr
+    // sink picks up the raw key. The renderer's frontend already
+    // masks it the same way (`src/lib/license.ts:maskValue`).
     eprintln!(
         "[license] rust POST {url} (licenseKey={}, keyLength={}, pcIdentifier={})",
-        license_key,
+        mask_value(&license_key),
         license_key.len(),
         mask_value(&pc_identifier)
     );
