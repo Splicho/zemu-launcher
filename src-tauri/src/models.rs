@@ -88,6 +88,69 @@ fn default_theme() -> AppTheme {
     AppTheme::System
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WineEnvVar {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum WineRuntimeKind {
+    Wine,
+    Proton,
+    Custom,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WineRuntime {
+    pub id: String,
+    pub name: String,
+    pub kind: WineRuntimeKind,
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WineConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub runtime_id: Option<String>,
+    #[serde(default)]
+    pub custom_runtime_path: Option<String>,
+    #[serde(default)]
+    pub wine_prefix: Option<String>,
+    #[serde(default)]
+    pub env: Vec<WineEnvVar>,
+}
+
+impl Default for WineConfig {
+    fn default() -> Self {
+        Self {
+            enabled: cfg!(all(unix, not(target_os = "macos"))),
+            runtime_id: None,
+            custom_runtime_path: None,
+            wine_prefix: None,
+            env: vec![
+                WineEnvVar {
+                    key: "DXVK_ASYNC".to_string(),
+                    value: "1".to_string(),
+                },
+                WineEnvVar {
+                    key: "WINEDEBUG".to_string(),
+                    value: "-all".to_string(),
+                },
+            ],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LauncherConfig {
@@ -121,6 +184,8 @@ pub struct LauncherConfig {
     /// App colour theme. `system` follows the OS preference.
     #[serde(default = "default_theme")]
     pub theme: AppTheme,
+    #[serde(default)]
+    pub wine: WineConfig,
 }
 
 impl Default for LauncherConfig {
@@ -136,6 +201,7 @@ impl Default for LauncherConfig {
             discord_rpc_enabled: true,
             discord_rpc_mode: DiscordRpcMode::Always,
             theme: AppTheme::System,
+            wine: WineConfig::default(),
         }
     }
 }

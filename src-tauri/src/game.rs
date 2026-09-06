@@ -6,6 +6,7 @@ use crate::storage::{
     detect_game_executable, load_launcher_config, load_version_cache, normalize_callback_protocol,
     save_launcher_config,
 };
+use crate::wine;
 use anyhow::{anyhow, Result};
 #[cfg(target_os = "windows")]
 use std::collections::{HashMap, HashSet};
@@ -349,10 +350,31 @@ pub fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
 
         #[cfg(not(target_os = "windows"))]
         {
-            let child = Command::new(&executable_path)
-                .current_dir(&working_dir)
-                .spawn()
-                .map_err(|e| anyhow!("Failed to launch game: {e}"))?;
+            let child = if let Some(launch) = wine::build_launch_command(app, &executable_path)? {
+                let _ = debug_log::append(
+                    app,
+                    "game",
+                    &format!(
+                        "launch_game compatibility_runtime={} program={} env_count={}",
+                        launch.label,
+                        launch.program.display(),
+                        launch.env.len()
+                    ),
+                );
+                let mut command = Command::new(&launch.program);
+                command.current_dir(&working_dir).args(&launch.args);
+                for (key, value) in launch.env {
+                    command.env(key, value);
+                }
+                command
+                    .spawn()
+                    .map_err(|e| anyhow!("Failed to launch game through Wine/Proton: {e}"))?
+            } else {
+                Command::new(&executable_path)
+                    .current_dir(&working_dir)
+                    .spawn()
+                    .map_err(|e| anyhow!("Failed to launch game: {e}"))?
+            };
 
             set_in_game_presence(app);
             emit_game_launch_state(app, state.mark_game_running(child.id()));

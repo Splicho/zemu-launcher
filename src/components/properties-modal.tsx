@@ -76,7 +76,7 @@ export function PropertiesModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-4xl gap-0 p-0">
+      <DialogContent className="max-h-[calc(100vh-4rem)] gap-0 overflow-hidden p-0 sm:max-w-4xl">
         <DialogHeader className="border-b p-4">
           <DialogTitle>{t('properties.title')}</DialogTitle>
           <DialogDescription>
@@ -89,7 +89,7 @@ export function PropertiesModal({
           Installation Guide pane (five numbered steps) drove the bump
           from 28rem — without it, the last step hovered right at the
           bottom edge. */}
-        <div className="flex min-h-[36rem]">
+        <div className="flex min-h-[36rem] max-h-[calc(100vh-9rem)] min-h-0">
           <PropertiesSidebar
             activeId={activeSection}
             onSelect={handleSectionSelect}

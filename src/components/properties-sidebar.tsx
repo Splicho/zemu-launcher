@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { BookOpen, FolderTree, KeySquare } from 'lucide-react'
+import { BookOpen, FolderTree, KeySquare, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -16,11 +16,13 @@ import {
  * Three sections today:
  *  - `install`: file-management view (size, locate, change).
  *  - `license`: redeem / revalidate the user's account key.
+ *  - `wine`:    compatibility runtime, prefix, and env vars.
  *  - `guide`:   read-only copy of the Steam depot install steps.
  */
 export const PROPERTIES_SECTIONS = [
   { id: 'install', labelKey: 'properties.installedFiles', Icon: FolderTree },
   { id: 'license', labelKey: 'properties.accountKey', Icon: KeySquare },
+  { id: 'wine', labelKey: 'properties.wineConfiguration', Icon: Settings2 },
   { id: 'guide', labelKey: 'properties.installationGuide', Icon: BookOpen },
 ] as const satisfies ReadonlyArray<{
   id: string

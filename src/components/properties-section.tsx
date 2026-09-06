@@ -11,6 +11,7 @@ import {
   type PropertiesSectionId,
 } from '@/components/properties-sidebar'
 import { LicenseSection } from '@/components/properties-license-section'
+import { WineSection } from '@/components/properties-wine-section'
 import { SteamInstructionsSteps } from '@/components/steam-instructions-modal'
 import { useLicenseContext } from '@/hooks/use-license'
 import { formatBytes } from '@/lib/format'
@@ -55,7 +56,7 @@ export function PropertiesSection({
   const license = useLicenseContext()
 
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea className="min-h-0 flex-1">
       <div className="p-6">
         {/* Heading bumped from text-sm to text-base so the section
           title reads as a peer of the now-larger rail links on the
@@ -79,6 +80,8 @@ export function PropertiesSection({
             isBinding={license.status === 'binding'}
             onRedeem={license.redeem}
           />
+        ) : activeId === 'wine' ? (
+          <WineSection />
         ) : activeId === 'guide' ? (
           <InstallationGuideSection />
         ) : (

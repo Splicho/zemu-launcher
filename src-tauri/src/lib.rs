@@ -10,6 +10,7 @@ mod pc_identifier;
 mod state;
 mod storage;
 mod update;
+mod wine;
 
 use state::AppState;
 use tauri::{WebviewUrl, WebviewWindowBuilder};

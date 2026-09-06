@@ -5,12 +5,14 @@ use crate::discord;
 use crate::game;
 use crate::models::{
     AppTheme, AuthToken, CommandResult, DiscordRpcMode, GameLaunchState, LicenseRecord,
-    OAuthCallbackPayload, UpdateCheckResult, UpdateStatus, VersionManifest,
+    OAuthCallbackPayload, UpdateCheckResult, UpdateStatus, VersionManifest, WineConfig,
+    WineRuntime,
 };
 use crate::pc_identifier;
 use crate::state::AppState;
 use crate::storage;
 use crate::update;
+use crate::wine;
 use serde_json::json;
 use std::time::Duration;
 use tauri::Manager;
@@ -131,6 +133,32 @@ pub fn game_get_executable(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub fn game_set_executable(app: tauri::AppHandle, executable: String) -> Result<(), String> {
     game::set_game_executable(&app, executable).map_err(|e| e.to_string())
+}
+
+
+#[tauri::command]
+pub fn wine_get_config(app: tauri::AppHandle) -> Result<WineConfig, String> {
+    wine::get_config(&app).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn wine_save_config(app: tauri::AppHandle, config: WineConfig) -> Result<WineConfig, String> {
+    wine::save_config(&app, config).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn wine_list_runtimes() -> Vec<WineRuntime> {
+    wine::list_runtimes()
+}
+
+#[tauri::command]
+pub fn wine_select_prefix_directory() -> Result<Option<String>, String> {
+    wine::select_prefix_directory().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn wine_select_runtime_executable() -> Result<Option<String>, String> {
+    wine::select_runtime_executable().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -553,6 +581,11 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         game_open_in_file_manager,
         game_get_executable,
         game_set_executable,
+        wine_get_config,
+        wine_save_config,
+        wine_list_runtimes,
+        wine_select_prefix_directory,
+        wine_select_runtime_executable,
         launcher_set_update_base_url,
         launcher_set_runtime_update_url,
         launcher_set_oauth_callback_protocol,
