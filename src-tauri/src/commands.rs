@@ -8,6 +8,7 @@ use crate::models::{
     OAuthCallbackPayload, UpdateCheckResult, UpdateStatus, VersionManifest,
 };
 use crate::pc_identifier;
+use crate::session_id::{self, SessionIdCache};
 use crate::state::AppState;
 use crate::storage;
 use crate::update;
@@ -210,13 +211,64 @@ pub fn game_cancel_download(state: tauri::State<'_, AppState>) {
 }
 
 #[tauri::command]
-pub fn game_launch(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> CommandResult {
-    game::launch_game(&app, state.inner().clone())
+pub async fn game_launch(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<CommandResult, String> {
+    Ok(game::launch_game(&app, state.inner().clone()).await)
 }
 
 #[tauri::command]
 pub fn game_get_launch_state(state: tauri::State<'_, AppState>) -> GameLaunchState {
     state.inner().game_launch_state()
+}
+
+/// Returns the cached session id, if any. Does *not* hit the network —
+/// callers wanting a fresh value should call `session_id_refresh`.
+///
+/// `endpoint` is the resolved URL (config override or default) so the
+/// UI can show which server the cached value came from. Masked: never
+/// the bearer token.
+#[tauri::command]
+pub fn session_id_get(app: tauri::AppHandle) -> Result<Option<SessionIdCache>, String> {
+    session_id::load_cached_session_id(&app).map_err(|e| e.to_string())
+}
+
+/// Force-refresh the session id from the keys endpoint, overwrite the
+/// cache, and return the new value. Errors propagate to the renderer
+/// so the UI can surface them (toast / banner).
+#[tauri::command]
+pub async fn session_id_refresh(app: tauri::AppHandle) -> Result<String, String> {
+    session_id::get_session_id(&app, true)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Wipe the cached session id. The next `launchGame` will fetch fresh.
+#[tauri::command]
+pub fn session_id_clear_cache(app: tauri::AppHandle) -> Result<(), String> {
+    session_id::clear_cached_session_id(&app).map_err(|e| e.to_string())
+}
+
+/// Returns the resolved endpoint config (URL + whether the bearer
+/// token is the default or an override). Never returns the bearer
+/// token value itself — it's a server-side credential, not a UI asset.
+#[tauri::command]
+pub fn session_id_get_endpoint(app: tauri::AppHandle) -> serde_json::Value {
+    let resolved = session_id::resolve_endpoint(&app);
+    let config = storage::load_launcher_config(&app).ok();
+    serde_json::json!({
+        "url": resolved.url,
+        "tokenIsDefault": config
+            .as_ref()
+            .and_then(|c| c.session_id_bearer_token.as_deref())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .is_none(),
+        "urlIsDefault": config
+            .as_ref()
+            .and_then(|c| c.session_id_endpoint_url.as_deref())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .is_none(),
+    })
 }
 
 #[tauri::command]
@@ -566,6 +618,10 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         game_cancel_download,
         game_launch,
         game_get_launch_state,
+        session_id_get,
+        session_id_refresh,
+        session_id_clear_cache,
+        session_id_get_endpoint,
         auth_get_token,
         auth_save_token,
         auth_clear_token,

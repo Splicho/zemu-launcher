@@ -7,6 +7,7 @@ mod game;
 mod models;
 mod oauth_server;
 mod pc_identifier;
+mod session_id;
 mod state;
 mod storage;
 mod update;

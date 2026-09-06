@@ -1,6 +1,7 @@
 use crate::debug_log;
 use crate::discord;
 use crate::models::CommandResult;
+use crate::session_id;
 use crate::state::AppState;
 use crate::storage::{
     detect_game_executable, load_launcher_config, load_version_cache, normalize_callback_protocol,
@@ -242,17 +243,60 @@ pub fn is_game_installed(app: &AppHandle) -> Result<bool> {
     Ok(path.join("version.json").exists())
 }
 
-pub fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
-    let result = (|| -> Result<()> {
-        emit_game_launch_state(app, state.begin_game_launch());
-        let game_directory =
-            get_game_directory(app)?.ok_or_else(|| anyhow!("No game directory set"))?;
-        let _ = debug_log::append(
-            app,
-            "game",
-            &format!("launch_game start game_directory={game_directory}"),
-        );
+pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
+    emit_game_launch_state(app, state.begin_game_launch());
 
+    let game_directory = match get_game_directory(app) {
+        Ok(Some(dir)) => dir,
+        Ok(None) => {
+            let err = anyhow!("No game directory set");
+            emit_game_launch_state(app, state.reset_game_launch());
+            let _ = debug_log::append(app, "game", &format!("launch_game final_error={err}"));
+            return CommandResult::err(err.to_string());
+        }
+        Err(err) => {
+            emit_game_launch_state(app, state.reset_game_launch());
+            let _ = debug_log::append(app, "game", &format!("launch_game final_error={err}"));
+            return CommandResult::err(err.to_string());
+        }
+    };
+    let _ = debug_log::append(
+        app,
+        "game",
+        &format!("launch_game start game_directory={game_directory}"),
+    );
+
+    // Refresh the session id into the game's `ClientConfig.ini`
+    // *before* we spawn `H1Z1.exe` so the client picks up the
+    // updated value on startup. The helper is non-fatal: a network
+    // outage will log + proceed with whatever is on disk so the
+    // user can still get into the game.
+    match session_id::prepare_client_config(app, &game_directory, false).await {
+        Ok(written) => {
+            let _ = debug_log::append(
+                app,
+                "game",
+                &format!(
+                    "launch_game session_id_written length={} preview={}",
+                    written.len(),
+                    session_id_preview(&written)
+                ),
+            );
+        }
+        Err(error) => {
+            let _ = debug_log::append(
+                app,
+                "game",
+                &format!("launch_game session_id_prepare_failed error={error}"),
+            );
+            // Don't hard-fail the launch — the user explicitly
+            // asked for this edit to happen "before the launcher
+            // launches h1z1.exe" but a missing/stale session id
+            // shouldn't trap them outside the game.
+        }
+    }
+
+    let result = (|| -> Result<()> {
         let executable_rel = get_game_executable(app);
         let executable_path = resolve_game_executable_path(&game_directory, &executable_rel);
 
@@ -563,4 +607,17 @@ fn snapshot_processes() -> HashMap<u32, u32> {
     }
 
     processes
+}
+
+/// Produce a short, debug-log-safe preview of a session id. Avoids
+/// logging the entire token so even if someone attaches the debug log
+/// to a bug report, the value isn't fully exposed.
+fn session_id_preview(value: &str) -> String {
+    let len = value.chars().count();
+    if len <= 8 {
+        return format!("<{len} chars>");
+    }
+    let start: String = value.chars().take(4).collect();
+    let end: String = value.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+    format!("{start}...{end} ({len} chars)")
 }
