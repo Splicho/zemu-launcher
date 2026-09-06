@@ -127,7 +127,12 @@ export function useAuth(): UseAuthResult {
             provider: result.user.provider,
             roles: result.user.roles,
             permissions: result.user.permissions,
-            expiresAt: result.expiresAt ?? token.expiresAt,
+            // Intentionally do NOT refresh `expiresAt` from the
+            // introspect payload. The launcher treats the cached
+            // session as never-expiring; the server stays the source
+            // of truth by returning `valid: false` on the request
+            // itself when the bearer is rejected, which the
+            // definitive-rejection branch below already handles.
           })
           setStatus('authed')
           setError(null)

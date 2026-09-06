@@ -89,26 +89,32 @@ const TOKEN_STORAGE_KEY = 'zemu-launcher.auth'
 // uses it to correlate the eventual `oauth-callback` event.
 
 /**
- * Read the auth token from localStorage. Returns null if missing or
- * expired (the launcher should re-prompt the user when this returns
- * null rather than treating null as "never signed in").
+ * Read the auth token from localStorage. Returns null only if no
+ * token is persisted or the persisted payload is unusable (missing
+ * bearer, malformed JSON).
  *
- * `expiresAt` is in milliseconds (matches the Rust side's
- * `Utc::now().timestamp_millis()`). When it's null we treat the token
- * as never-expiring; the Rust OAuth server returns `expiresAt: None`
- * for tokens minted by `auth_complete_oauth_token`, so we let those
- * through and rely on the next introspect round-trip to refresh the
- * value.
+ * Expiry is intentionally NOT enforced here. We want a signed-in
+ * user to stay signed in across launches — even if the bearer JWT
+ * would technically be past its `exp` claim — so the launcher
+ * doesn't bounce them back to the login screen on a slow restart,
+ * a clock-skew, or a long-running install. The server is the source
+ * of truth for "is this session still valid":
+ *   - the introspect call in `useAuth` rejects the cached session
+ *     when the server returns `valid: false` (e.g. `reason:
+ *     'expired' | 'revoked' | 'invalid'`);
+ *   - any subsequent protected request will fail with 401 if the
+ *     bearer has actually been invalidated server-side.
+ *
+ * `expiresAt` is still kept in storage (and may be refreshed by
+ * introspect) for diagnostic purposes, but the launcher never acts
+ * on it locally.
  */
 export function readPersistedToken(): AuthToken | null {
   try {
     const raw = localStorage.getItem(TOKEN_STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as AuthToken
-    if (
-      typeof parsed?.expiresAt === 'number' &&
-      parsed.expiresAt < Date.now()
-    ) {
+    if (typeof parsed?.token !== 'string' || parsed.token.length === 0) {
       localStorage.removeItem(TOKEN_STORAGE_KEY)
       return null
     }
@@ -184,6 +190,12 @@ export async function loginWithCredentials(
   if (!response.ok || !payload.token || !payload.user) {
     throw new Error(payload.error ?? `Login failed (HTTP ${response.status})`)
   }
+  // Always store `expiresAt: null` from credentials login so the
+  // launcher treats the session as never-expiring locally. The
+  // server-side JWT may still carry its own `exp` claim and the
+  // introspect round-trip in `useAuth` is what eventually evicts a
+  // truly dead token — we just don't want a finite value here to
+  // race against a clock skew or a long-running install.
   return {
     token: payload.token,
     userId: payload.user.id,
@@ -195,7 +207,7 @@ export async function loginWithCredentials(
     roles: payload.user.roles,
     permissions: payload.user.permissions,
     role: null,
-    expiresAt: payload.expiresAt ?? null,
+    expiresAt: null,
   }
 }
 

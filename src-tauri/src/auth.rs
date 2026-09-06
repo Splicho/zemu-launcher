@@ -22,22 +22,15 @@ fn resolve_api_base_url(app: &AppHandle) -> String {
 }
 
 pub fn get_token(app: &AppHandle) -> Result<Option<AuthToken>> {
-    let mut store = load_auth_store(app)?;
-
-    let token = match store.token.clone() {
-        Some(token) => token,
-        None => return Ok(None),
-    };
-
-    if let Some(expires_at) = token.expires_at {
-        if expires_at < Utc::now().timestamp_millis() {
-            store.token = None;
-            save_auth_store(app, &store)?;
-            return Ok(None);
-        }
-    }
-
-    Ok(Some(token))
+    // We deliberately do NOT enforce `expires_at` here. The launcher's
+    // contract is "stay logged in across launches"; the introspect
+    // round-trip in the renderer is what eventually evicts a token the
+    // server has definitively rejected (expired / revoked / invalid),
+    // and any subsequent protected request will fail with 401 if the
+    // bearer is actually dead. Filtering on `expires_at` here would
+    // only ever race against a clock skew or a long-running install.
+    let store = load_auth_store(app)?;
+    Ok(store.token)
 }
 
 pub fn save_token(app: &AppHandle, token: AuthToken) -> Result<()> {
