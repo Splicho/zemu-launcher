@@ -1,17 +1,21 @@
-name: Nightly Build
+name: Preview Build
 
-# Nightly builds run automatically every day at 03:00 UTC, or can be
-# triggered manually from the Actions tab. Installers are attached as
-# workflow artifacts only — no GitHub Release, no push to the public
-# releases repo. The prod `release.yml` pipeline is unchanged.
+# Builds the launcher with the canonical tauri.conf.json (no override)
+# and uploads the resulting installers as workflow artifacts only — no
+# GitHub Release, no push to zemu-launcher-releases, no updater
+# signing. Use this when you want to try a build without publishing.
 #
-# To trigger manually from a local checkout:
-#   pnpm nightly:trigger               # uses scripts/trigger-nightly.cjs
-#   gh workflow run nightly.yml --ref main
+# Triggers:
+#   - Manual: Actions -> Preview Build -> Run workflow.
+#   - CLI:    gh workflow run preview-build.yml --ref main
+#   - Cron:   03:00 UTC every Sunday (weekly smoke build of main).
+#
+# The prod release pipeline (`release.yml`) is unchanged.
 on:
   schedule:
-    # 03:00 UTC daily. One run per night is plenty for beta QA.
-    - cron: '0 3 * * *'
+    # 03:00 UTC every Sunday. Cheap smoke build to catch breakage on
+    # main without spamming the actions tab.
+    - cron: '0 3 * * 0'
   workflow_dispatch:
 
 permissions:
@@ -26,11 +30,11 @@ jobs:
           - platform: windows
             os: windows-latest
             bundles: nsis
-            cache-key: nightly-windows-x64
+            cache-key: preview-windows-x64
           - platform: linux
             os: ubuntu-latest
             bundles: deb,appimage
-            cache-key: nightly-linux-x64
+            cache-key: preview-linux-x64
     name: Build (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
 
@@ -59,8 +63,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-          # Separate cache namespace from prod so the nightly builds
-          # don't evict the prod release cache and vice versa.
+          # Separate cache namespace from the prod release so this build
+          # doesn't evict the release cache and vice versa.
           shared-key: ${{ matrix.cache-key }}
 
       # Tauri on Linux needs a few GTK / WebKit system packages that
@@ -84,33 +88,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
-      # The canonical tauri.conf.json (and Cargo.toml / launcher.ts)
-      # must be in sync with the launcher version. We don't bump
-      # versions for nightly builds — the override config supplies the
-      # nightly productName/identifier/version on top.
       - name: Sync generated launcher metadata
         run: pnpm run sync:launcher-config
 
-      - name: Build nightly override config
-        run: node scripts/build-nightly-config.cjs
-
-      # Tauri's `tauri icon` command (wrapped in scripts/generate-nightly-icons.cjs
-      # so this step stays platform-agnostic) pads a non-square source onto a
-      # square canvas automatically and produces every variant the bundler
-      # reads from `src-tauri/icons/*`.
-      - name: Regenerate Tauri icons from icon-nightly.png
-        run: node scripts/generate-nightly-icons.cjs
-
+      # Plain `tauri build` — no override config, no signature, no
+      # updater artifact. The canonical tauri.conf.json has
+      # `createUpdaterArtifacts: true`, which here only costs a couple
+      # of seconds but isn't published anywhere. If that ever becomes a
+      # problem, override it via an inline `--bundles` flag instead of
+      # mutating the canonical config.
       - name: Build and bundle installers
-        # `--config` JSON-merge-patches src-tauri/tauri.nightly.conf.json
-        # on top of src-tauri/tauri.conf.json — the canonical config is
-        # never mutated.
-        run: pnpm tauri build --config src-tauri/tauri.nightly.conf.json --bundles ${{ matrix.bundles }}
+        run: pnpm tauri build --bundles ${{ matrix.bundles }}
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: zemu-launcher-nightly-${{ matrix.platform }}-x64
+          name: zemu-launcher-${{ matrix.platform }}-x64
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/deb/*.deb

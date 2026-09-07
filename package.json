@@ -12,7 +12,6 @@
     "sync:launcher-config": "node scripts/sync-launcher-config.cjs",
     "release:verify-tag": "node scripts/assert-release-tag.cjs",
     "release-build": "node scripts/release-build.cjs",
-    "nightly:trigger": "node scripts/trigger-nightly.cjs",
     "dev": "pnpm run sync:launcher-config && tauri dev",
     "dev:vite": "vite",
     "build": "pnpm run sync:launcher-config && tauri build",
