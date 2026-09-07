@@ -41,15 +41,18 @@ function main() {
   // Tauri's `icon` command accepts a non-square source and handles
   // centering on a transparent canvas. It produces the full set of
   // icons the bundler reads from `src-tauri/icons/*`.
+  // Use npx so the binary is resolved from node_modules/.bin directly,
+  // avoiding PATH mismatches on Windows GitHub Actions runners where pnpm
+  // lives in setup-pnpm/node_modules/.bin rather than a system PATH entry.
+  const tauriCli = require.resolve('@tauri-apps/cli/package.json', {
+    paths: [rootDir],
+  })
+  const tauriCliDir = path.dirname(tauriCli)
+  const tauriBin = path.join(tauriCliDir, 'bin', 'tauri.js')
+
   execFileSync(
-    'pnpm',
-    [
-      'tauri',
-      'icon',
-      rel(sourceIcon),
-      '--output',
-      rel(iconsDir),
-    ],
+    process.execPath,
+    [tauriBin, 'icon', rel(sourceIcon), '--output', rel(iconsDir)],
     { stdio: 'inherit', cwd: rootDir },
   )
 
