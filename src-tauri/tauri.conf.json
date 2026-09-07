@@ -18,7 +18,7 @@
         "width": 1280,
         "height": 800,
         "resizable": false,
-        "maximizable": false,
+        "maximizable": true,
         "minimizable": true,
         "closable": true,
         "fullscreen": false,

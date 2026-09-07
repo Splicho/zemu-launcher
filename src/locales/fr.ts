@@ -14,6 +14,8 @@ export default {
       copied: "Copié",
       copyCommand: "Copier la commande",
       minimize: "Réduire",
+      maximize: "Agrandir",
+      restore: "Restaurer",
       cancelDownload: "Annuler le téléchargement",
     },
     bootstrap: {

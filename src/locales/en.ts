@@ -10,6 +10,8 @@ export default {
       back: 'Back',
       selectLanguage: 'Select language',
       minimize: 'Minimize',
+      maximize: 'Maximize',
+      restore: 'Restore',
     },
     bootstrap: {
       status: 'Checking launcher updates',

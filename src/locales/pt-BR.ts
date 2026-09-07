@@ -10,6 +10,8 @@ export default {
       back: 'Voltar',
       selectLanguage: 'Selecionar idioma',
       minimize: 'Minimizar',
+      maximize: 'Maximizar',
+      restore: 'Restaurar',
     },
     bootstrap: {
       status: 'Verificando atualizações do lançador',

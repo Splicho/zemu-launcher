@@ -1,7 +1,9 @@
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { WindowClose, WindowMinimize } from '@/components/icons'
+import { WindowClose, WindowMaximize, WindowMinimize, WindowRestore } from '@/components/icons'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 /**
@@ -18,20 +20,61 @@ import { LAUNCHER_CONFIG } from '@/config/launcher'
  * - `h-8` muted bar with a 1px bottom border — visually identical
  *   to abyssal-gate so the two launchers feel like one product.
  * - The left cluster (icon + title) is the OS drag handle via
- *   `data-tauri-drag-region`; the right cluster (min / close)
+ *   `data-tauri-drag-region`; the right cluster (min / max / close)
  *   sits *outside* the drag region so its full-width click areas
  *   always receive their `click` events, never a drag.
- * - Only minimize + close are exposed today — the main window is
- *   locked at a fixed 1280×800 (see `tauri.conf.json`) and
- *   maximize is intentionally absent.
+ * - Minimize and maximize/restore toggle the window; close exits.
+ *   The main window is locked at a fixed 1280×800 when not maximized
+ *   (see `tauri.conf.json`).
  *
- * The Rust commands `window_minimize` / `window_close` are already
- * wired up in `src-tauri/src/commands.rs`, so we just invoke them.
+ * The Rust commands `window_minimize` / `window_maximize` / `window_close`
+ * are already wired up in `src-tauri/src/commands.rs`, so we just invoke them.
  */
 export function TitleBar() {
   const { t } = useTranslation()
+  const [isMaximized, setIsMaximized] = useState(false)
+
+  // Track maximize state via window events so the icon flips between
+  // maximize and restore glyphs. Also query the initial value on mount
+  // so the correct glyph is shown if the OS restores the last session
+  // as a maximized window.
+  useEffect(() => {
+    let unlistenMax: (() => void) | undefined
+    let unlistenUnmax: (() => void) | undefined
+    let cancelled = false
+
+    const setup = async () => {
+      const win = getCurrentWindow()
+      // Seed initial state (handles OS session restore).
+      try {
+        const maximized = await invoke<boolean>('window_is_maximized')
+        if (!cancelled) setIsMaximized(maximized)
+      } catch {
+        // Non-fatal — leave as false.
+      }
+      unlistenMax = await win.listen('tauri://maximize', () => {
+        if (!cancelled) setIsMaximized(true)
+      })
+      unlistenUnmax = await win.listen('tauri://unmaximize', () => {
+        if (!cancelled) setIsMaximized(false)
+      })
+    }
+
+    void setup()
+
+    return () => {
+      cancelled = true
+      unlistenMax?.()
+      unlistenUnmax?.()
+    }
+  }, [])
+
   const handleMinimize = () => {
     void invoke('window_minimize')
+  }
+
+  const handleMaximize = () => {
+    void invoke('window_maximize')
   }
 
   const handleClose = () => {
@@ -42,7 +85,7 @@ export function TitleBar() {
     <div className="relative flex h-8 items-center border-b border-border bg-muted select-none">
       {/* Draggable region — left cluster. `flex-1` so it eats all the
           slack, leaving the right cluster sized exactly to its
-          contents (two w-12 buttons = 96px). */}
+          contents (three w-12 buttons = 144px). */}
       <div
         data-tauri-drag-region
         className="flex h-full flex-1 items-center gap-2 pl-3"
@@ -68,6 +111,14 @@ export function TitleBar() {
           className="flex h-full w-12 items-center justify-center text-muted-foreground transition-colors hover:bg-muted-foreground/10"
         >
           <WindowMinimize size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={handleMaximize}
+          aria-label={isMaximized ? t('common.restore') : t('common.maximize')}
+          className="flex h-full w-12 items-center justify-center text-muted-foreground transition-colors hover:bg-muted-foreground/10"
+        >
+          {isMaximized ? <WindowRestore size={16} /> : <WindowMaximize size={16} />}
         </button>
         <button
           type="button"

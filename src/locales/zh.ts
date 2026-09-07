@@ -9,6 +9,8 @@ export default {
       close: '关闭',
       back: '返回',
       minimize: '最小化',
+      maximize: '最大化',
+      restore: '还原',
     },
     bootstrap: {
       status: '正在检查启动器更新',
