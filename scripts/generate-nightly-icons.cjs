@@ -44,11 +44,20 @@ function main() {
   // Use npx so the binary is resolved from node_modules/.bin directly,
   // avoiding PATH mismatches on Windows GitHub Actions runners where pnpm
   // lives in setup-pnpm/node_modules/.bin rather than a system PATH entry.
-  const tauriCli = require.resolve('@tauri-apps/cli/package.json', {
+  const tauriCliPkgPath = require.resolve('@tauri-apps/cli/package.json', {
     paths: [rootDir],
   })
-  const tauriCliDir = path.dirname(tauriCli)
-  const tauriBin = path.join(tauriCliDir, 'bin', 'tauri.js')
+  const tauriCliDir = path.dirname(tauriCliPkgPath)
+  const tauriCliPkg = JSON.parse(
+    fs.readFileSync(tauriCliPkgPath, 'utf8'),
+  )
+  const tauriBinEntry = Object.values(tauriCliPkg.bin || {})[0]
+  if (!tauriBinEntry) {
+    throw new Error(
+      `No bin entry found in @tauri-apps/cli package.json`,
+    )
+  }
+  const tauriBin = path.resolve(tauriCliDir, tauriBinEntry)
 
   execFileSync(
     process.execPath,
