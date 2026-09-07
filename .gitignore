@@ -39,4 +39,5 @@ src-tauri/gen
 # OS
 Thumbs.db
 
+.cursor
 
