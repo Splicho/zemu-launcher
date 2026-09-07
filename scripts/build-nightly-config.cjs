@@ -69,6 +69,14 @@ function main() {
       createUpdaterArtifacts: false,
     },
     plugins: {
+      // Override the updater so the nightly build never contacts the
+      // production update endpoint. An empty pubkey prevents signing, and
+      // an invalid/non-existent endpoint URL means the update check will
+      // fail silently — the nightly app will never auto-upgrade to prod.
+      updater: {
+        pubkey: '',
+        endpoints: ['https://nightly-ineligible.invalid'],
+      },
       'deep-link': {
         desktop: {
           schemes: ['zemu-launcher-nightly'],
