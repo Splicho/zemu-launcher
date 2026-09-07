@@ -38,8 +38,23 @@ export default {
     },
     account: {
       openMenu: '打开账户菜单',
+      menuItem: '账户',
       signOut: '退出登录',
       unknownUser: '未知用户',
+      title: '账户',
+      description: '管理您的账户和已保存的凭据。',
+      keyLabel: '身份验证密钥',
+      keyDescription: '游戏用于识别您会话的密钥。',
+      revealKey: '显示密钥',
+      hideKey: '隐藏密钥',
+      copyKey: '复制密钥',
+      copied: '身份验证密钥已复制到剪贴板。',
+      changeKey: '更改身份验证密钥',
+      addKey: '添加身份验证密钥',
+      noKey: '尚未设置身份验证密钥。请添加一个以开始游戏。',
+      errors: {
+        unavailable: '启动器桥接不可用。',
+      },
     },
     nav: {
       home: '首页',
@@ -48,6 +63,7 @@ export default {
       play: '开始游戏',
       settings: '设置',
       socialize: '社交',
+      account: '账户',
     },
     settings: {
       general: {
@@ -107,7 +123,7 @@ export default {
       checking: '正在检查更新…',
       properties: '属性',
       activating: '正在激活…',
-      accountKeyRequired: '需要账户密钥',
+      authKeyRequired: '需要身份验证密钥',
       updateProgress: '正在更新…{{progress}}%',
       applyingPatch: '正在应用补丁…',
       locatePs3Folder: '定位 PS3 文件夹',
@@ -124,6 +140,15 @@ export default {
       browseGameFiles: '浏览游戏文件',
       checkForUpdates: '检查更新',
       gameSize: '15GB',
+    },
+    authKey: {
+      modalTitle: '身份验证密钥',
+      description: '输入您的身份验证密钥以开始游戏。',
+      inputLabel: '身份验证密钥',
+      placeholder: '输入您的身份验证密钥',
+      save: '保存',
+      clear: '清除',
+      currentKey: '当前密钥:',
     },
     login: {
       loggingIn: '正在登录…',

@@ -44,8 +44,23 @@ export default {
     },
     account: {
       openMenu: "Ouvrir le menu du compte",
+      menuItem: "Compte",
       signOut: "Se déconnecter",
       unknownUser: "Utilisateur inconnu",
+      title: "Compte",
+      description: "Gérez votre compte et vos identifiants enregistrés.",
+      keyLabel: "Clé d'authentification",
+      keyDescription: "La clé utilisée par le jeu pour identifier votre session.",
+      revealKey: "Afficher la clé",
+      hideKey: "Masquer la clé",
+      copyKey: "Copier la clé",
+      copied: "Clé d'authentification copiée dans le presse-papiers.",
+      changeKey: "Modifier la clé d'authentification",
+      addKey: "Ajouter une clé d'authentification",
+      noKey: "Aucune clé d'authentification définie. Ajoutez-en une pour pouvoir jouer.",
+      errors: {
+        unavailable: "La passerelle du lanceur est indisponible.",
+      },
     },
     nav: {
       home: "Accueil",
@@ -54,6 +69,7 @@ export default {
       play: "Jouer",
       settings: "Paramètres",
       socialize: "Socialiser",
+      account: "Compte",
     },
     settings: {
       general: {
@@ -107,7 +123,7 @@ export default {
       checking: "Vérification des mises à jour…",
       properties: "Propriétés",
       activating: "Activation…",
-      accountKeyRequired: "Clé de compte requise",
+      authKeyRequired: "Clé d'authentification requise",
       updateProgress: "Mise à jour…{{progress}}%",
       applyingPatch: "Application du correctif…",
       locatePs3Folder: "Localiser le dossier PS3",
@@ -124,6 +140,15 @@ export default {
       browseGameFiles: "Parcourir les fichiers du jeu",
       checkForUpdates: "Vérifier les mises à jour",
       gameSize: "15 Go",
+    },
+    authKey: {
+      modalTitle: "Clé d'authentification",
+      description: "Entrez votre clé d'authentification pour jouer.",
+      inputLabel: "Clé d'authentification",
+      placeholder: "Entrez votre clé d'authentification",
+      save: "Enregistrer",
+      clear: "Effacer",
+      currentKey: "Clé actuelle :",
     },
     login: {
       loggingIn: "Connexion en cours…",

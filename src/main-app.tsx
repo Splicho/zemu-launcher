@@ -10,9 +10,8 @@ import { NewsSlugPage } from '@/pages/news-slug'
 import { PlayPage } from '@/pages/play'
 import { GeneralPage } from '@/pages/settings'
 import { AppearancePage } from '@/pages/appearance'
+import { AccountPage } from '@/pages/account'
 import { AuthProvider, useAuthContext } from '@/contexts/auth-context'
-import { LicenseProvider } from '@/contexts/license-context'
-import { useLicenseContext } from '@/hooks/use-license'
 import { useHash } from '@/hooks/use-hash'
 import { UpdateProvider } from '@/contexts/update-context'
 import { GameStateProvider } from '@/contexts/game-state-context'
@@ -32,6 +31,7 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
   if (hash === '/play') return { page: 'play' }
   if (hash === '/settings') return { page: 'settings' }
   if (hash === '/settings/appearance') return { page: 'appearance' }
+  if (hash === '/account') return { page: 'account' }
 
   return { page: 'home' }
 }
@@ -45,33 +45,22 @@ export default function MainApp() {
   return (
     <AuthProvider>
       <UpdateProvider>
-        <LicenseProvider>
-          <GameStateProviderBridge>
-            <AuthedApp />
-            <DownloadSpeedToast />
-            <Toaster />
-          </GameStateProviderBridge>
-        </LicenseProvider>
+        <GameStateProvider>
+          <AuthedApp />
+          <DownloadSpeedToast />
+          <Toaster />
+        </GameStateProvider>
       </UpdateProvider>
     </AuthProvider>
   )
 }
 
 /**
- * Bridge between `LicenseProvider` and `GameStateProvider`.
- *
- * `GameStateProvider` requires `licenseStatus` as a prop (it doesn't
- * own the license state itself — `useLicense` is the source of truth),
- * but it's instantiated once at the top of the tree, above every
- * consumer. This component reads the license context once and pipes
- * the status into the provider below it. The result is one shared
- * `useGameState()` instance with license gating baked in, and one
- * shared `useLicense()` instance reachable from anywhere downstream.
+ * All pages are now rendered inside `GameStateProvider`. The license
+ * gate has been removed as part of the auth key rework — the game can
+ * be launched once an auth key is saved locally, with no server
+ * validation required.
  */
-function GameStateProviderBridge({ children }: { children: React.ReactNode }) {
-  const { status } = useLicenseContext()
-  return <GameStateProvider licenseStatus={status}>{children}</GameStateProvider>
-}
 
 function AuthedApp() {
   const { status, token } = useAuthContext()
@@ -89,8 +78,9 @@ function AuthedApp() {
 
   const prevPageRef = useRef(route.page)
   const isSettingsPage = route.page === 'settings' || route.page === 'appearance'
+  const isAccountPage = route.page === 'account'
   const [sidebarType, setSidebarType] = useState<SidebarType>(
-    isSettingsPage ? 'settings' : 'app',
+    isSettingsPage ? 'settings' : isAccountPage ? 'account' : 'app',
   )
 
   useEffect(() => {
@@ -99,7 +89,11 @@ function AuthedApp() {
     if (next === prev) return
     prevPageRef.current = next
     const nextType: SidebarType =
-      next === 'settings' || next === 'appearance' ? 'settings' : 'app'
+      next === 'settings' || next === 'appearance'
+        ? 'settings'
+        : next === 'account'
+          ? 'account'
+          : 'app'
     setSidebarType(nextType)
   }, [route.page])
 
@@ -170,6 +164,7 @@ function AuthedApp() {
         {route.page === 'play' && <PlayPage />}
         {route.page === 'settings' && <GeneralPage />}
         {route.page === 'appearance' && <AppearancePage />}
+        {route.page === 'account' && <AccountPage />}
         {route.page === 'home' && <HomePage />}
       </MainLayout>
     </div>

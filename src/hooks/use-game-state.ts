@@ -66,10 +66,7 @@ export type GameState =
   | { type: 'UPDATE_COMPLETE' }
   | { type: 'UP_TO_DATE' }
   | { type: 'ERROR'; error: string }
-  | { type: 'LICENSE_REQUIRED' }
-  | { type: 'LICENSE_BINDING' }
-
-import type { LicenseStatus } from '@/hooks/use-license'
+  | { type: 'AUTH_KEY_REQUIRED' }
 
 const DEFAULT_GAME_LAUNCH_STATE: GameLaunchState = {
   isLaunching: false,
@@ -77,20 +74,23 @@ const DEFAULT_GAME_LAUNCH_STATE: GameLaunchState = {
 }
 
 /**
- * License status is injected rather than read from `useLicense`
- * directly so the two hooks stay composable. The caller (typically
- * `app-sidebar`) wires them together — `useGameState` only consumes
- * the status value, the calling tree owns the actual `useLicense()`
- * instance and its redeems/revalidates.
+ * Hook that drives the game-state state machine.
  *
- * `LicenseStatus` is required (no default) so a missing license gate
- * in the call tree fails the type-check rather than silently letting
- * unbound users download.
- */
-export function useGameState(options: { licenseStatus: LicenseStatus }) {
-  const { licenseStatus } = options
+ * The license gate has been removed as part of the auth key rework.
+ * The `AUTH_KEY_REQUIRED` state replaces it: when the user has not
+ * yet saved an auth key, the primary button shows "Auth Key Required"
+ * and opens the auth key modal on click. The gate is purely local —
+ * no server validation is performed. */
+export function useGameState() {
   const { t } = useTranslation()
   const [gameDirectory, setGameDirectory] = useState<string | null>(null)
+  // `null` while we haven't loaded yet (treat as not-required until
+  // we know — avoids a "flash" of the AUTH_KEY_REQUIRED state on
+  // every mount while the IPC round-trip is in flight). The state
+  // machine below maps `null` to a no-op gate, so the user only
+  // sees AUTH_KEY_REQUIRED once the disk read confirms the key is
+  // genuinely missing.
+  const [authKey, setAuthKey] = useState<string | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
@@ -155,6 +155,24 @@ export function useGameState(options: { licenseStatus: LicenseStatus }) {
         if (directory) {
           const installed = await window.gameAPI.isInstalled()
           setIsInstalled(installed)
+        }
+
+        // Read the saved auth key (if any) so the state machine can
+        // decide whether to gate the Play button on
+        // AUTH_KEY_REQUIRED. A network round-trip is unnecessary —
+        // the value is local to this machine.
+        if (window.launcherAPI?.getAuthKey) {
+          try {
+            const savedKey = await window.launcherAPI.getAuthKey()
+            // Map Rust's `Option::None` ("no key saved") to `''`
+            // so the gate fires; keep `null` reserved for the
+            // brief loading window before this read completes.
+            setAuthKey(savedKey ?? '')
+          } catch {
+            // Leave `authKey` at `null` so we fall through rather
+            // than incorrectly gating on a failed read.
+            setAuthKey(null)
+          }
         }
       } catch {
         setGameDirectory(null)
@@ -282,7 +300,7 @@ export function useGameState(options: { licenseStatus: LicenseStatus }) {
       isCheckingRef.current = false
       setIsChecking(false)
     }
-  }, [gameDirectory, updateInfo])
+  }, [gameDirectory, updateInfo, t])
 
   // Auto-check when directory is set
   useEffect(() => {
@@ -405,7 +423,7 @@ const handleProgress = (status: UpdateStatus) => {
         updateListenerRef.current = null
       }
     }
-  }, [gameDirectory, checkForUpdates, justCompletedUpdate])
+  }, [gameDirectory, checkForUpdates, justCompletedUpdate, t])
 
   const selectDirectory = useCallback(async (): Promise<string | null> => {
     if (!window.gameAPI) return null
@@ -522,7 +540,7 @@ const handleProgress = (status: UpdateStatus) => {
       // user can retry without the guard swallowing their next click.
       startUpdateInFlightRef.current = false
     }
-  }, [gameDirectory])
+  }, [gameDirectory, t])
 
   const launchGame = useCallback(async (): Promise<void> => {
     if (!window.gameAPI) {
@@ -552,7 +570,7 @@ const handleProgress = (status: UpdateStatus) => {
       toast.error(t('toasts.failedToLaunchGame'))
       throw err
     }
-  }, [])
+  }, [t])
 
   const retryLastStep = useCallback(async (): Promise<void> => {
     setError(null)
@@ -583,16 +601,53 @@ const handleProgress = (status: UpdateStatus) => {
     lastCheckedDirectoryRef.current = null
   }, [])
 
+  // Re-read the saved auth key from disk. Called by the Auth Key
+  // modal after a save so the gate clears and the Play button
+  // becomes active without a launcher restart.
+  const refreshAuthKey = useCallback(async (): Promise<void> => {
+    if (!window.launcherAPI?.getAuthKey) return
+    try {
+      const savedKey = await window.launcherAPI.getAuthKey()
+      // Map Rust's `Option::None` ("no key saved") to `''` so the
+      // auth-key gate can distinguish it from `null` ("haven't
+      // loaded yet"). Keeping `null` reserved for the loading
+      // window avoids flashing the gate on every mount before the
+      // IPC round-trip lands.
+      setAuthKey(savedKey ?? '')
+    } catch {
+      // On failure, leave `authKey` at `null` so we fall through
+      // to the rest of the state machine rather than incorrectly
+      // gating behind an unread disk read.
+      setAuthKey(null)
+    }
+  }, [])
+
   // Derive state
   //
-  // Two layers: `baseState` is the original state machine unchanged.
-  // `state` overlays the license gate on top — LICENSE_REQUIRED /
-  // LICENSE_BINDING short-circuit everything else *except* an in-flight
-  // action (downloading, applying, launching, playing) so a license
-  // expiry mid-download doesn't yank the carpet out.
+  // Single-layer derivation: the license gate has been replaced by a
+  // local auth-key gate. If no auth key is set, `AUTH_KEY_REQUIRED`
+  // short-circuits everything (except `ERROR`, which the user must
+  // see immediately, and in-flight actions so a transient state
+  // doesn't bounce the user mid-action).
   const baseState: GameState = useMemo(() => {
     if (error) {
       return { type: 'ERROR', error }
+    }
+
+    // Auth key gate. We only enforce this once we've read the saved
+    // value (`authKey !== null`) — the brief `null` window between
+    // mount and the IPC round-trip falls through to the rest of the
+    // state machine, so the user never sees a flash of
+    // AUTH_KEY_REQUIRED while the launcher is still booting.
+    if (
+      authKey !== null &&
+      authKey.trim() === '' &&
+      !gameLaunchState.isLaunching &&
+      !gameLaunchState.isRunning &&
+      !isApplyingPatch &&
+      !(isUpdating && updateStatus && updateStatus.isUpdating)
+    ) {
+      return { type: 'AUTH_KEY_REQUIRED' }
     }
 
     if (!gameDirectory || gameDirectory.trim() === '') {
@@ -665,29 +720,12 @@ const handleProgress = (status: UpdateStatus) => {
     error,
     justCompletedUpdate,
     isApplyingPatch,
+    authKey,
   ])
 
-  const state: GameState = useMemo(() => {
-    // In-flight actions take precedence over license gating — we don't
-    // want to bounce a user out of an active download because the
-    // server briefly failed to validate their key.
-    if (
-      baseState.type === 'DOWNLOADING_UPDATE' ||
-      baseState.type === 'APPLYING_PATCH' ||
-      baseState.type === 'LAUNCHING_GAME' ||
-      baseState.type === 'PLAYING'
-    ) {
-      return baseState
-    }
-
-    if (licenseStatus === 'binding') {
-      return { type: 'LICENSE_BINDING' }
-    }
-    if (licenseStatus === 'unbound' || licenseStatus === 'other-pc') {
-      return { type: 'LICENSE_REQUIRED' }
-    }
-    return baseState
-  }, [baseState, licenseStatus])
+  // The license gate has been removed. `baseState` is the canonical
+  // derived state with no overlay needed.
+  const state = baseState
 
   return {
     state,
@@ -707,5 +745,6 @@ const handleProgress = (status: UpdateStatus) => {
     cancelDownload,
     applyPatch,
     retryLastStep,
+    refreshAuthKey,
   }
 }

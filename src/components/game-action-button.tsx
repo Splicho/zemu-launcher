@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 
 import { Button } from '@/components/ui/button'
+import { AuthKeyModal } from '@/components/auth-key-modal'
 import { useGameStateContext } from '@/hooks/use-game-state-context'
-import { usePropertiesModalOpener } from '@/contexts/open-properties-context'
 import { Cancel } from '@/components/icons'
 import { SteamInstructionsModal } from '@/components/steam-instructions-modal'
 import {
@@ -24,11 +24,10 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     launchGame,
     startUpdate,
     selectDirectory,
+    refreshAuthKey,
   } = useGameStateContext()
-  // `GameActionButton` lives in `PlayHeader` (a sibling of `AppSidebar`),
-  // so we can't directly call the sidebar's open-properties handler.
-  // The sidebar publishes its opener through this context.
-  const openProperties = usePropertiesModalOpener()
+
+  const [showAuthKeyModal, setShowAuthKeyModal] = useState(false)
 
   // `hasAcknowledgedSteamInstructions` gates two things:
   //   1. Whether the primary "Install" button routes through the Steam
@@ -47,11 +46,8 @@ export function GameActionButton({ className }: GameActionButtonProps) {
   const [showSteamModal, setShowSteamModal] = useState(false)
 
   const buttonText = useMemo(() => {
-    if (state.type === 'LICENSE_BINDING') {
-      return t('play.activating')
-    }
-    if (state.type === 'LICENSE_REQUIRED') {
-      return t('play.accountKeyRequired')
+    if (state.type === 'AUTH_KEY_REQUIRED') {
+      return t('play.authKeyRequired')
     }
     if (state.type === 'DOWNLOADING_UPDATE' && 'updateStatus' in state && state.updateStatus) {
       const progress = state.updateStatus.overallProgress.toFixed(0)
@@ -103,8 +99,7 @@ export function GameActionButton({ className }: GameActionButtonProps) {
       state.type === 'DOWNLOADING_UPDATE' ||
       state.type === 'APPLYING_PATCH' ||
       state.type === 'LAUNCHING_GAME' ||
-      state.type === 'PLAYING' ||
-      state.type === 'LICENSE_BINDING',
+      state.type === 'PLAYING',
     [state.type]
   )
 
@@ -129,13 +124,9 @@ export function GameActionButton({ className }: GameActionButtonProps) {
   }, [])
 
   const handlePrimaryAction = useCallback(async () => {
-    if (state.type === 'LICENSE_REQUIRED') {
-      // "License required" is a redirect, not a state transition —
-      // we open the Properties modal pinned to the License section
-      // and let the user redeem their key. After they close the
-      // modal the AppSidebar calls `license.revalidate()` so the
-      // state machine re-derives and (hopefully) drops the gate.
-      openProperties('license')
+    if (state.type === 'AUTH_KEY_REQUIRED') {
+      // Open the auth key modal so the user can enter and save their key.
+      setShowAuthKeyModal(true)
       return
     }
     if (state.type === 'NEEDS_DESTINATION') {
@@ -170,7 +161,7 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     }
   }, [
     state.type,
-    openProperties,
+    setShowAuthKeyModal,
     selectDirectory,
     startUpdate,
     launchGame,
@@ -250,6 +241,17 @@ export function GameActionButton({ className }: GameActionButtonProps) {
         open={showSteamModal}
         onOpenChange={setShowSteamModal}
         onAcknowledge={handleAcknowledgeSteamInstructions}
+      />
+
+      <AuthKeyModal
+        open={showAuthKeyModal}
+        onOpenChange={setShowAuthKeyModal}
+        onSaved={() => {
+          // Re-read the auth key from disk so the state machine
+          // drops the AUTH_KEY_REQUIRED gate and the button label
+          // updates to "Play" (or "Install", etc.).
+          void refreshAuthKey()
+        }}
       />
     </div>
   )

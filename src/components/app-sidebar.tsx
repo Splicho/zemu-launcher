@@ -43,7 +43,6 @@ import {
 } from '@/lib/steam-instructions'
 import { useUpdate } from '@/contexts/update-context'
 import { useGameStateContext } from '@/hooks/use-game-state-context'
-import { useLicenseContext } from '@/hooks/use-license'
 import { CircularProgress } from '@/components/circular-progress'
 import type { PropertiesSectionId } from '@/components/properties-sidebar'
 import type { OpenProperties } from '@/contexts/open-properties-context'
@@ -77,8 +76,7 @@ interface AppSidebarProps {
    * `GameActionButton` via the `OpenPropertiesProvider` context) can
    * ask the sidebar to open the Properties modal pinned to a specific
    * section. We pass the same handler both ways: when the context
-   * calls it, we open the modal; when the user closes the modal we
-   * revalidate the license.
+   * calls it, we open the modal; on close we reset the pinned section.
    */
   registerOpener: (fn: OpenProperties) => void
 }
@@ -111,7 +109,6 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
   const { isUpdating, progress } = useUpdate()
   const { checkForUpdates, selectDirectory, isChecking, gameDirectory } =
     useGameStateContext()
-  const license = useLicenseContext()
   const hash = useHashRoute()
 
   // Stable callback the rest of the app uses (via
@@ -198,24 +195,17 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
     setShowSteamModal(false)
   }, [])
 
-  // Wraps the modal's open/close so we can revalidate the license
-  // when the user closes the modal. Without this a successful redeem
-  // wouldn't update the primary button label until the next mount —
-  // the user would have to refresh the page to see "Install" replace
-  // "License required".
+  // Wraps the modal's open/close. The license gate has been removed
+  // as part of the auth key rework, so there's no revalidate step
+  // on close — the auth key modal handles its own save flow.
   const handlePropertiesOpenChange = React.useCallback(
     (nextOpen: boolean) => {
       setShowPropertiesModal(nextOpen)
       if (!nextOpen) {
         setPropertiesDefaultSection(undefined)
-        // `revalidate()` is a no-op when there's no cached record,
-        // and updates the in-memory record when there is one. We
-        // don't block on it; the button label will update as soon as
-        // the state machine re-derives.
-        void license.revalidate()
       }
     },
-    [license],
+    [],
   )
 
   const isCheckDisabled = isChecking || isUpdating

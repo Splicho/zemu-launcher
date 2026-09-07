@@ -3,17 +3,6 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LicenseRecord {
-    pub license_key: String,
-    pub pc_identifier: String,
-    pub bound_at: i64,
-    pub validated_at: i64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub discord_user_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AuthToken {
     pub token: String,
     pub user_id: String,
@@ -133,6 +122,11 @@ pub struct LauncherConfig {
     /// local development.
     #[serde(default)]
     pub session_id_bearer_token: Option<String>,
+    /// The user's auth key — stored locally and written to
+    /// `ClientConfig.ini` as `SessionId=` at game launch. No server
+    /// validation is performed on this value.
+    #[serde(default)]
+    pub auth_key: Option<String>,
 }
 
 impl Default for LauncherConfig {
@@ -150,6 +144,7 @@ impl Default for LauncherConfig {
             theme: AppTheme::System,
             session_id_endpoint_url: None,
             session_id_bearer_token: None,
+            auth_key: None,
         }
     }
 }

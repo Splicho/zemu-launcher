@@ -6,7 +6,6 @@ mod discord;
 mod game;
 mod models;
 mod oauth_server;
-mod pc_identifier;
 mod session_id;
 mod state;
 mod storage;
@@ -207,7 +206,7 @@ fn build_index_url(dev_url: Option<&url::Url>) -> tauri::Result<WebviewUrl> {
         };
         let parsed = Url::parse(&url)
             .map_err(|e| tauri::Error::Anyhow(anyhow::anyhow!("invalid index url {url:?}: {e}")))?;
-        return Ok(WebviewUrl::External(parsed));
+        Ok(WebviewUrl::External(parsed))
     }
 
     #[cfg(not(dev))]

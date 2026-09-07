@@ -266,33 +266,49 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
         &format!("launch_game start game_directory={game_directory}"),
     );
 
-    // Refresh the session id into the game's `ClientConfig.ini`
-    // *before* we spawn `H1Z1.exe` so the client picks up the
-    // updated value on startup. The helper is non-fatal: a network
-    // outage will log + proceed with whatever is on disk so the
-    // user can still get into the game.
-    match session_id::prepare_client_config(app, &game_directory, false).await {
-        Ok(written) => {
-            let _ = debug_log::append(
-                app,
-                "game",
-                &format!(
-                    "launch_game session_id_written length={} preview={}",
-                    written.len(),
-                    session_id_preview(&written)
-                ),
-            );
+    // Write the auth key into `ClientConfig.ini` before spawning H1Z1.exe
+    // so the client picks up the correct session id on startup.
+    //
+    // The auth key is read from the local launcher config (saved by the
+    // user in the Auth Key modal). Unlike the old keys-endpoint flow,
+    // there is no network call here — if no key is saved, we skip the
+    // write and log a warning.
+    match load_launcher_config(app) {
+        Ok(config) => {
+            if let Some(auth_key) = config.auth_key {
+                match session_id::write_session_id_to_client_config(&game_directory, &auth_key) {
+                    Ok(()) => {
+                        let _ = debug_log::append(
+                            app,
+                            "game",
+                            &format!(
+                                "launch_game auth_key_written length={}",
+                                auth_key.len()
+                            ),
+                        );
+                    }
+                    Err(error) => {
+                        let _ = debug_log::append(
+                            app,
+                            "game",
+                            &format!("launch_game auth_key_write_failed error={error}"),
+                        );
+                    }
+                }
+            } else {
+                let _ = debug_log::append(
+                    app,
+                    "game",
+                    "launch_game no_auth_key_skipped_write",
+                );
+            }
         }
         Err(error) => {
             let _ = debug_log::append(
                 app,
                 "game",
-                &format!("launch_game session_id_prepare_failed error={error}"),
+                &format!("launch_game load_config_failed error={error}"),
             );
-            // Don't hard-fail the launch — the user explicitly
-            // asked for this edit to happen "before the launcher
-            // launches h1z1.exe" but a missing/stale session id
-            // shouldn't trap them outside the game.
         }
     }
 
@@ -607,17 +623,4 @@ fn snapshot_processes() -> HashMap<u32, u32> {
     }
 
     processes
-}
-
-/// Produce a short, debug-log-safe preview of a session id. Avoids
-/// logging the entire token so even if someone attaches the debug log
-/// to a bug report, the value isn't fully exposed.
-fn session_id_preview(value: &str) -> String {
-    let len = value.chars().count();
-    if len <= 8 {
-        return format!("<{len} chars>");
-    }
-    let start: String = value.chars().take(4).collect();
-    let end: String = value.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
-    format!("{start}...{end} ({len} chars)")
 }

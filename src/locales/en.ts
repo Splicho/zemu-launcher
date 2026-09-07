@@ -39,8 +39,23 @@ export default {
     },
     account: {
       openMenu: 'Open account menu',
+      menuItem: 'Account',
       signOut: 'Sign out',
       unknownUser: 'Unknown user',
+      title: 'Account',
+      description: 'Manage your account and saved credentials.',
+      keyLabel: 'Auth key',
+      keyDescription: 'The key used by the game to identify your session.',
+      revealKey: 'Reveal key',
+      hideKey: 'Hide key',
+      copyKey: 'Copy key',
+      copied: 'Auth key copied to clipboard.',
+      changeKey: 'Change auth key',
+      addKey: 'Add auth key',
+      noKey: 'No auth key set yet. Add one to enable playing.',
+      errors: {
+        unavailable: 'Launcher bridge is unavailable.',
+      },
     },
     nav: {
       home: 'Home',
@@ -49,6 +64,7 @@ export default {
       play: 'Play',
       settings: 'Settings',
       socialize: 'Socialize',
+      account: 'Account',
     },
     settings: {
       general: {
@@ -110,8 +126,8 @@ export default {
       updating: 'Updating…',
       checking: 'Checking for updates…',
       properties: 'Properties',
-      activating: 'Activating…',
-      accountKeyRequired: 'Account Key Required',
+      activate: 'Activate',
+      authKeyRequired: 'Auth Key Required',
       updateProgress: 'Updating…{{progress}}%',
       applyingPatch: 'Applying Patch…',
       locatePs3Folder: 'Locate PS3 Folder',
@@ -128,6 +144,15 @@ export default {
       browseGameFiles: 'Browse game files',
       checkForUpdates: 'Check for updates',
       gameSize: '15GB',
+    },
+    authKey: {
+      modalTitle: 'Auth Key',
+      description: 'Enter your auth key to play.',
+      inputLabel: 'Auth Key',
+      placeholder: 'Enter your auth key',
+      save: 'Save',
+      clear: 'Clear',
+      currentKey: 'Current key:',
     },
     leaderboard: {
       topPlayers: 'Top 5 Players',

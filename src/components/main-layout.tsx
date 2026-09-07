@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 
 import { AppSidebar } from '@/components/app-sidebar'
 import { SettingsSidebar } from '@/components/settings-sidebar'
+import { AccountSidebar } from '@/components/account-sidebar'
 import { Header } from '@/components/header'
 import { TitleBar } from '@/components/title-bar'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -12,7 +13,7 @@ import {
   type OpenProperties,
 } from '@/contexts/open-properties-context'
 
-export type SidebarType = 'app' | 'settings'
+export type SidebarType = 'app' | 'settings' | 'account'
 
 const EASING = [0.25, 0.46, 0.45, 0.94] as const
 
@@ -113,6 +114,8 @@ export function MainLayout({
                   >
                     {sidebarType === 'settings' ? (
                       <SettingsSidebar />
+                    ) : sidebarType === 'account' ? (
+                      <AccountSidebar />
                     ) : (
                       <AppSidebar registerOpener={handleRegister} />
                     )}

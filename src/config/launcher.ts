@@ -23,13 +23,6 @@ export const LAUNCHER_CONFIG = {
   newsApiBaseUrl: 'https://api.zemu.uk/v1/news',
   // Stats API for leaderboards and player data.
   statsApiBaseUrl: 'https://api.zemu.uk/v1/stats',
-  // License API (NestJS) for validating license keys and PC-binding.
-  // The renderer POSTs to {licenseApiBaseUrl}/v1/licenses/validate with
-  // { licenseKey, pcIdentifier }. Override via VITE_LICENSE_API_BASE_URL
-  // in `.env.local` for dev against a local checkout of
-  // zemu-website/apps/api (defaults to port 3002 — see
-  // `apps/api/src/main.ts`).
-  licenseApiBaseUrl: 'https://api.zemu.uk',
   // Deep-link scheme registered with the OS so the OAuth callback can hand
   // control back to the running launcher.
   oauthCallbackProtocol: 'zemu-launcher://',

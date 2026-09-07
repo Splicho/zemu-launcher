@@ -10,9 +10,7 @@ import {
   PROPERTIES_SECTIONS,
   type PropertiesSectionId,
 } from '@/components/properties-sidebar'
-import { LicenseSection } from '@/components/properties-license-section'
 import { SteamInstructionsSteps } from '@/components/steam-instructions-modal'
-import { useLicenseContext } from '@/hooks/use-license'
 import { formatBytes } from '@/lib/format'
 
 interface PropertiesSectionProps {
@@ -31,10 +29,10 @@ interface PropertiesSectionProps {
 
 /**
  * Right pane of the Properties modal. A small switch dispatches per
- * section id — `install` and `license` have real bodies, `guide` shows
- * the read-only Steam depot instructions, and any future ids fall through
- * to the shared placeholder. The dispatch table makes adding bodies
- * straightforward without touching the modal shell or the rail.
+ * section id — `install` and `guide` have real bodies, and any
+ * future ids fall through to the shared placeholder. The dispatch
+ * table makes adding bodies straightforward without touching the
+ * modal shell or the rail.
  */
 export function PropertiesSection({
   activeId,
@@ -47,12 +45,6 @@ export function PropertiesSection({
       // `install` is the first rail entry today, so it doubles as a
       // safe fallback if an unknown id ever sneaks through.
       ?.labelKey ?? 'properties.installedFiles'
-
-  // `useLicenseContext` is called unconditionally so the rules of
-  // hooks are satisfied. The license body itself only renders for
-  // the `license` rail id; the hook's overhead is negligible on the
-  // other branches.
-  const license = useLicenseContext()
 
   return (
     <ScrollArea className="flex-1">
@@ -69,15 +61,6 @@ export function PropertiesSection({
           <InstalledFilesSection
             gameDirectory={gameDirectory}
             onChangeFolder={onChangeFolder}
-          />
-        ) : activeId === 'license' ? (
-          <LicenseSection
-            status={license.status}
-            record={license.record}
-            redeemError={license.redeemError}
-            revalidateError={license.revalidateError}
-            isBinding={license.status === 'binding'}
-            onRedeem={license.redeem}
           />
         ) : activeId === 'guide' ? (
           <InstallationGuideSection />

@@ -39,8 +39,23 @@ export default {
     },
     account: {
       openMenu: 'Abrir menu da conta',
+      menuItem: 'Conta',
       signOut: 'Sair',
       unknownUser: 'Usuário desconhecido',
+      title: 'Conta',
+      description: 'Gerencie sua conta e credenciais salvas.',
+      keyLabel: 'Chave de autenticação',
+      keyDescription: 'A chave usada pelo jogo para identificar sua sessão.',
+      revealKey: 'Mostrar chave',
+      hideKey: 'Ocultar chave',
+      copyKey: 'Copiar chave',
+      copied: 'Chave de autenticação copiada para a área de transferência.',
+      changeKey: 'Alterar chave de autenticação',
+      addKey: 'Adicionar chave de autenticação',
+      noKey: 'Nenhuma chave de autenticação definida. Adicione uma para poder jogar.',
+      errors: {
+        unavailable: 'A ponte do launcher está indisponível.',
+      },
     },
     nav: {
       home: 'Início',
@@ -49,6 +64,7 @@ export default {
       play: 'Jogar',
       settings: 'Configurações',
       socialize: 'Socializar',
+      account: 'Conta',
     },
     settings: {
       general: {
@@ -99,7 +115,7 @@ export default {
       properties: 'Propriedades',
       // Game action button states
       activating: 'Ativando…',
-      accountKeyRequired: 'Chave de Conta Necessária',
+      authKeyRequired: 'Chave de Autenticação Necessária',
       updateProgress: 'Atualizando…{{progress}}%',
       applyingPatch: 'Aplicando Patch…',
       locatePs3Folder: 'Localizar Pasta do PS3',
@@ -113,6 +129,15 @@ export default {
       cancelDownload: 'Cancelar download',
       // Play header
       gameDescription: 'ZEmu: King of the Kill é um battle royale competitivo e frenético. Paraquede e busque armas, munição, veículos e suprimentos para sobreviver. Enquanto o gás tóxico comprime o mapa, desenvolva uma estratégia vencedora e prepare-se para o confronto final.',
+    },
+    authKey: {
+      modalTitle: 'Chave de Autenticação',
+      description: 'Insira sua chave de autenticação para jogar.',
+      inputLabel: 'Chave de Autenticação',
+      placeholder: 'Digite sua chave de autenticação',
+      save: 'Salvar',
+      clear: 'Limpar',
+      currentKey: 'Chave atual:',
     },
     // App sidebar
     appSidebar: {

@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { BookOpen, FolderTree, KeySquare } from 'lucide-react'
+import { BookOpen, FolderTree } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -13,14 +13,16 @@ import {
  * public contract — `PropertiesModal` switches content on it, not on
  * the label — so adding/renaming sections never breaks the API.
  *
- * Three sections today:
+ * Two sections today:
  *  - `install`: file-management view (size, locate, change).
- *  - `license`: redeem / revalidate the user's account key.
  *  - `guide`:   read-only copy of the Steam depot install steps.
+ *
+ * The license tab has been removed as part of the auth key rework —
+ * the auth key is now entered through the in-game Auth Key modal
+ * rather than a Properties sidebar entry.
  */
 export const PROPERTIES_SECTIONS = [
   { id: 'install', labelKey: 'properties.installedFiles', Icon: FolderTree },
-  { id: 'license', labelKey: 'properties.accountKey', Icon: KeySquare },
   { id: 'guide', labelKey: 'properties.installationGuide', Icon: BookOpen },
 ] as const satisfies ReadonlyArray<{
   id: string

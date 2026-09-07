@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::AppHandle;
 
@@ -451,7 +451,7 @@ fn replace_session_id_line(raw: &str, session_id: &str) -> String {
     let mut found = false;
     let mut out = String::with_capacity(raw.len() + 64);
 
-    for line in raw.split_inclusive(|c| c == '\n') {
+    for line in raw.split_inclusive('\n') {
         let (core, trailing_newline) = if let Some(stripped) = line.strip_suffix('\n') {
             (stripped, "\n")
         } else {
@@ -506,65 +506,6 @@ fn detect_line_ending(raw: &str) -> String {
 
 fn truncate(input: &str, max: usize) -> String {
     input.chars().take(max).collect()
-}
-
-/// Convenience used by `launch_game` — fetch (or load) the session id,
-/// then write it into the chosen game's `ClientConfig.ini`.
-///
-/// Failures from the API are non-fatal: we log them and proceed with
-/// whatever cached value we have. If both fail, the launch continues
-/// but the warning is surfaced so the user can re-launch with network.
-pub async fn prepare_client_config(
-    app: &AppHandle,
-    game_directory: &str,
-    force_refresh: bool,
-) -> Result<String> {
-    let session_id = match get_session_id(app, force_refresh).await {
-        Ok(id) => id,
-        Err(error) => {
-            let _ = debug_log::append(
-                app,
-                "session_id",
-                &format!("prepare_client_config fetch_failed error={error}"),
-            );
-            // Last-ditch: serve the cache even if it's stale. If we
-            // also have no cache, fall through to the empty string so
-            // the file still gets touched.
-            match load_cached_session_id(app) {
-                Ok(Some(cache)) => cache.session_id,
-                _ => String::new(),
-            }
-        }
-    };
-
-    if session_id.is_empty() {
-        // Nothing usable. Don't touch the file — the caller's session
-        // would be unusable anyway, and an empty SessionId= would be
-        // actively worse than whatever the user had before.
-        let _ = debug_log::append(
-            app,
-            "session_id",
-            "prepare_client_config no_session_id_skipped_write",
-        );
-        return Err(anyhow!(
-            "No session id available (API unreachable and cache empty)"
-        ));
-    }
-
-    write_session_id_to_client_config(game_directory, &session_id)?;
-    let _ = debug_log::append(
-        app,
-        "session_id",
-        &format!(
-            "prepare_client_config wrote SessionId length={} to {}",
-            session_id.len(),
-            Path::new(game_directory)
-                .join(CLIENT_CONFIG_FILE)
-                .display()
-        ),
-    );
-
-    Ok(session_id)
 }
 
 #[cfg(test)]

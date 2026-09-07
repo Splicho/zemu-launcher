@@ -4,20 +4,15 @@ use crate::debug_log;
 use crate::discord;
 use crate::game;
 use crate::models::{
-    AppTheme, AuthToken, CommandResult, DiscordRpcMode, GameLaunchState, LicenseRecord,
-    OAuthCallbackPayload, UpdateCheckResult, UpdateStatus, VersionManifest,
+    AppTheme, AuthToken, CommandResult, DiscordRpcMode, GameLaunchState, OAuthCallbackPayload,
+    UpdateCheckResult, UpdateStatus, VersionManifest,
 };
-use crate::pc_identifier;
 use crate::session_id::{self, SessionIdCache};
 use crate::state::AppState;
 use crate::storage;
 use crate::update;
-use serde_json::json;
-use std::time::Duration;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
-
-const LICENSE_HTTP_TIMEOUT_SECS: u64 = 20;
 
 #[tauri::command]
 pub fn window_minimize(window: tauri::WebviewWindow) -> Result<(), String> {
@@ -448,65 +443,6 @@ pub fn log_to_terminal(message: String) {
 }
 
 #[tauri::command]
-pub async fn license_post_endpoint(
-    base_url: String,
-    path: String,
-    license_key: String,
-    pc_identifier: String,
-) -> Result<serde_json::Value, String> {
-    if path != "/v1/licenses/validate" && path != "/v1/licenses/redeem" {
-        return Err(format!("unsupported license endpoint: {path}"));
-    }
-
-    let base = base_url.trim_end_matches('/');
-    let url = format!("{base}{path}");
-    // License keys are user credentials. Echo only a masked form to
-    // stderr so neither the dev terminal nor any process-wide stderr
-    // sink picks up the raw key. The renderer's frontend already
-    // masks it the same way (`src/lib/license.ts:maskValue`).
-    eprintln!(
-        "[license] rust POST {url} (licenseKey={}, keyLength={}, pcIdentifier={})",
-        mask_value(&license_key),
-        license_key.len(),
-        mask_value(&pc_identifier)
-    );
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(LICENSE_HTTP_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| format!("failed to create license HTTP client: {e}"))?;
-
-    let response = client
-        .post(&url)
-        .json(&json!({
-            "licenseKey": license_key,
-            "pcIdentifier": pc_identifier,
-        }))
-        .send()
-        .await
-        .map_err(|e| {
-            eprintln!("[license] rust POST {url} failed before response: {e}");
-            e.to_string()
-        })?;
-
-    let status = response.status();
-    eprintln!("[license] rust POST {url} -> HTTP {status}");
-
-    let text = response.text().await.map_err(|e| {
-        eprintln!("[license] rust POST {url} failed reading response body: {e}");
-        e.to_string()
-    })?;
-
-    serde_json::from_str(&text).map_err(|e| {
-        eprintln!(
-            "[license] rust POST {url} returned non-JSON response: {e}; body={}",
-            truncate_for_log(&text)
-        );
-        e.to_string()
-    })
-}
-
-#[tauri::command]
 pub async fn api_get(
     app: tauri::AppHandle,
     path: String,
@@ -526,41 +462,6 @@ pub async fn api_post(
     api::api_post(&app, &path, payload)
         .await
         .map_err(|e| e.to_string())
-}
-
-/// Returns the launcher's stable PC identifier — generated on first
-/// call and persisted to disk for subsequent calls. Used as the
-/// `pcIdentifier` field when validating license keys against the
-/// zemu-website API. Opaque to the renderer.
-#[tauri::command]
-pub fn launcher_get_pc_identifier(app: tauri::AppHandle) -> Result<String, String> {
-    pc_identifier::get_or_create_pc_identifier(&app).map_err(|e| e.to_string())
-}
-
-/// Load the persisted license record from `app_data/license-store.json`.
-/// Returns `null` if no record has been saved yet.
-#[tauri::command]
-pub fn license_get_record(app: tauri::AppHandle) -> Result<Option<LicenseRecord>, String> {
-    storage::load_license_store(&app).map_err(|e| e.to_string())
-}
-
-/// Persist a license record to `app_data/license-store.json`. Called
-/// after every successful redeem or validate so the record survives
-/// launcher restarts.
-#[tauri::command]
-pub fn license_save_record(app: tauri::AppHandle, record: LicenseRecord) -> Result<(), String> {
-    storage::save_license_store(&app, &record).map_err(|e| e.to_string())
-}
-
-/// Delete the persisted license record. Called on logout so a different
-/// user on the same PC starts clean.
-#[tauri::command]
-pub fn license_clear_record(app: tauri::AppHandle) -> Result<(), String> {
-    let path = storage::license_store_path(&app).map_err(|e| e.to_string())?;
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
-    }
-    Ok(())
 }
 
 /// Returns whether the launcher is currently registered to launch
@@ -584,6 +485,28 @@ pub fn launcher_set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> R
     } else {
         manager.disable().map_err(|e| e.to_string())
     }
+}
+
+/// Returns the currently saved auth key, if any. The value is stored
+/// locally in `launcher-config.json` and is never validated against
+/// a server — it is passed directly to the game as the session id.
+#[tauri::command]
+pub fn launcher_get_auth_key(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let config = storage::load_launcher_config(&app).map_err(|e| e.to_string())?;
+    Ok(config.auth_key)
+}
+
+/// Persist a new auth key, replacing any previously saved value.
+/// An empty string clears the key.
+#[tauri::command]
+pub fn launcher_set_auth_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    let mut config = storage::load_launcher_config(&app).map_err(|e| e.to_string())?;
+    config.auth_key = if key.trim().is_empty() {
+        None
+    } else {
+        Some(key.trim().to_string())
+    };
+    storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())
 }
 
 pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static
@@ -643,15 +566,12 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         debug_log_read,
         debug_log_clear,
         log_to_terminal,
-        license_post_endpoint,
         api_get,
         api_post,
-        launcher_get_pc_identifier,
-        license_get_record,
-        license_save_record,
-        license_clear_record,
         launcher_get_autostart_enabled,
-        launcher_set_autostart_enabled
+        launcher_set_autostart_enabled,
+        launcher_get_auth_key,
+        launcher_set_auth_key
     ]
 }
 
@@ -702,28 +622,4 @@ fn focus_window(window: &tauri::WebviewWindow) {
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();
-}
-
-fn mask_value(value: &str) -> String {
-    let char_count = value.chars().count();
-    if char_count <= 8 {
-        return format!("{char_count} chars");
-    }
-
-    let start: String = value.chars().take(4).collect();
-    let mut end_chars: Vec<char> = value.chars().rev().take(4).collect();
-    end_chars.reverse();
-    let end: String = end_chars.into_iter().collect();
-
-    format!("{start}...{end}")
-}
-
-fn truncate_for_log(value: &str) -> String {
-    const MAX_LEN: usize = 500;
-    if value.chars().count() <= MAX_LEN {
-        return value.replace(['\r', '\n'], " ");
-    }
-
-    let truncated: String = value.chars().take(MAX_LEN).collect();
-    format!("{}...", truncated.replace(['\r', '\n'], " "))
 }
