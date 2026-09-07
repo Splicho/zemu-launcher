@@ -12,6 +12,7 @@
     "sync:launcher-config": "node scripts/sync-launcher-config.cjs",
     "release:verify-tag": "node scripts/assert-release-tag.cjs",
     "release-build": "node scripts/release-build.cjs",
+    "preview-build": "node scripts/preview-build.cjs",
     "dev": "pnpm run sync:launcher-config && tauri dev",
     "dev:vite": "vite",
     "build": "pnpm run sync:launcher-config && tauri build",
