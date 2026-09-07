@@ -62,6 +62,12 @@ function main() {
     productName: 'ZEmu Launcher Nightly',
     identifier: 'uk.zemu.launcher.nightly',
     version: nightlyVersion,
+    bundle: {
+      // Disable updater artifact signing — nightly builds don't have the
+      // Tauri signing private key, so creating signed updater artifacts
+      // would fail.
+      createUpdaterArtifacts: false,
+    },
     plugins: {
       'deep-link': {
         desktop: {
