@@ -91,14 +91,17 @@ jobs:
       - name: Sync generated launcher metadata
         run: pnpm run sync:launcher-config
 
-      # Plain `tauri build` — no override config, no signature, no
-      # updater artifact. The canonical tauri.conf.json has
-      # `createUpdaterArtifacts: true`, which here only costs a couple
-      # of seconds but isn't published anywhere. If that ever becomes a
-      # problem, override it via an inline `--bundles` flag instead of
-      # mutating the canonical config.
+      # Override the canonical config to disable updater artifact
+      # generation, which in turn skips the signing step (the canonical
+      # tauri.conf.json has `createUpdaterArtifacts: true` and an
+      # updater `pubkey`, so a plain `tauri build` would require
+      # TAURI_SIGNING_PRIVATE_KEY). `preview.conf.json` is merged via
+      # Tauri v2's JSON Merge Patch (`--config`), so we don't touch
+      # tauri.conf.json. The release workflow is unaffected — it sets
+      # the signing secrets from `tauri-action` and keeps
+      # `createUpdaterArtifacts: true`.
       - name: Build and bundle installers
-        run: pnpm tauri build --bundles ${{ matrix.bundles }}
+        run: pnpm tauri build --config src-tauri/preview.conf.json --bundles ${{ matrix.bundles }}
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
