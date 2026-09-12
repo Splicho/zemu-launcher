@@ -10,6 +10,7 @@ mod session_id;
 mod state;
 mod storage;
 mod update;
+mod wine;
 
 use state::AppState;
 use tauri::{WebviewUrl, WebviewWindowBuilder};
@@ -150,8 +151,6 @@ pub fn run() {
                 eprintln!("[startup] failed to queue initial launcher activity: {error}");
             }
 
-            oauth_server::start_oauth_callback_server(app.handle().clone(), app_state.clone());
-
             #[cfg(any(target_os = "linux", windows))]
             {
                 if let Err(error) = app.deep_link().register_all() {
@@ -244,6 +243,6 @@ fn handle_protocol_url(app: &tauri::AppHandle, raw_url: &str) {
             .query_pairs()
             .find(|(k, _)| k == "error")
             .map(|(_, v)| v.to_string());
-        auth::process_oauth_callback(app, token, state, error);
+        let _ = auth::process_oauth_callback(app, token, state, error);
     }
 }

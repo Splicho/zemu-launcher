@@ -31,53 +31,55 @@ export function AuthKeyModal({ open, onOpenChange, onSaved }: AuthKeyModalProps)
   const { t } = useTranslation()
   const [value, setValue] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [savedKey, setSavedKey] = useState<string | null>(null)
   const inputId = useId()
 
-  // Load the current saved key when the modal opens so we can show
-  // the masked value.
+  // Disable editing until the saved key arrives, so a slow disk read
+  // cannot overwrite a key the user has already started typing.
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    ;(async () => {
-      try {
-        const key = await window.launcherAPI.getAuthKey()
-        if (!cancelled) setSavedKey(key ?? null)
-      } catch {
-        if (!cancelled) setSavedKey(null)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [open])
-
-  // Reset the input field whenever the modal opens (so it starts blank),
-  // but seed the value from the currently saved key if the user
-  // re-opens without having saved anything new.
-  useEffect(() => {
-    if (!open) return
-    setValue(savedKey ?? '')
-    setIsSaving(false)
-  }, [open, savedKey])
+    setIsLoading(true)
+    setError(null)
+    setValue('')
+    setSavedKey(null)
+    window.launcherAPI.getAuthKey()
+      .then((key) => {
+        if (cancelled) return
+        setSavedKey(key ?? null)
+        setValue(key ?? '')
+      })
+      .catch(() => {
+        if (!cancelled) setError(t('authKey.loadFailed'))
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [open, t])
 
   const handleSave = async () => {
-    if (isSaving) return
+    if (isSaving || isLoading || !value.trim()) return
     setIsSaving(true)
+    setError(null)
     try {
       await window.launcherAPI.setAuthKey(value.trim())
       setSavedKey(value.trim() || null)
       onSaved?.()
       onOpenChange(false)
     } catch {
-      // Non-fatal — the input stays open so the user can retry.
+      setError(t('authKey.saveFailed'))
     } finally {
       setIsSaving(false)
     }
   }
 
   const handleClear = async () => {
+    if (isSaving || isLoading) return
     setIsSaving(true)
+    setError(null)
     try {
       await window.launcherAPI.setAuthKey('')
       setSavedKey(null)
@@ -85,7 +87,7 @@ export function AuthKeyModal({ open, onOpenChange, onSaved }: AuthKeyModalProps)
       onSaved?.()
       onOpenChange(false)
     } catch {
-      // Non-fatal.
+      setError(t('authKey.saveFailed'))
     } finally {
       setIsSaving(false)
     }
@@ -94,7 +96,7 @@ export function AuthKeyModal({ open, onOpenChange, onSaved }: AuthKeyModalProps)
   const isEmpty = value.trim().length === 0
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!isSaving) onOpenChange(next) }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t('authKey.modalTitle')}</DialogTitle>
@@ -119,7 +121,7 @@ export function AuthKeyModal({ open, onOpenChange, onSaved }: AuthKeyModalProps)
                   void handleSave()
                 }
               }}
-              disabled={isSaving}
+              disabled={isSaving || isLoading}
               className="font-mono"
             />
           </div>
@@ -132,13 +134,15 @@ export function AuthKeyModal({ open, onOpenChange, onSaved }: AuthKeyModalProps)
           ) : null}
         </div>
 
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+
         <DialogFooter className="gap-2 sm:gap-0">
           {savedKey ? (
             <Button
               type="button"
               variant="outline"
               onClick={() => void handleClear()}
-              disabled={isSaving}
+              disabled={isSaving || isLoading}
             >
               {t('authKey.clear')}
             </Button>
@@ -147,7 +151,7 @@ export function AuthKeyModal({ open, onOpenChange, onSaved }: AuthKeyModalProps)
             type="button"
             variant="gradient"
             onClick={() => void handleSave()}
-            disabled={isEmpty || isSaving}
+            disabled={isEmpty || isSaving || isLoading}
           >
             {t('authKey.save')}
           </Button>

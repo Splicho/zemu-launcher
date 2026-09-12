@@ -77,6 +77,68 @@ fn default_theme() -> AppTheme {
     AppTheme::System
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WineEnvVar {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum WineRuntimeKind {
+    Wine,
+    Proton,
+    Custom,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WineRuntime {
+    pub id: String,
+    pub name: String,
+    pub kind: WineRuntimeKind,
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WineConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub runtime_id: Option<String>,
+    #[serde(default)]
+    pub custom_runtime_path: Option<String>,
+    #[serde(default)]
+    pub wine_prefix: Option<String>,
+    #[serde(default)]
+    pub env: Vec<WineEnvVar>,
+}
+
+impl Default for WineConfig {
+    fn default() -> Self {
+        Self {
+            enabled: cfg!(all(unix, not(target_os = "macos"))),
+            runtime_id: None,
+            custom_runtime_path: None,
+            wine_prefix: None,
+            env: vec![
+                WineEnvVar {
+                    key: "DXVK_ASYNC".to_string(),
+                    value: "1".to_string(),
+                },
+                WineEnvVar {
+                    key: "WINEDEBUG".to_string(),
+                    value: "-all".to_string(),
+                },
+            ],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LauncherConfig {
@@ -127,6 +189,8 @@ pub struct LauncherConfig {
     /// validation is performed on this value.
     #[serde(default)]
     pub auth_key: Option<String>,
+    #[serde(default)]
+    pub wine: WineConfig,
 }
 
 impl Default for LauncherConfig {
@@ -145,6 +209,7 @@ impl Default for LauncherConfig {
             session_id_endpoint_url: None,
             session_id_bearer_token: None,
             auth_key: None,
+            wine: WineConfig::default(),
         }
     }
 }
@@ -361,4 +426,29 @@ pub struct WebSessionUser {
     pub roles: Vec<String>,
     #[serde(default)]
     pub permissions: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adding_wine_preserves_existing_auth_key_and_settings() {
+        let mut existing = serde_json::to_value(LauncherConfig::default()).unwrap();
+        existing.as_object_mut().unwrap().remove("wine");
+        existing["authKey"] = "local-auth-key".into();
+        existing["gameDirectory"] = "/games/King of the Kill".into();
+        existing["sessionIdEndpointUrl"] = "http://localhost:8081/custom".into();
+        let mut config: LauncherConfig = serde_json::from_value(existing.clone()).unwrap();
+        assert_eq!(config.wine, WineConfig::default());
+        config.wine.runtime_id = Some("custom".into());
+        config.wine.custom_runtime_path = Some("/opt/wine/bin/wine".into());
+        let saved = serde_json::to_value(&config).unwrap();
+        for (key, value) in existing.as_object().unwrap() {
+            assert_eq!(&saved[key], value, "Wine must preserve {key}");
+        }
+        let mut reloaded: LauncherConfig = serde_json::from_value(saved).unwrap();
+        reloaded.auth_key = Some("replacement-key".into());
+        assert_eq!(reloaded.wine, config.wine);
+    }
 }

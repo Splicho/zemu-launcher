@@ -5,12 +5,13 @@ use crate::discord;
 use crate::game;
 use crate::models::{
     AppTheme, AuthToken, CommandResult, DiscordRpcMode, GameLaunchState, OAuthCallbackPayload,
-    UpdateCheckResult, UpdateStatus, VersionManifest,
+    UpdateCheckResult, UpdateStatus, VersionManifest, WineConfig, WineRuntime,
 };
 use crate::session_id::{self, SessionIdCache};
 use crate::state::AppState;
 use crate::storage;
 use crate::update;
+use crate::wine;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
 
@@ -130,6 +131,31 @@ pub fn game_set_executable(app: tauri::AppHandle, executable: String) -> Result<
 }
 
 #[tauri::command]
+pub fn wine_get_config(app: tauri::AppHandle) -> Result<WineConfig, String> {
+    wine::get_config(&app).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn wine_save_config(app: tauri::AppHandle, config: WineConfig) -> Result<WineConfig, String> {
+    wine::save_config(&app, config).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn wine_list_runtimes() -> Vec<WineRuntime> {
+    wine::list_runtimes()
+}
+
+#[tauri::command]
+pub fn wine_select_prefix_directory() -> Result<Option<String>, String> {
+    wine::select_prefix_directory().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn wine_select_runtime_executable() -> Result<Option<String>, String> {
+    wine::select_runtime_executable().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn launcher_set_update_base_url(_app: tauri::AppHandle, url: String) -> Result<(), String> {
     game::set_update_base_url(&_app, url).map_err(|e| e.to_string())
 }
@@ -206,7 +232,10 @@ pub fn game_cancel_download(state: tauri::State<'_, AppState>) {
 }
 
 #[tauri::command]
-pub async fn game_launch(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<CommandResult, String> {
+pub async fn game_launch(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<CommandResult, String> {
     Ok(game::launch_game(&app, state.inner().clone()).await)
 }
 
@@ -319,8 +348,20 @@ pub async fn auth_complete_oauth_token(
 }
 
 #[tauri::command]
-pub fn auth_take_pending_oauth_callback(app: tauri::AppHandle) -> Option<OAuthCallbackPayload> {
-    auth::take_pending_oauth_callback(&app)
+pub fn auth_take_pending_oauth_callback(
+    app: tauri::AppHandle,
+    expected_state: Option<String>,
+) -> Option<OAuthCallbackPayload> {
+    auth::take_pending_oauth_callback(&app, expected_state.as_deref())
+}
+
+#[tauri::command]
+pub fn auth_stop_oauth_callback_server(
+    app: tauri::AppHandle,
+    expected_state: String,
+) -> Result<(), String> {
+    crate::oauth_server::stop_oauth_callback_server(&app, &expected_state)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -528,6 +569,11 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         game_open_in_file_manager,
         game_get_executable,
         game_set_executable,
+        wine_get_config,
+        wine_save_config,
+        wine_list_runtimes,
+        wine_select_prefix_directory,
+        wine_select_runtime_executable,
         launcher_set_update_base_url,
         launcher_set_runtime_update_url,
         launcher_set_oauth_callback_protocol,
@@ -553,6 +599,7 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         auth_manual_oauth_callback,
         auth_complete_oauth_token,
         auth_take_pending_oauth_callback,
+        auth_stop_oauth_callback_server,
         discord_set_in_launcher,
         discord_set_activity,
         discord_get_enabled,

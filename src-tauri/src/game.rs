@@ -7,6 +7,8 @@ use crate::storage::{
     detect_game_executable, load_launcher_config, load_version_cache, normalize_callback_protocol,
     save_launcher_config,
 };
+#[cfg(not(target_os = "windows"))]
+use crate::wine;
 use anyhow::{anyhow, Result};
 #[cfg(target_os = "windows")]
 use std::collections::{HashMap, HashSet};
@@ -266,52 +268,6 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
         &format!("launch_game start game_directory={game_directory}"),
     );
 
-    // Write the auth key into `ClientConfig.ini` before spawning H1Z1.exe
-    // so the client picks up the correct session id on startup.
-    //
-    // The auth key is read from the local launcher config (saved by the
-    // user in the Auth Key modal). Unlike the old keys-endpoint flow,
-    // there is no network call here — if no key is saved, we skip the
-    // write and log a warning.
-    match load_launcher_config(app) {
-        Ok(config) => {
-            if let Some(auth_key) = config.auth_key {
-                match session_id::write_session_id_to_client_config(&game_directory, &auth_key) {
-                    Ok(()) => {
-                        let _ = debug_log::append(
-                            app,
-                            "game",
-                            &format!(
-                                "launch_game auth_key_written length={}",
-                                auth_key.len()
-                            ),
-                        );
-                    }
-                    Err(error) => {
-                        let _ = debug_log::append(
-                            app,
-                            "game",
-                            &format!("launch_game auth_key_write_failed error={error}"),
-                        );
-                    }
-                }
-            } else {
-                let _ = debug_log::append(
-                    app,
-                    "game",
-                    "launch_game no_auth_key_skipped_write",
-                );
-            }
-        }
-        Err(error) => {
-            let _ = debug_log::append(
-                app,
-                "game",
-                &format!("launch_game load_config_failed error={error}"),
-            );
-        }
-    }
-
     let result = (|| -> Result<()> {
         let executable_rel = get_game_executable(app);
         let executable_path = resolve_game_executable_path(&game_directory, &executable_rel);
@@ -345,6 +301,17 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
             .parent()
             .map(Path::to_path_buf)
             .ok_or_else(|| anyhow!("invalid executable path"))?;
+
+        // Keep the local auth-key flow for native and Wine/Proton launches.
+        // Do not start with a stale SessionId if writing the saved key fails.
+        let config = load_launcher_config(app)?;
+        let auth_key = config
+            .auth_key
+            .as_deref()
+            .filter(|key| !key.trim().is_empty())
+            .ok_or_else(|| anyhow!("Auth key required. Save your auth key before launching."))?;
+        session_id::write_session_id_to_client_config(&game_directory, auth_key)?;
+        let _ = debug_log::append(app, "game", "launch_game auth_key_written=true");
 
         #[cfg(target_os = "windows")]
         {
@@ -409,10 +376,31 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
 
         #[cfg(not(target_os = "windows"))]
         {
-            let child = Command::new(&executable_path)
-                .current_dir(&working_dir)
-                .spawn()
-                .map_err(|e| anyhow!("Failed to launch game: {e}"))?;
+            let child = if let Some(launch) = wine::build_launch_command(app, &executable_path)? {
+                let _ = debug_log::append(
+                    app,
+                    "game",
+                    &format!(
+                        "launch_game compatibility_runtime={} program={} env_count={}",
+                        launch.label,
+                        launch.program.display(),
+                        launch.env.len()
+                    ),
+                );
+                let mut command = Command::new(&launch.program);
+                command.current_dir(&working_dir).args(&launch.args);
+                for (key, value) in launch.env {
+                    command.env(key, value);
+                }
+                command
+                    .spawn()
+                    .map_err(|e| anyhow!("Failed to launch game through Wine/Proton: {e}"))?
+            } else {
+                Command::new(&executable_path)
+                    .current_dir(&working_dir)
+                    .spawn()
+                    .map_err(|e| anyhow!("Failed to launch game: {e}"))?
+            };
 
             set_in_game_presence(app);
             emit_game_launch_state(app, state.mark_game_running(child.id()));

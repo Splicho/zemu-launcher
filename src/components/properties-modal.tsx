@@ -76,20 +76,16 @@ export function PropertiesModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-4xl gap-0 p-0">
-        <DialogHeader className="border-b p-4">
+      <DialogContent className="flex h-[min(44rem,calc(100dvh-2rem))] flex-col overflow-hidden sm:max-w-4xl gap-0 p-0">
+        <DialogHeader className="shrink-0 border-b p-4">
           <DialogTitle>{t('properties.title')}</DialogTitle>
           <DialogDescription>
             {t('properties.description')}
           </DialogDescription>
         </DialogHeader>
 
-        {/* `min-h-[36rem]` gives the dialog real vertical presence so
-          the rail and content area both have room to breathe. The
-          Installation Guide pane (five numbered steps) drove the bump
-          from 28rem — without it, the last step hovered right at the
-          bottom edge. */}
-        <div className="flex min-h-[36rem]">
+        {/* Keep the content within the available height so long sections scroll. */}
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           <PropertiesSidebar
             activeId={activeSection}
             onSelect={handleSectionSelect}
