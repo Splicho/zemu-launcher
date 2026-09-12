@@ -201,6 +201,7 @@ export default {
       noPlayersFound: "Aucun joueur trouvé.",
     },
     streams: {
+      failedLoad: 'Impossible de charger les streams : {{error}}',
       title: "Streams",
       noStreams: "Personne ne fait un stream de ZEmu pour le moment. Revenez plus tard !",
       liveBadge: "EN DIRECT",

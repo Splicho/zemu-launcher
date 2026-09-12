@@ -278,6 +278,7 @@ export default {
       showArticle: 'Show article {{index}}',
     },
     streams: {
+      failedLoad: 'Could not load streams: {{error}}',
       title: 'Streams',
       noStreams: "Nobody is streaming ZEmu right now. Check back later!",
       liveBadge: 'LIVE',

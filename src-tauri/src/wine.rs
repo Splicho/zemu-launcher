@@ -429,49 +429,55 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn compatibility_process_receives_saved_key_from_client_config() {
+    fn compatibility_process_receives_arguments_without_touching_client_config() {
         use std::os::unix::fs::PermissionsExt;
-        let root = std::env::temp_dir().join(format!("zemu-wine-{}", rand::random::<u64>()));
+        let root = std::env::temp_dir().join(format!("zemu-cli-{}", rand::random::<u64>()));
         fs::create_dir_all(&root).unwrap();
         let ini = root.join("ClientConfig.ini");
-        fs::write(
-            &ini,
-            "server=example.invalid\r\nSessionId=old\r\nCasSessionId=keep\r\n",
-        )
-        .unwrap();
-        crate::session_id::write_session_id_to_client_config(
-            root.to_str().unwrap(),
-            "saved-local-key",
-        )
-        .unwrap();
-        let fake = root.join("fake wine");
-        fs::write(
-            &fake,
-            "#!/bin/sh\nprintf '%s\\n' \"$1\" \"$WINEPREFIX\"\ncat ClientConfig.ini\n",
-        )
-        .unwrap();
+        let original = "server=example.invalid\r\nSessionId=old\r\nCasSessionId=keep\r\n";
+        let fake = root.join("fake runtime");
+        fs::write(&fake, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
         fs::set_permissions(&fake, fs::Permissions::from_mode(0o700)).unwrap();
-        let mut runtime = runtime(WineRuntimeKind::Wine);
-        runtime.path = fake.to_string_lossy().into_owned();
-        let config = WineConfig {
-            wine_prefix: Some("/tmp/test prefix".into()),
-            ..Default::default()
-        };
         let executable = root.join("H1Z1.exe");
-        let launch = build_command(&config, runtime, &executable, || unreachable!()).unwrap();
-        let output = Command::new(launch.program)
-            .args(launch.args)
-            .envs(launch.env)
-            .current_dir(&root)
-            .output()
-            .unwrap();
-        assert!(output.status.success());
-        let stdout = String::from_utf8(output.stdout).unwrap();
-        assert!(stdout.starts_with(&format!("{}\n/tmp/test prefix\n", executable.display())));
-        assert!(stdout.contains("SessionId=saved-local-key\r\n"));
-        assert!(!stdout.contains("SessionId=old"));
-        assert!(stdout.contains("CasSessionId=keep\r\n"));
-        assert!(stdout.contains("server=example.invalid\r\n"));
+        let client_args = crate::launch_args::client_arguments("test key 'quoted' $(literal)");
+        for kind in [WineRuntimeKind::Wine, WineRuntimeKind::Proton] {
+            let mut runtime = runtime(kind.clone());
+            runtime.path = fake.to_string_lossy().into_owned();
+            let config = WineConfig {
+                wine_prefix: Some(root.join("prefix").to_string_lossy().into_owned()),
+                ..Default::default()
+            };
+            let launch = build_command(&config, runtime, &executable, || unreachable!()).unwrap();
+            let mut expected = vec![];
+            if kind == WineRuntimeKind::Proton {
+                expected.push("waitforexitandrun".to_string());
+            }
+            expected.push(executable.to_string_lossy().into_owned());
+            expected.extend(client_args.iter().cloned());
+            for existing in [false, true] {
+                if existing {
+                    fs::write(&ini, original).unwrap();
+                }
+                let output = Command::new(&launch.program)
+                    .args(&launch.args)
+                    .args(&client_args)
+                    .envs(launch.env.iter().cloned())
+                    .current_dir(&root)
+                    .output()
+                    .unwrap();
+                assert!(output.status.success());
+                assert_eq!(
+                    String::from_utf8(output.stdout).unwrap(),
+                    format!("{}\n", expected.join("\n"))
+                );
+                if existing {
+                    assert_eq!(fs::read_to_string(&ini).unwrap(), original);
+                    fs::remove_file(&ini).unwrap();
+                } else {
+                    assert!(!ini.exists());
+                }
+            }
+        }
         fs::remove_dir_all(root).unwrap();
     }
 }

@@ -184,8 +184,8 @@ pub struct LauncherConfig {
     /// local development.
     #[serde(default)]
     pub session_id_bearer_token: Option<String>,
-    /// The user's auth key — stored locally and written to
-    /// `ClientConfig.ini` as `SessionId=` at game launch. No server
+    /// The user's auth key — stored locally and passed as the
+    /// `SessionId=` command-line argument at game launch. No server
     /// validation is performed on this value.
     #[serde(default)]
     pub auth_key: Option<String>,

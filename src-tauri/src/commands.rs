@@ -484,6 +484,24 @@ pub fn log_to_terminal(message: String) {
 }
 
 #[tauri::command]
+pub async fn public_api_get(
+    app: tauri::AppHandle,
+    url: String,
+) -> Result<Option<crate::public_api::PublicApiResponse>, String> {
+    // Returning None preserves browser fetch on Windows and macOS.
+    if !cfg!(target_os = "linux") {
+        return Ok(None);
+    }
+    let result = crate::public_api::get(&url).await;
+    let message = match &result {
+        Ok(response) => format!("GET {url} status={}", response.status),
+        Err(error) => format!("GET {url} error={error}"),
+    };
+    let _ = debug_log::append(&app, "public-api", &message);
+    result.map(Some).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn api_get(
     app: tauri::AppHandle,
     path: String,
@@ -614,6 +632,7 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         debug_log_clear,
         log_to_terminal,
         api_get,
+        public_api_get,
         api_post,
         launcher_get_autostart_enabled,
         launcher_set_autostart_enabled,

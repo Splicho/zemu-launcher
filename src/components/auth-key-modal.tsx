@@ -23,8 +23,8 @@ interface AuthKeyModalProps {
 /**
  * Standalone modal for entering and saving the user's auth key.
  *
- * The key is stored locally in `launcher-config.json` and is written
- * to `ClientConfig.ini` as `SessionId=` every time the game is
+ * The key is stored locally in `launcher-config.json` and passed as
+ * the `SessionId=` command-line argument every time the game is
  * launched. No server validation is performed.
  */
 export function AuthKeyModal({ open, onOpenChange, onSaved }: AuthKeyModalProps) {

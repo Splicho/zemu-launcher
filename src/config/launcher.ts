@@ -16,7 +16,7 @@ export const LAUNCHER_CONFIG = {
   //   - GET  /api/launcher/oauth/complete     (session cookie → bearer JWT → 302)
   apiBaseUrl: 'https://id.zemu.uk',
   // Public news API. The renderer fetches `/v1/news` and `/v1/news/:slug`
-  // directly from this host. In dev, override via VITE_NEWS_API_BASE_URL
+  // from this host (via Rust on Linux). In dev, override via VITE_NEWS_API_BASE_URL
   // in `.env.local` to point at a local checkout of
   // zemu-website/apps/api (defaults to port 3002 — see
   // `apps/api/src/main.ts`).

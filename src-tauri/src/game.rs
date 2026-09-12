@@ -1,7 +1,7 @@
 use crate::debug_log;
 use crate::discord;
+use crate::launch_args;
 use crate::models::CommandResult;
-use crate::session_id;
 use crate::state::AppState;
 use crate::storage::{
     detect_game_executable, load_launcher_config, load_version_cache, normalize_callback_protocol,
@@ -302,16 +302,14 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
             .map(Path::to_path_buf)
             .ok_or_else(|| anyhow!("invalid executable path"))?;
 
-        // Keep the local auth-key flow for native and Wine/Proton launches.
-        // Do not start with a stale SessionId if writing the saved key fails.
+        // Read the local key and pass the same client arguments on every platform.
         let config = load_launcher_config(app)?;
         let auth_key = config
             .auth_key
             .as_deref()
             .filter(|key| !key.trim().is_empty())
             .ok_or_else(|| anyhow!("Auth key required. Save your auth key before launching."))?;
-        session_id::write_session_id_to_client_config(&game_directory, auth_key)?;
-        let _ = debug_log::append(app, "game", "launch_game auth_key_written=true");
+        let client_args = launch_args::client_arguments(auth_key);
 
         #[cfg(target_os = "windows")]
         {
@@ -320,6 +318,7 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
             const DETACHED_PROCESS: u32 = 0x0000_0008;
 
             let direct_launch = Command::new(&executable_path)
+                .args(&client_args)
                 .current_dir(&working_dir)
                 .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
                 .spawn();
@@ -350,7 +349,7 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
                     // `os error 740` means "operation requires elevation".
                     // Fallback to elevated launch while preserving the real client PID.
                     if error.raw_os_error() == Some(740) {
-                        let pid = launch_game_elevated(&working_dir, &executable_path).map_err(
+                        let pid = launch_game_elevated(&working_dir, &executable_path, &client_args).map_err(
                             |shell_error| {
                                 anyhow!(
                                     "Failed to launch game (direct and elevated fallback failed): direct={error}; elevated={shell_error}"
@@ -388,7 +387,10 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
                     ),
                 );
                 let mut command = Command::new(&launch.program);
-                command.current_dir(&working_dir).args(&launch.args);
+                command
+                    .current_dir(&working_dir)
+                    .args(&launch.args)
+                    .args(&client_args);
                 for (key, value) in launch.env {
                     command.env(key, value);
                 }
@@ -397,6 +399,7 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
                     .map_err(|e| anyhow!("Failed to launch game through Wine/Proton: {e}"))?
             } else {
                 Command::new(&executable_path)
+                    .args(&client_args)
                     .current_dir(&working_dir)
                     .spawn()
                     .map_err(|e| anyhow!("Failed to launch game: {e}"))?
@@ -508,17 +511,23 @@ fn emit_game_launch_state(app: &AppHandle, state: crate::models::GameLaunchState
 }
 
 #[cfg(target_os = "windows")]
-fn launch_game_elevated(working_dir: &Path, executable: &Path) -> Result<u32> {
+fn launch_game_elevated(
+    working_dir: &Path,
+    executable: &Path,
+    client_args: &[String],
+) -> Result<u32> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
     let file_path = powershell_escape_single_quoted(&executable.to_string_lossy());
     let dir_path = powershell_escape_single_quoted(&working_dir.to_string_lossy());
+    let argument_list = launch_args::windows_command_line(client_args);
     let script = format!(
-        "$ErrorActionPreference = 'Stop'; $process = Start-Process -FilePath '{file_path}' -WorkingDirectory '{dir_path}' -Verb RunAs -PassThru; Write-Output $process.Id"
+        "$ErrorActionPreference = 'Stop'; $process = Start-Process -FilePath '{file_path}' -WorkingDirectory '{dir_path}' -ArgumentList $env:ZEMU_GAME_ARGS -Verb RunAs -PassThru; Write-Output $process.Id"
     );
 
     let output = Command::new("powershell")
+        .env("ZEMU_GAME_ARGS", argument_list)
         .creation_flags(CREATE_NO_WINDOW)
         .args(["-NoProfile", "-Command", script.as_str()])
         .output()?;
