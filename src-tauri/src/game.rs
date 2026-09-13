@@ -14,6 +14,7 @@ use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 use std::process::Command;
 #[cfg(target_os = "windows")]
 use std::thread;
@@ -120,7 +121,7 @@ pub fn open_in_file_manager(directory: &str) -> Result<()> {
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        Command::new("xdg-open")
+        crate::child_process::command("xdg-open")
             .arg(path)
             .spawn()
             .map_err(|error| anyhow!("Failed to launch xdg-open: {error}"))?;
@@ -386,7 +387,7 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
                         launch.env.len()
                     ),
                 );
-                let mut command = Command::new(&launch.program);
+                let mut command = crate::child_process::command(&launch.program);
                 command
                     .current_dir(&working_dir)
                     .args(&launch.args)
@@ -398,7 +399,7 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
                     .spawn()
                     .map_err(|e| anyhow!("Failed to launch game through Wine/Proton: {e}"))?
             } else {
-                Command::new(&executable_path)
+                crate::child_process::command(&executable_path)
                     .args(&client_args)
                     .current_dir(&working_dir)
                     .spawn()

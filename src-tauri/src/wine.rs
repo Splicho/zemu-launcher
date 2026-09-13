@@ -1,18 +1,19 @@
 use crate::debug_log;
 use crate::models::{WineConfig, WineEnvVar, WineRuntime, WineRuntimeKind};
 use crate::storage::{load_launcher_config, save_launcher_config};
-use anyhow::Result;
 #[cfg(not(target_os = "windows"))]
 use anyhow::anyhow;
+use anyhow::Result;
 use std::collections::HashSet;
 #[cfg(not(target_os = "windows"))]
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(all(test, unix))]
 use std::process::Command;
+use tauri::AppHandle;
 #[cfg(not(target_os = "windows"))]
 use tauri::Manager;
-use tauri::AppHandle;
 
 #[cfg(not(target_os = "windows"))]
 const CUSTOM_RUNTIME_ID: &str = "custom";
@@ -282,7 +283,10 @@ fn executable_in_path(name: &str) -> Option<PathBuf> {
 }
 
 fn command_version(path: &Path) -> Option<String> {
-    let output = Command::new(path).arg("--version").output().ok()?;
+    let output = crate::child_process::command(path)
+        .arg("--version")
+        .output()
+        .ok()?;
     if !output.status.success() {
         return None;
     }

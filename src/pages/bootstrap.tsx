@@ -114,8 +114,8 @@ export function BootstrapPage() {
   const runBootstrap = useCallback(async () => {
     updateState(INITIAL_STATE)
 
-    const packaged = await invoke<boolean>('app_is_packaged').catch(() => false)
-    if (!packaged) {
+    const updatesEnabled = await invoke<boolean>('launcher_updates_enabled').catch(() => false)
+    if (!updatesEnabled) {
       updateState({
         phase: 'development',
         status: t('bootstrap.updaterSkipped'),
