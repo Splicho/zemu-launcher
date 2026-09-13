@@ -162,5 +162,60 @@ pub fn normalize_callback_protocol(value: &str) -> Option<String> {
 }
 
 pub fn is_packaged() -> bool {
-    !cfg!(debug_assertions)
+    if cfg!(debug_assertions) {
+        return false;
+    }
+
+    // A Linux release executable built with --no-bundle is still a local
+    // build. The updater otherwise replaces it with the published AppImage,
+    // discarding local fixes. Tauri stamps this marker when creating a bundle.
+    #[cfg(target_os = "linux")]
+    {
+        tauri::utils::platform::bundle_type().is_some()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
+pub fn launcher_updates_enabled() -> bool {
+    should_check_launcher_updates(
+        is_packaged(),
+        std::env::var_os("ZEMU_DISABLE_SELF_UPDATE").as_deref(),
+    )
+}
+
+fn should_check_launcher_updates(packaged: bool, disabled: Option<&std::ffi::OsStr>) -> bool {
+    packaged && disabled != Some(std::ffi::OsStr::new("1"))
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn unbundled_linux_executable_skips_updates() {
+        // Run with cargo test --release too: debug_assertions alone used to
+        // hide this bug. Cargo test executables have no Tauri bundle marker.
+        assert!(!super::is_packaged());
+    }
+
+    #[test]
+    fn packaged_launcher_can_skip_updates_for_local_testing() {
+        use std::ffi::OsStr;
+        assert!(super::should_check_launcher_updates(true, None));
+        assert!(super::should_check_launcher_updates(
+            true,
+            Some(OsStr::new("0"))
+        ));
+        assert!(!super::should_check_launcher_updates(
+            true,
+            Some(OsStr::new("1"))
+        ));
+        assert!(!super::should_check_launcher_updates(false, None));
+        assert!(!super::should_check_launcher_updates(
+            false,
+            Some(OsStr::new("0"))
+        ));
+    }
 }

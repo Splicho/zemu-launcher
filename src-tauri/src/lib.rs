@@ -1,5 +1,6 @@
 mod api;
 mod auth;
+mod child_process;
 mod commands;
 mod debug_log;
 mod discord;

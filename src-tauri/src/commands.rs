@@ -50,6 +50,11 @@ pub fn app_is_packaged() -> bool {
     storage::is_packaged()
 }
 
+#[tauri::command]
+pub fn launcher_updates_enabled() -> bool {
+    storage::launcher_updates_enabled()
+}
+
 /// Transition from the bootstrap (updater) window to the main launcher
 /// window. The main window is created eagerly in `lib.rs` setup so this
 /// just unhides, focuses, and closes it.
@@ -577,6 +582,7 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         window_close,
         window_is_maximized,
         app_is_packaged,
+        launcher_updates_enabled,
         launcher_finish_bootstrap,
         launcher_exit_app,
         launcher_restart_app,
