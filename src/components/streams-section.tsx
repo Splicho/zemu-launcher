@@ -22,7 +22,7 @@ export function StreamsSection() {
     refetchInterval: 60000,
   })
 
-  const streams = data ? [...data.twitch, ...data.kick] : []
+  const streams = data ? [...data.twitch, ...data.kick].sort((a, b) => b.viewer_count - a.viewer_count) : []
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false, align: 'start', skipSnaps: true })
 
   const scrollPrev = () => emblaApi?.scrollPrev()

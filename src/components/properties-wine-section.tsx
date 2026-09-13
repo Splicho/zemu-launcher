@@ -20,7 +20,7 @@ const AUTO_RUNTIME = 'auto'
 const CUSTOM_RUNTIME = 'custom'
 
 const DEFAULT_CONFIG: WineConfig = {
-  enabled: true,
+  enabled: false,
   runtimeId: null,
   customRuntimePath: null,
   winePrefix: null,
