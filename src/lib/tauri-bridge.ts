@@ -256,6 +256,17 @@ function setupCompatibilityBridge() {
     clear: () => invoke<void>('debug_log_clear'),
   }
 
+  window.wineAPI = {
+    getConfig: () => invoke<WineConfig>('wine_get_config'),
+    saveConfig: (config: WineConfig) =>
+      invoke<WineConfig>('wine_save_config', { config }),
+    listRuntimes: () => invoke<WineRuntime[]>('wine_list_runtimes'),
+    selectPrefixDirectory: () =>
+      invoke<string | null>('wine_select_prefix_directory'),
+    selectRuntimeExecutable: () =>
+      invoke<string | null>('wine_select_runtime_executable'),
+  }
+
   window.launcherAPI = {
     setRuntimeUpdateUrl: (url: string) => invoke<void>('launcher_set_runtime_update_url', { url }),
     /**
@@ -356,6 +367,27 @@ interface AuthToken {
   expiresAt?: number
 }
 
+export interface WineEnvVar {
+  key: string
+  value: string
+}
+
+export interface WineConfig {
+  enabled: boolean
+  runtimeId?: string | null
+  customRuntimePath?: string | null
+  winePrefix?: string | null
+  env: WineEnvVar[]
+}
+
+export interface WineRuntime {
+  id: string
+  name: string
+  kind: 'wine' | 'proton' | 'custom'
+  path: string
+  version?: string | null
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -419,6 +451,13 @@ declare global {
       getPath: () => Promise<string>
       read: () => Promise<string>
       clear: () => Promise<void>
+    }
+    wineAPI: {
+      getConfig: () => Promise<WineConfig>
+      saveConfig: (config: WineConfig) => Promise<WineConfig>
+      listRuntimes: () => Promise<WineRuntime[]>
+      selectPrefixDirectory: () => Promise<string | null>
+      selectRuntimeExecutable: () => Promise<string | null>
     }
     launcherAPI: {
       setRuntimeUpdateUrl: (url: string) => Promise<void>

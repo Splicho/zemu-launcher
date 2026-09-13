@@ -1,3 +1,5 @@
+import { fetchPublicApi } from '@/lib/public-api'
+
 const API_BASE = import.meta.env.VITE_STREAMS_API_BASE_URL ?? 'https://api.zemu.uk'
 
 export type StreamInfo = {
@@ -18,7 +20,7 @@ export type StreamsResponse = {
 }
 
 export async function fetchStreams(): Promise<StreamsResponse> {
-  const res = await fetch(`${API_BASE}/streams`)
-  if (!res.ok) throw new Error('Failed to fetch streams')
+  const res = await fetchPublicApi(`${API_BASE}/streams`)
+  if (!res.ok) throw new Error(`Streams request failed (HTTP ${res.status})`)
   return res.json()
 }

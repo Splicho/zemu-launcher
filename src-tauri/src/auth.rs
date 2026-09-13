@@ -248,11 +248,13 @@ pub fn validate_and_remove_oauth_state(app: &AppHandle, state: &str) -> Result<b
     Ok(valid)
 }
 
-/// Opens the user's browser to the OAuth provider's sign-in page. The
-/// provider name maps to one of the two configured on zemu-website
-/// (`discord`, `credentials`). For `credentials` we open a hosted
-/// sign-in page that posts the resulting bearer token back via the
-/// registered deep-link protocol.
+/// Linux and development use a loopback callback so browser handoff does
+/// not depend on desktop protocol handlers or a second launcher process.
+fn uses_loopback_callback(is_dev_runtime: bool) -> bool {
+    is_dev_runtime || cfg!(target_os = "linux")
+}
+
+/// Opens the website's sign-in flow in the user's default browser.
 pub fn open_oauth(app: &AppHandle, provider: String, is_dev_runtime: bool) -> CommandResult {
     let _ = debug_log::append(
         app,
@@ -260,21 +262,20 @@ pub fn open_oauth(app: &AppHandle, provider: String, is_dev_runtime: bool) -> Co
         &format!("open_oauth provider={provider} is_dev_runtime={is_dev_runtime}"),
     );
     let result = (|| -> Result<String> {
-        let state = generate_oauth_state(app, provider.clone())?;
-
         let api_base_url = if is_dev_runtime {
             "http://localhost:3003".to_string()
         } else {
             resolve_api_base_url(app)
         };
 
-        let callback_url = if is_dev_runtime {
-            "http://localhost:31337/oauth/callback".to_string()
+        let callback_url = if uses_loopback_callback(is_dev_runtime) {
+            crate::oauth_server::CALLBACK_URL.to_string()
         } else {
             let protocol = detect_oauth_callback_protocol(app)?
                 .ok_or_else(|| anyhow!("OAuth callback protocol is not configured"))?;
             format!("{protocol}oauth/callback")
         };
+        let state = generate_oauth_state(app, provider.clone())?;
         let _ = debug_log::append(
             app,
             "auth",
@@ -297,7 +298,14 @@ pub fn open_oauth(app: &AppHandle, provider: String, is_dev_runtime: bool) -> Co
             .append_pair("callback", &callback_url);
         let _ = debug_log::append(app, "auth", &format!("open_oauth url={oauth_url}"));
 
-        webbrowser::open(oauth_url.as_str()).map_err(|e| anyhow!(e.to_string()))?;
+        if uses_loopback_callback(is_dev_runtime) {
+            // Bind before opening the browser, and surface port conflicts to the UI.
+            crate::oauth_server::start_oauth_callback_server(app, &state)?;
+        }
+        if let Err(error) = webbrowser::open(oauth_url.as_str()) {
+            let _ = crate::oauth_server::stop_oauth_callback_server(app, &state);
+            return Err(anyhow!(error.to_string()));
+        }
         let _ = debug_log::append(app, "auth", "open_oauth browser_opened=true");
         Ok(state)
     })();
@@ -351,7 +359,7 @@ pub fn process_oauth_callback(
     token: Option<String>,
     state: Option<String>,
     error: Option<String>,
-) {
+) -> Result<()> {
     let _ = debug_log::append(
         app,
         "auth",
@@ -370,7 +378,7 @@ pub fn process_oauth_callback(
                     "auth",
                     "process_oauth_callback duplicate_state_ignored=true",
                 );
-                return;
+                return Ok(());
             }
         }
 
@@ -397,9 +405,16 @@ pub fn process_oauth_callback(
         }
     } else {
         let _ = debug_log::append(app, "auth", "process_oauth_callback state_missing=true");
-        error
+        Some("Missing OAuth state".to_string())
     };
 
+    let final_error = final_error.or_else(|| {
+        token
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .is_none()
+            .then(|| "OAuth callback missing token".to_string())
+    });
     let _ = debug_log::append(
         app,
         "auth",
@@ -408,19 +423,38 @@ pub fn process_oauth_callback(
             final_error.is_some()
         ),
     );
-    let _ = emit_oauth_callback(app, token, state, final_error);
+    emit_oauth_callback(app, token, state, final_error.clone())?;
+    match final_error {
+        Some(error) => Err(anyhow!(error)),
+        None => Ok(()),
+    }
 }
 
-pub fn take_pending_oauth_callback(app: &AppHandle) -> Option<OAuthCallbackPayload> {
+pub fn take_pending_oauth_callback(
+    app: &AppHandle,
+    expected_state: Option<&str>,
+) -> Option<OAuthCallbackPayload> {
     let state = app.try_state::<AppState>()?;
     let mut guard = state.pending_oauth_callback.lock().ok()?;
-    let payload = guard.take();
+    let payload = take_matching_callback(&mut guard, expected_state);
     let _ = debug_log::append(
         app,
         "auth",
         &format!("take_pending_oauth_callback found={}", payload.is_some()),
     );
     payload
+}
+
+fn take_matching_callback(
+    pending: &mut Option<OAuthCallbackPayload>,
+    expected_state: Option<&str>,
+) -> Option<OAuthCallbackPayload> {
+    if let Some(expected) = expected_state {
+        if pending.as_ref()?.state.as_deref() != Some(expected) {
+            return None;
+        }
+    }
+    pending.take()
 }
 
 fn emit_oauth_callback(
@@ -469,4 +503,29 @@ fn random_hex_32() -> String {
     let mut bytes = [0_u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     hex::encode(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn production_uses_loopback_only_on_linux() {
+        assert!(uses_loopback_callback(true));
+        assert_eq!(uses_loopback_callback(false), cfg!(target_os = "linux"));
+    }
+
+    #[test]
+    fn pending_callback_is_consumed_only_by_its_flow() {
+        let mut pending = Some(OAuthCallbackPayload {
+            token: Some("test-token".into()),
+            state: Some("expected-state".into()),
+            error: None,
+        });
+        assert!(take_matching_callback(&mut pending, Some("other-state")).is_none());
+        assert!(pending.is_some());
+        let payload = take_matching_callback(&mut pending, Some("expected-state")).unwrap();
+        assert_eq!(payload.token.as_deref(), Some("test-token"));
+        assert!(take_matching_callback(&mut pending, Some("expected-state")).is_none());
+    }
 }

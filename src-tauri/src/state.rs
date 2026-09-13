@@ -23,19 +23,13 @@ pub struct AppState {
     pub update_runtime: Arc<Mutex<UpdateRuntime>>,
     pub game_runtime: Arc<Mutex<GameRuntime>>,
     pub bootstrap_active: Arc<AtomicBool>,
-    pub oauth_server_started: Arc<AtomicBool>,
+    pub oauth_server: Arc<Mutex<Option<crate::oauth_server::OAuthCallbackServer>>>,
     pub pending_oauth_callback: Arc<Mutex<Option<OAuthCallbackPayload>>>,
     pub processed_oauth_states: Arc<Mutex<HashMap<String, i64>>>,
     pub runtime_update_url: Arc<Mutex<Option<String>>>,
 }
 
 impl AppState {
-    pub fn mark_oauth_server_started(&self) -> bool {
-        self.oauth_server_started
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
-    }
-
     pub fn is_oauth_state_duplicate(&self, state: &str) -> bool {
         let now = Utc::now().timestamp_millis();
         let ttl_ms = 5 * 60 * 1000;

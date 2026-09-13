@@ -16,12 +16,10 @@
  *
  *   3. The OAuth entry point — generates a CSRF state, then asks the
  *      Rust side to open the user's default browser to the
- *      `/api/launcher/oauth/initiate` URL. The Rust OAuth server (see
- *      src-tauri/src/oauth_server.rs, pending) listens for the
- *      resulting `zemu-launcher://oauth/callback?token=...` deep link
- *      and forwards the token back into the renderer over a Tauri
- *      event. The renderer-side wiring for that listener lives in
- *      `useAuth().completeOAuth()`.
+ *      `/api/launcher/oauth/initiate` URL. Rust receives the callback
+ *      via loopback HTTP on Linux/development or a deep link on
+ *      Windows/macOS, and forwards it over a Tauri event. A pending
+ *      callback is retained until the renderer can pick it up.
  */
 
 import { invoke } from '@tauri-apps/api/core'
@@ -240,14 +238,14 @@ export async function initiateOAuth(provider: Provider): Promise<{ state: string
 
 /**
  * Wait for the OAuth callback. The Rust OAuth server (running on
- * `127.0.0.1:31337` in dev) or the deep-link plugin (in production)
+ * `127.0.0.1:31337` on Linux and in dev) or the deep-link plugin
  * emits `oauth-callback` Tauri events with `{ token, state, error }`
  * whenever the OAuth dance completes. We resolve on the first event
  * matching the `state` we generated.
  *
  * Returns the AuthToken on success, or throws on `error` in the event.
- * The caller is expected to have a timeout — Rust side will not
- * auto-reject if the user closes the browser mid-flow.
+ * The renderer stops the listener when its wait ends. Rust also expires
+ * the listener independently if the renderer disappears mid-flow.
  */
 export async function awaitOAuthCallback(
   expectedState: string,
@@ -260,29 +258,53 @@ export async function awaitOAuthCallback(
   // `/api/launcher/user` with the bearer and reads back the canonical
   // user record.
   const bearer = await new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      unlistenPromise.then((fn) => fn()).catch(() => {})
-      reject(new Error('OAuth timed out — please try again.'))
-    }, timeoutMs)
-
-    const unlistenPromise: Promise<UnlistenFn> = listen<{
+    type CallbackPayload = {
       token?: string
       state?: string
       error?: string
-    }>('oauth-callback', (event) => {
-      const payload = event.payload
-      if (payload?.state !== expectedState) return
+    }
+    let settled = false
+    let unlisten: UnlistenFn | undefined
+    const cleanup = () => {
       clearTimeout(timer)
-      unlistenPromise.then((fn) => fn()).catch(() => {})
-      if (payload.error) {
-        reject(new Error(payload.error))
-        return
-      }
-      if (!payload.token) {
-        reject(new Error('OAuth callback missing token'))
-        return
-      }
+      unlisten?.()
+      unlisten = undefined
+    }
+    const fail = (error: unknown) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error)
+    }
+    const accept = (payload: CallbackPayload | null) => {
+      if (settled || payload?.state !== expectedState) return
+      if (payload.error) return fail(new Error(payload.error))
+      if (!payload.token) return fail(new Error('OAuth callback missing token'))
+      settled = true
+      cleanup()
       resolve(payload.token)
+    }
+    const timer = setTimeout(() => {
+      fail(new Error('OAuth timed out — please try again.'))
+    }, timeoutMs)
+
+    // Subscribe first, then drain Rust's cache: a fast browser redirect
+    // may have completed before auth_open_oauth returned its state.
+    void listen<CallbackPayload>('oauth-callback', (event) => accept(event.payload))
+      .then(async (stop) => {
+        if (settled) {
+          stop()
+          return
+        }
+        unlisten = stop
+        accept(await invoke<CallbackPayload | null>('auth_take_pending_oauth_callback', {
+          expectedState,
+        }))
+      })
+      .catch(fail)
+  }).finally(async () => {
+    await invoke('auth_stop_oauth_callback_server', { expectedState }).catch((error) => {
+      console.warn('[auth] failed to stop OAuth callback listener', error)
     })
   })
 

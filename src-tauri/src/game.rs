@@ -1,12 +1,14 @@
 use crate::debug_log;
 use crate::discord;
+use crate::launch_args;
 use crate::models::CommandResult;
-use crate::session_id;
 use crate::state::AppState;
 use crate::storage::{
     detect_game_executable, load_launcher_config, load_version_cache, normalize_callback_protocol,
     save_launcher_config,
 };
+#[cfg(not(target_os = "windows"))]
+use crate::wine;
 use anyhow::{anyhow, Result};
 #[cfg(target_os = "windows")]
 use std::collections::{HashMap, HashSet};
@@ -266,52 +268,6 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
         &format!("launch_game start game_directory={game_directory}"),
     );
 
-    // Write the auth key into `ClientConfig.ini` before spawning H1Z1.exe
-    // so the client picks up the correct session id on startup.
-    //
-    // The auth key is read from the local launcher config (saved by the
-    // user in the Auth Key modal). Unlike the old keys-endpoint flow,
-    // there is no network call here — if no key is saved, we skip the
-    // write and log a warning.
-    match load_launcher_config(app) {
-        Ok(config) => {
-            if let Some(auth_key) = config.auth_key {
-                match session_id::write_session_id_to_client_config(&game_directory, &auth_key) {
-                    Ok(()) => {
-                        let _ = debug_log::append(
-                            app,
-                            "game",
-                            &format!(
-                                "launch_game auth_key_written length={}",
-                                auth_key.len()
-                            ),
-                        );
-                    }
-                    Err(error) => {
-                        let _ = debug_log::append(
-                            app,
-                            "game",
-                            &format!("launch_game auth_key_write_failed error={error}"),
-                        );
-                    }
-                }
-            } else {
-                let _ = debug_log::append(
-                    app,
-                    "game",
-                    "launch_game no_auth_key_skipped_write",
-                );
-            }
-        }
-        Err(error) => {
-            let _ = debug_log::append(
-                app,
-                "game",
-                &format!("launch_game load_config_failed error={error}"),
-            );
-        }
-    }
-
     let result = (|| -> Result<()> {
         let executable_rel = get_game_executable(app);
         let executable_path = resolve_game_executable_path(&game_directory, &executable_rel);
@@ -346,6 +302,15 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
             .map(Path::to_path_buf)
             .ok_or_else(|| anyhow!("invalid executable path"))?;
 
+        // Read the local key and pass the same client arguments on every platform.
+        let config = load_launcher_config(app)?;
+        let auth_key = config
+            .auth_key
+            .as_deref()
+            .filter(|key| !key.trim().is_empty())
+            .ok_or_else(|| anyhow!("Auth key required. Save your auth key before launching."))?;
+        let client_args = launch_args::client_arguments(auth_key);
+
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
@@ -353,6 +318,7 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
             const DETACHED_PROCESS: u32 = 0x0000_0008;
 
             let direct_launch = Command::new(&executable_path)
+                .args(&client_args)
                 .current_dir(&working_dir)
                 .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
                 .spawn();
@@ -383,7 +349,7 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
                     // `os error 740` means "operation requires elevation".
                     // Fallback to elevated launch while preserving the real client PID.
                     if error.raw_os_error() == Some(740) {
-                        let pid = launch_game_elevated(&working_dir, &executable_path).map_err(
+                        let pid = launch_game_elevated(&working_dir, &executable_path, &client_args).map_err(
                             |shell_error| {
                                 anyhow!(
                                     "Failed to launch game (direct and elevated fallback failed): direct={error}; elevated={shell_error}"
@@ -409,10 +375,35 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
 
         #[cfg(not(target_os = "windows"))]
         {
-            let child = Command::new(&executable_path)
-                .current_dir(&working_dir)
-                .spawn()
-                .map_err(|e| anyhow!("Failed to launch game: {e}"))?;
+            let child = if let Some(launch) = wine::build_launch_command(app, &executable_path)? {
+                let _ = debug_log::append(
+                    app,
+                    "game",
+                    &format!(
+                        "launch_game compatibility_runtime={} program={} env_count={}",
+                        launch.label,
+                        launch.program.display(),
+                        launch.env.len()
+                    ),
+                );
+                let mut command = Command::new(&launch.program);
+                command
+                    .current_dir(&working_dir)
+                    .args(&launch.args)
+                    .args(&client_args);
+                for (key, value) in launch.env {
+                    command.env(key, value);
+                }
+                command
+                    .spawn()
+                    .map_err(|e| anyhow!("Failed to launch game through Wine/Proton: {e}"))?
+            } else {
+                Command::new(&executable_path)
+                    .args(&client_args)
+                    .current_dir(&working_dir)
+                    .spawn()
+                    .map_err(|e| anyhow!("Failed to launch game: {e}"))?
+            };
 
             set_in_game_presence(app);
             emit_game_launch_state(app, state.mark_game_running(child.id()));
@@ -520,17 +511,23 @@ fn emit_game_launch_state(app: &AppHandle, state: crate::models::GameLaunchState
 }
 
 #[cfg(target_os = "windows")]
-fn launch_game_elevated(working_dir: &Path, executable: &Path) -> Result<u32> {
+fn launch_game_elevated(
+    working_dir: &Path,
+    executable: &Path,
+    client_args: &[String],
+) -> Result<u32> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
     let file_path = powershell_escape_single_quoted(&executable.to_string_lossy());
     let dir_path = powershell_escape_single_quoted(&working_dir.to_string_lossy());
+    let argument_list = launch_args::windows_command_line(client_args);
     let script = format!(
-        "$ErrorActionPreference = 'Stop'; $process = Start-Process -FilePath '{file_path}' -WorkingDirectory '{dir_path}' -Verb RunAs -PassThru; Write-Output $process.Id"
+        "$ErrorActionPreference = 'Stop'; $process = Start-Process -FilePath '{file_path}' -WorkingDirectory '{dir_path}' -ArgumentList $env:ZEMU_GAME_ARGS -Verb RunAs -PassThru; Write-Output $process.Id"
     );
 
     let output = Command::new("powershell")
+        .env("ZEMU_GAME_ARGS", argument_list)
         .creation_flags(CREATE_NO_WINDOW)
         .args(["-NoProfile", "-Command", script.as_str()])
         .output()?;

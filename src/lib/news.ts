@@ -17,6 +17,7 @@
  */
 
 import { LAUNCHER_CONFIG } from '@/config/launcher'
+import { fetchPublicApi } from '@/lib/public-api'
 
 export interface NewsListItem {
   slug: string
@@ -49,11 +50,9 @@ export interface NewsFull extends NewsListItem {
  *   2. `LAUNCHER_CONFIG.newsApiBaseUrl` — the bundled default,
  *      `https://api.zemu.uk/v1/news` in published builds.
  *
- * The news API is a single-purpose public endpoint, so we don't
- * route through Tauri's `get_api_base_url` Rust command the way the
- * auth flow does — there's no OAuth handoff or per-window override
- * to coordinate. If that ever changes (e.g. environment-specific
- * news feeds), wire it the same way as `auth.ts`.
+ * These endpoints use the anonymous public-API transport: native HTTP
+ * on Linux, browser fetch on other platforms. Auth API configuration
+ * and the launcher session are independent of the news feed.
  */
 function getNewsApiBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_NEWS_API_BASE_URL as string | undefined
@@ -73,7 +72,7 @@ const NEWS_API_BASE = getNewsApiBaseUrl()
  * as a real "no news" state, not an error.
  */
 export async function fetchNewsList(): Promise<NewsListItem[]> {
-  const response = await fetch(`${NEWS_API_BASE}`)
+  const response = await fetchPublicApi(`${NEWS_API_BASE}`)
   if (!response.ok) {
     throw new Error(`News list request failed (HTTP ${response.status})`)
   }
@@ -87,7 +86,7 @@ export async function fetchNewsList(): Promise<NewsListItem[]> {
  * non-2xx or network failure.
  */
 export async function fetchNewsBySlug(slug: string): Promise<NewsFull | null> {
-  const response = await fetch(`${NEWS_API_BASE}/${encodeURIComponent(slug)}`)
+  const response = await fetchPublicApi(`${NEWS_API_BASE}/${encodeURIComponent(slug)}`)
   if (response.status === 404) return null
   if (!response.ok) {
     throw new Error(`News item request failed (HTTP ${response.status})`)

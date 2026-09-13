@@ -178,6 +178,7 @@ export default {
       showArticle: '显示文章 {{index}}',
     },
     streams: {
+      failedLoad: '无法加载直播：{{error}}',
       title: '直播',
       noStreams: '当前没有用户在直播 ZEmu，敬请期待！',
       liveBadge: '直播中',

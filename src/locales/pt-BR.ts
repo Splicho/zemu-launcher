@@ -257,6 +257,7 @@ export default {
     },
     // Streams section
     streams: {
+      failedLoad: 'Não foi possível carregar as transmissões: {{error}}',
       title: 'Transmissões',
       noStreams: 'Ninguém está transmitindo ZEmu agora. Volte mais tarde!',
       liveBadge: 'AO VIVO',
