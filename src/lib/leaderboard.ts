@@ -3,6 +3,7 @@
  */
 
 import { LAUNCHER_CONFIG } from '@/config/launcher'
+import { fetchPublicApi } from '@/lib/public-api'
 
 export type LeaderboardTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond' | 'master'
 
@@ -65,12 +66,15 @@ export async function fetchTopLeaderboard(
 ): Promise<LeaderboardEntry[]> {
   const { limit = 5, tier = 'all' } = options
 
-  const params = new URLSearchParams({ limit: String(limit) })
-  if (tier !== 'all') params.set('tier', tier)
-  const response = await fetch(`${STATS_API_BASE}/leaderboards?${params}`)
+  // This endpoint returns the full standings and ignores tier/limit query
+  // parameters. Filter before taking the top rows, including players outside
+  // the overall top five, and preserve the server's order and positions.
+  const response = await fetchPublicApi(`${STATS_API_BASE}/leaderboards`)
   if (!response.ok) {
     throw new Error(`Leaderboard request failed (HTTP ${response.status})`)
   }
   const data = await response.json()
-  return ((data.entries ?? []) as LeaderboardEntry[]).slice(0, limit)
+  const entries = (data.entries ?? []) as LeaderboardEntry[]
+  const matchingEntries = tier === 'all' ? entries : entries.filter(entry => entry.tier === tier)
+  return matchingEntries.slice(0, limit)
 }

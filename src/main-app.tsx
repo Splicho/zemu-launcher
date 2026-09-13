@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { LoginPage } from '@/pages/login'
 import { HomePage } from '@/pages/home'

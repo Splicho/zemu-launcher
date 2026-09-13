@@ -16,7 +16,7 @@ function formatViewers(count: number): string {
 
 export function StreamsSection() {
   const { t } = useTranslation()
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['streams'],
     queryFn: fetchStreams,
     refetchInterval: 60000,
@@ -75,6 +75,10 @@ export function StreamsSection() {
             </div>
           </div>
         </div>
+      ) : error && !data ? (
+        <p role="alert" className="mt-4 text-sm text-destructive">
+          {t('streams.failedLoad', { error: error.message })}
+        </p>
       ) : streams.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">{t('streams.noStreams')}</p>
       ) : (

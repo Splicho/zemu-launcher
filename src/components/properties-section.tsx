@@ -11,6 +11,7 @@ import {
   type PropertiesSectionId,
 } from '@/components/properties-sidebar'
 import { SteamInstructionsSteps } from '@/components/steam-instructions-modal'
+import { WineSection } from '@/components/properties-wine-section'
 import { formatBytes } from '@/lib/format'
 
 interface PropertiesSectionProps {
@@ -47,7 +48,7 @@ export function PropertiesSection({
       ?.labelKey ?? 'properties.installedFiles'
 
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea type="auto" className="min-h-0 min-w-0 flex-1">
       <div className="p-6">
         {/* Heading bumped from text-sm to text-base so the section
           title reads as a peer of the now-larger rail links on the
@@ -62,6 +63,8 @@ export function PropertiesSection({
             gameDirectory={gameDirectory}
             onChangeFolder={onChangeFolder}
           />
+        ) : activeId === 'wine' ? (
+          <WineSection />
         ) : activeId === 'guide' ? (
           <InstallationGuideSection />
         ) : (

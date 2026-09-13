@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { BookOpen, FolderTree } from 'lucide-react'
+import { BookOpen, FolderTree, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -13,8 +13,9 @@ import {
  * public contract — `PropertiesModal` switches content on it, not on
  * the label — so adding/renaming sections never breaks the API.
  *
- * Two sections today:
+ * Available sections:
  *  - `install`: file-management view (size, locate, change).
+ *  - `wine`: compatibility runtime, prefix, and environment variables.
  *  - `guide`:   read-only copy of the Steam depot install steps.
  *
  * The license tab has been removed as part of the auth key rework —
@@ -23,6 +24,7 @@ import {
  */
 export const PROPERTIES_SECTIONS = [
   { id: 'install', labelKey: 'properties.installedFiles', Icon: FolderTree },
+  { id: 'wine', labelKey: 'properties.wineConfiguration', Icon: Settings2 },
   { id: 'guide', labelKey: 'properties.installationGuide', Icon: BookOpen },
 ] as const satisfies ReadonlyArray<{
   id: string
