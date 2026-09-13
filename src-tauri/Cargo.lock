@@ -6365,7 +6365,7 @@ dependencies = [
 
 [[package]]
 name = "zemu_launcher"
-version = "0.1.29"
+version = "0.1.31"
 dependencies = [
  "anyhow",
  "chrono",
