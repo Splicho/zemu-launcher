@@ -248,10 +248,10 @@ pub fn validate_and_remove_oauth_state(app: &AppHandle, state: &str) -> Result<b
     Ok(valid)
 }
 
-/// Linux and development use a loopback callback so browser handoff does
-/// not depend on desktop protocol handlers or a second launcher process.
+/// Linux, development, and Windows use a loopback callback so browser handoff
+/// does not depend on desktop protocol handlers or a second launcher process.
 fn uses_loopback_callback(is_dev_runtime: bool) -> bool {
-    is_dev_runtime || cfg!(target_os = "linux")
+    is_dev_runtime || cfg!(target_os = "linux") || cfg!(target_os = "windows")
 }
 
 /// Opens the website's sign-in flow in the user's default browser.
@@ -510,9 +510,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn production_uses_loopback_only_on_linux() {
+    fn production_uses_loopback_on_linux_and_windows() {
         assert!(uses_loopback_callback(true));
-        assert_eq!(uses_loopback_callback(false), cfg!(target_os = "linux"));
+        let linux_or_windows = cfg!(target_os = "linux") || cfg!(target_os = "windows");
+        assert_eq!(uses_loopback_callback(false), linux_or_windows);
     }
 
     #[test]
