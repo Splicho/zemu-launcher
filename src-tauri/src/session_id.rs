@@ -37,11 +37,6 @@ const DEFAULT_SESSION_ID_BEARER_TOKEN: &str =
 /// user presses Play.
 const SESSION_ID_CACHE_FILE: &str = "session-id-cache.json";
 
-/// File name of the `ClientConfig.ini` the launcher edits on every
-/// launch. The H1Z1 client reads this at startup to know which session
-/// to attach to.
-const CLIENT_CONFIG_FILE: &str = "ClientConfig.ini";
-
 /// Per-process mutex around cache reads/writes so two concurrent
 /// `launchGame` invocations (rare, but possible — e.g. the user
 /// double-clicks Play while the first one is still mid-fetch) don't
@@ -372,71 +367,9 @@ pub async fn get_session_id(app: &AppHandle, force_refresh: bool) -> Result<Stri
     Ok(id)
 }
 
-/// Write the session id into `ClientConfig.ini` inside `game_directory`.
-///
-/// The file looks like:
-///
-/// ```text
-/// World=None
-/// usenewui=1
-/// server=eu.zemu.uk
-/// SessionId=0
-/// CasSessionId=zemu-local-session
-/// ```
-///
-/// Behavior:
-///   * If the file exists, replace the `SessionId=...` line in place,
-///     preserving every other line, ordering, and line endings.
-///   * If the file is missing, create it with the default content from
-///     the spec above so a brand-new install (where the client hasn't
-///     been launched yet) still gets a usable config.
-///   * Match the key case-insensitively (Windows INI convention) but
-///     emit it in the original casing when possible.
-pub fn write_session_id_to_client_config(
-    game_directory: &str,
-    session_id: &str,
-) -> Result<()> {
-    let config_path = PathBuf::from(game_directory).join(CLIENT_CONFIG_FILE);
-
-    let updated = if config_path.exists() {
-        let raw = fs::read_to_string(&config_path)
-            .with_context(|| format!("failed reading {}", config_path.display()))?;
-        replace_session_id_line(&raw, session_id)
-    } else {
-        // Brand-new install: no `ClientConfig.ini` on disk yet. Drop
-        // in the exact header from the spec so the client has a sane
-        // starting point.
-        build_default_client_config(session_id)
-    };
-
-    // Write atomically: tmp file in the same directory, then rename.
-    // Same-directory rename is atomic on Windows / macOS / Linux, which
-    // avoids a half-written config if the process dies mid-write.
-    let tmp = config_path.with_extension("ini.tmp");
-    {
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&tmp)
-            .with_context(|| format!("failed opening tmp config {}", tmp.display()))?;
-        file.write_all(updated.as_bytes())
-            .with_context(|| format!("failed writing tmp config {}", tmp.display()))?;
-        file.sync_all().ok();
-    }
-    fs::rename(&tmp, &config_path).with_context(|| {
-        format!(
-            "failed renaming {} -> {}",
-            tmp.display(),
-            config_path.display()
-        )
-    })?;
-
-    Ok(())
-}
-
 /// Template used when `ClientConfig.ini` doesn't exist yet. Mirrors
 /// the header the user pasted in the spec.
+#[cfg(test)]
 fn build_default_client_config(session_id: &str) -> String {
     format!(
         "World=None\nusenewui=1\nserver=eu.zemu.uk\nSessionId={session_id}\nCasSessionId=zemu-local-session\n"
@@ -446,6 +379,7 @@ fn build_default_client_config(session_id: &str) -> String {
 /// Walk the file line-by-line and replace the existing `SessionId=`
 /// value. If no such line exists, append one at the end so we never
 /// silently drop the value on a config that doesn't have the key yet.
+#[cfg(test)]
 fn replace_session_id_line(raw: &str, session_id: &str) -> String {
     let line_ending = detect_line_ending(raw);
     let mut found = false;
@@ -496,6 +430,7 @@ fn replace_session_id_line(raw: &str, session_id: &str) -> String {
 
 /// Sniff the dominant line ending in the file so we can emit the same
 /// one when we append. Defaults to `\n` for an empty file.
+#[cfg(test)]
 fn detect_line_ending(raw: &str) -> String {
     if raw.contains("\r\n") {
         "\r\n".to_string()

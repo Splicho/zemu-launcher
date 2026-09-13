@@ -1,17 +1,26 @@
 use crate::debug_log;
 use crate::models::{WineConfig, WineEnvVar, WineRuntime, WineRuntimeKind};
 use crate::storage::{load_launcher_config, save_launcher_config};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
+#[cfg(not(target_os = "windows"))]
+use anyhow::anyhow;
 use std::collections::HashSet;
+#[cfg(not(target_os = "windows"))]
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tauri::{AppHandle, Manager};
+#[cfg(not(target_os = "windows"))]
+use tauri::Manager;
+use tauri::AppHandle;
 
+#[cfg(not(target_os = "windows"))]
 const CUSTOM_RUNTIME_ID: &str = "custom";
+#[cfg(not(target_os = "windows"))]
 const DEFAULT_COMPATDATA_DIR: &str = "compatdata/zemu-kotk";
 
+#[cfg(not(target_os = "windows"))]
+#[cfg(not(target_os = "windows"))]
 pub struct WineLaunchCommand {
     pub program: PathBuf,
     pub args: Vec<OsString>,
@@ -102,6 +111,7 @@ pub fn select_runtime_executable() -> Result<Option<String>> {
         .map(|path| path.to_string_lossy().to_string()))
 }
 
+#[cfg(not(target_os = "windows"))]
 pub fn build_launch_command(
     app: &AppHandle,
     executable_path: &Path,
@@ -118,6 +128,7 @@ pub fn build_launch_command(
     .map(Some)
 }
 
+#[cfg(not(target_os = "windows"))]
 fn build_command(
     config: &WineConfig,
     runtime: WineRuntime,
@@ -207,6 +218,7 @@ fn is_valid_env_key(value: &str) -> bool {
     chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
+#[cfg(not(target_os = "windows"))]
 fn resolve_runtime(config: &WineConfig) -> Result<WineRuntime> {
     if config.runtime_id.as_deref() == Some(CUSTOM_RUNTIME_ID) {
         return custom_runtime(config);
@@ -227,6 +239,7 @@ fn resolve_runtime(config: &WineConfig) -> Result<WineRuntime> {
         .ok_or_else(|| anyhow!("No Wine or Proton runtime found"))
 }
 
+#[cfg(not(target_os = "windows"))]
 fn custom_runtime(config: &WineConfig) -> Result<WineRuntime> {
     let path = config
         .custom_runtime_path
@@ -333,6 +346,7 @@ fn steam_roots() -> Vec<PathBuf> {
     roots
 }
 
+#[cfg(not(target_os = "windows"))]
 fn steam_root_for_proton(path: &str) -> Option<PathBuf> {
     let proton_path = Path::new(path);
     for root in steam_roots() {
@@ -343,7 +357,7 @@ fn steam_root_for_proton(path: &str) -> Option<PathBuf> {
     None
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "windows")))]
 mod tests {
     use super::*;
 
