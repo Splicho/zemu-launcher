@@ -269,28 +269,39 @@ export function normalizeFriendRelationship(value: unknown): FriendRelationship 
 function normalizeFriend(value: unknown, relationOverride?: FriendRelationship): Friend | null {
   if (!value || typeof value !== 'object') return null
   const raw = value as Record<string, unknown>
-  const id = typeof raw.id === 'string' || typeof raw.friendUserId === 'string'
-    ? String(raw.id ?? raw.friendUserId)
-    : ''
+  const id =
+    typeof raw.id === 'string'
+      ? raw.id
+      : typeof raw.friendUserId === 'string'
+        ? raw.friendUserId
+        : typeof raw.otherUserId === 'string'
+          ? raw.otherUserId
+          : ''
   if (!id) return null
   const displayName =
     typeof raw.displayName === 'string'
       ? raw.displayName
       : typeof raw.friendDisplayName === 'string'
         ? raw.friendDisplayName
-        : null
+        : typeof raw.otherDisplayName === 'string'
+          ? raw.otherDisplayName
+          : null
   const avatarUrl =
     typeof raw.avatarUrl === 'string'
       ? raw.avatarUrl
       : typeof raw.friendAvatarUrl === 'string'
         ? raw.friendAvatarUrl
-        : null
+        : typeof raw.otherAvatarUrl === 'string'
+          ? raw.otherAvatarUrl
+          : null
   const country =
     typeof raw.country === 'string'
       ? raw.country
       : typeof raw.friendCountry === 'string'
         ? raw.friendCountry
-        : null
+        : typeof raw.otherCountry === 'string'
+          ? raw.otherCountry
+          : null
   const friendsSince =
     typeof raw.friendsSince === 'string'
       ? raw.friendsSince

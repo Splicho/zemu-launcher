@@ -1,11 +1,12 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search, Plus, ArrowLeft } from 'lucide-react'
+import { Plus, ArrowLeft } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import type { FriendsActionResult } from '@/lib/friends'
 import { normalizeFriendRelationship } from '@/lib/friends'
 import {
@@ -21,6 +22,8 @@ import {
   PeopleSection,
   FriendActionBar,
   SearchResultSkeleton,
+  FriendRequestsRow,
+  AcceptDeclineActions,
 } from '@/components/friends'
 
 interface FriendsPanelProps {
@@ -97,7 +100,7 @@ export function FriendsPanel({ active }: FriendsPanelProps) {
   //             and search input. Clicking back returns to 'list'.
   // We keep the active search query in state so switching back and
   // forth doesn't lose what the user typed.
-  const [page, setPage] = React.useState<'list' | 'add'>('list')
+  const [page, setPage] = React.useState<'list' | 'add' | 'requests'>('list')
 
   // Reset to the list page whenever the panel becomes inactive so we
   // never land on the Add page with stale search state if the user
@@ -110,11 +113,20 @@ export function FriendsPanel({ active }: FriendsPanelProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       {page === 'add' ? (
         <AddFriendsPage onBack={() => setPage('list')} />
+      ) : page === 'requests' ? (
+        <FriendRequestsPage
+          result={result}
+          isBusy={isBusy}
+          onBack={() => setPage('list')}
+          acceptMutation={acceptMutation}
+          declineMutation={declineMutation}
+        />
       ) : (
         <FriendsListPage
           result={result}
           isBusy={isBusy}
           onAddClick={() => setPage('add')}
+          onRequestsClick={() => setPage('requests')}
           requestMutation={requestMutation}
           acceptMutation={acceptMutation}
           declineMutation={declineMutation}
@@ -144,12 +156,14 @@ interface FriendsListPageProps extends ActionMutations {
   result: FriendsActionResult
   isBusy: boolean
   onAddClick: () => void
+  onRequestsClick: () => void
 }
 
 function FriendsListPage({
   result,
   isBusy,
   onAddClick,
+  onRequestsClick,
   requestMutation,
   acceptMutation,
   declineMutation,
@@ -202,24 +216,16 @@ function FriendsListPage({
             </p>
           ) : null}
 
-          <PeopleSection
-            title={t('friends.sections.incoming')}
-            badge={result.incoming.length}
-            people={result.incoming}
-            emptyMessage={t('friends.empty')}
-            renderActions={(person) =>
-              renderRowActions(person, 'incoming')
-            }
-          />
-
-          <PeopleSection
-            title={t('friends.sections.outgoing')}
-            people={result.outgoing}
-            emptyMessage={t('friends.empty')}
-            renderActions={(person) =>
-              renderRowActions(person, 'outgoing')
-            }
-          />
+          {result.outgoing.length > 0 ? (
+            <PeopleSection
+              title={t('friends.sections.outgoing')}
+              people={result.outgoing}
+              emptyMessage={t('friends.empty')}
+              renderActions={(person) =>
+                renderRowActions(person, 'outgoing')
+              }
+            />
+          ) : null}
 
           <PeopleSection
             title={t('friends.sections.friends')}
@@ -227,6 +233,13 @@ function FriendsListPage({
             emptyMessage={t('friends.empty')}
             renderActions={(person) =>
               renderRowActions(person, 'friend')
+            }
+            headerAfter={
+              <FriendRequestsRow
+                people={result.incoming}
+                count={result.incoming.length}
+                onClick={onRequestsClick}
+              />
             }
           />
         </div>
@@ -399,5 +412,95 @@ function AddFriendsPage({ onBack }: AddFriendsPageProps) {
         </div>
       </ScrollArea>
     </>
+  )
+}
+
+/**
+ * Friend requests page: shows all incoming requests with Accept/Decline
+ * actions. Navigated to by clicking the "Friend requests" row above the
+ * friends list.
+ */
+interface FriendRequestsPageProps {
+  result: FriendsActionResult
+  isBusy: boolean
+  onBack: () => void
+  acceptMutation: ReturnType<typeof useFriendsAccept>
+  declineMutation: ReturnType<typeof useFriendsDecline>
+}
+
+function FriendRequestsPage({
+  result,
+  isBusy,
+  onBack,
+  acceptMutation,
+  declineMutation,
+}: FriendRequestsPageProps) {
+  const { t } = useTranslation()
+  return (
+    <>
+      {/* Sticky header: back button + page heading. */}
+      <div className="sticky top-0 z-10 border-b bg-popover px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onBack}
+            aria-label={t('friends.actions.back')}
+            className="shrink-0"
+          >
+            <ArrowLeft className="size-4" />
+            <span className="sr-only">{t('friends.actions.back')}</span>
+          </Button>
+          <h2 className="flex-1 text-base font-semibold">
+            {t('friends.friendRequestsHeading')}
+          </h2>
+        </div>
+      </div>
+
+      {/* Scrollable body: incoming request rows. */}
+      <ScrollArea className="flex-1">
+        <div className="flex flex-col gap-2 px-4 py-4">
+          {result.incoming.length === 0 ? (
+            <p className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground/80">
+              {t('friends.empty')}
+            </p>
+          ) : (
+            <div className="flex flex-col">
+              {result.incoming.map((person) => (
+                <div
+                  key={person.id}
+                  className="flex items-center gap-3 rounded-md px-2.5 py-2.5"
+                >
+                  <AvatarFallbackOrImage person={person} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium leading-tight">
+                      {person.displayName}
+                    </p>
+                  </div>
+                  <AcceptDeclineActions
+                    targetId={person.id}
+                    onAccept={(id) => acceptMutation.mutate({ targetId: id })}
+                    onDecline={(id) => declineMutation.mutate({ targetId: id })}
+                    disabled={isBusy}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+    </>
+  )
+}
+
+/** Minimal inline avatar for the requests page. */
+function AvatarFallbackOrImage({ person }: { person: { displayName?: string | null; avatarUrl?: string | null } }) {
+  return (
+    <Avatar>
+      {person.avatarUrl ? <AvatarImage src={person.avatarUrl} alt="" /> : null}
+      <AvatarFallback>
+        {(person.displayName ?? '?').slice(0, 1).toUpperCase()}
+      </AvatarFallback>
+    </Avatar>
   )
 }

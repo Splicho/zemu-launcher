@@ -30,3 +30,6 @@ export { PlayerResultRow, STATUS_DOT_CLASS } from '@/components/friends/player-r
 export { PeopleSection } from '@/components/friends/people-section'
 
 export { SearchResultSkeleton } from '@/components/friends/search-result-skeleton'
+
+export { AvatarStack } from '@/components/friends/avatar-stack'
+export { FriendRequestsRow } from '@/components/friends/friend-requests-row'

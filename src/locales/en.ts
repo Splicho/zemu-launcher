@@ -209,15 +209,17 @@ export default {
     home: {
       welcome: 'Welcome',
     },
-    friends: {
-      title: 'Friends',
-      refresh: 'Refresh',
-      addFriend: 'Add a friend',
-      addFriendHeading: 'Add friends',
-      searchPlaceholder: 'Search for players...',
-      searchHint: 'Type at least 2 characters to search for players.',
-      loading: 'Loading friends…',
-      empty: 'Nothing here yet.',
+      friends: {
+        title: 'Friends',
+        refresh: 'Refresh',
+        addFriend: 'Add a friend',
+        addFriendHeading: 'Add friends',
+        friendRequests: 'Friend requests',
+        friendRequestsHeading: 'Friend requests',
+        searchPlaceholder: 'Search for players...',
+        searchHint: 'Type at least 2 characters to search for players.',
+        loading: 'Loading friends…',
+        empty: 'Nothing here yet.',
       sections: {
         resultsFound_one: '{{count}} player found',
         resultsFound_other: '{{count}} players found',

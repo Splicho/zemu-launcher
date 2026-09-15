@@ -35,7 +35,7 @@ export function PlayerResultRow<T extends PersonLike>({
   children,
 }: PlayerResultRowProps<T>) {
   return (
-    <li className="flex items-center gap-2.5 rounded-md px-2.5 py-2.5 transition-colors hover:bg-muted/40">
+    <div className="flex items-center gap-2.5 rounded-md px-2.5 py-2.5 transition-colors hover:bg-muted/40">
       <Avatar>
         {person.avatarUrl ? (
           <AvatarImage src={person.avatarUrl} alt="" />
@@ -57,6 +57,6 @@ export function PlayerResultRow<T extends PersonLike>({
         </p>
       </div>
       <div className="shrink-0">{children}</div>
-    </li>
+    </div>
   )
 }

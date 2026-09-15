@@ -10,7 +10,6 @@ import {
   dispatchFriends,
   type FriendsAction,
   type FriendsActionResult,
-  type FriendsGraph,
   type FriendsRequestPayload,
 } from '@/lib/friends'
 
@@ -27,19 +26,6 @@ export const friendsKeys = {
 }
 
 /**
- * Default empty graph shape. Used both as the TanStack initialData and
- * as the fallback when the IPC call fails outright (without going
- * through the IPC at all, e.g. in a browser preview).
- */
-const EMPTY_GRAPH: FriendsGraph = {
-  self: null,
-  friends: [],
-  incoming: [],
-  outgoing: [],
-  results: [],
-}
-
-/**
  * Fetches the full friends graph (self + lists). We `enabled: false`
  * by default so callers control when the fetch fires — typically once
  * the Friends sheet opens — to avoid hitting the stub on every page.
@@ -53,14 +39,7 @@ export function useFriendsGraph(
       const result = await dispatchFriends('list')
       return result
     },
-    initialData: {
-      ...EMPTY_GRAPH,
-      ok: true,
-      reason: null,
-    },
     enabled: options.enabled ?? false,
-    staleTime: 1000 * 30, // 30 s — friends list shouldn't flicker
-    refetchOnWindowFocus: false,
   })
 }
 
@@ -82,14 +61,7 @@ export function useFriendsSearch(
     queryFn: async () => {
       return dispatchFriends('search', { query: trimmed })
     },
-    // No `initialData`: TanStack v5 treats initialData as "we already
-    // have data, no need to fetch." That's exactly wrong here — we
-    // want the queryFn to actually fire whenever the user types a
-    // valid search term. The panel renders the empty list itself
-    // when there's no data yet.
     enabled,
-    staleTime: 1000 * 15,
-    refetchOnWindowFocus: false,
   })
 }
 

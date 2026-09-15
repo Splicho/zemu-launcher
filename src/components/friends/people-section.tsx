@@ -22,6 +22,8 @@ interface PeopleSectionProps<T extends PersonLike> {
   /** Optional override that takes full control of the row rendering
    *  — used for skeleton placeholders while data is streaming in. */
   renderItem?: (person: T) => React.ReactNode
+  /** Optional content rendered after the header, before the people list. */
+  headerAfter?: React.ReactNode
 }
 
 /**
@@ -36,6 +38,7 @@ export function PeopleSection<T extends PersonLike>({
   emptyMessage,
   renderActions,
   renderItem,
+  headerAfter,
 }: PeopleSectionProps<T>) {
   return (
     <section className="flex flex-col gap-2">
@@ -56,12 +59,13 @@ export function PeopleSection<T extends PersonLike>({
           </span>
         ) : null}
       </header>
+      {headerAfter}
       {people.length === 0 ? (
         <p className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground/80">
           {emptyMessage}
         </p>
       ) : (
-        <ul className="flex flex-col">
+        <div className="flex flex-col">
           {people.map((person) =>
             renderItem ? (
               <React.Fragment key={person.id}>{renderItem(person)}</React.Fragment>
@@ -71,7 +75,7 @@ export function PeopleSection<T extends PersonLike>({
               </PlayerResultRow>
             ),
           )}
-        </ul>
+        </div>
       )}
     </section>
   )

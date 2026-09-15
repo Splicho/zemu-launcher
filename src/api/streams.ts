@@ -7,9 +7,11 @@ import { fetchPublicApi } from '@/lib/public-api'
 
 const API_BASE = (() => {
   const fromEnv = import.meta.env.VITE_API_URL as string | undefined
-  if (import.meta.env.DEV && fromEnv) return `${fromEnv}/streams`
-  return 'https://api.zemu.uk/streams'
+  if (import.meta.env.DEV && fromEnv) return fromEnv
+  return 'https://api.zemu.uk'
 })()
+
+const STREAMS_PATH = '/streams'
 
 export type StreamInfo = {
   id: string
@@ -29,7 +31,7 @@ export type StreamsResponse = {
 }
 
 export async function fetchStreams(): Promise<StreamsResponse> {
-  const res = await fetchPublicApi(`${API_BASE}/streams`)
+  const res = await fetchPublicApi(`${API_BASE}${STREAMS_PATH}`)
   if (!res.ok) throw new Error(`Streams request failed (HTTP ${res.status})`)
   return res.json()
 }
