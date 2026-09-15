@@ -147,8 +147,6 @@ zemu-launcher/
 
 | Variable | Required | Description |
 |---|---|---|
-| `ZEMU_SESSION_ID_ENDPOINT` | No | URL of the keys service that issues session ids. Defaults to the production endpoint. |
-| `ZEMU_SESSION_ID_BEARER_TOKEN` | **Yes** | Bearer token for authenticating against the keys service. Must be set before building for production. |
 | `ZEMU_GAME_SERVER` | No | Game server `hostname:port` passed to the game at launch. Defaults to `eu.zemu.uk:1115`. |
 
 ## Contributing

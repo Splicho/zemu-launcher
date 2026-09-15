@@ -172,18 +172,6 @@ pub struct LauncherConfig {
     /// App colour theme. `system` follows the OS preference.
     #[serde(default = "default_theme")]
     pub theme: AppTheme,
-    /// Optional override for the URL the launcher calls to fetch a
-    /// fresh session id before launching the game. Empty / missing
-    /// falls back to the baked-in zemu keys endpoint. Exposed for
-    /// staging / local development.
-    #[serde(default)]
-    pub session_id_endpoint_url: Option<String>,
-    /// Optional override for the bearer token used when calling
-    /// `session_id_endpoint_url`. Empty / missing falls back to the
-    /// baked-in launcher's own credential. Exposed for staging /
-    /// local development.
-    #[serde(default)]
-    pub session_id_bearer_token: Option<String>,
     /// The user's auth key — stored locally and passed as the
     /// `SessionId=` command-line argument at game launch. No server
     /// validation is performed on this value.
@@ -206,8 +194,6 @@ impl Default for LauncherConfig {
             discord_rpc_enabled: true,
             discord_rpc_mode: DiscordRpcMode::Always,
             theme: AppTheme::System,
-            session_id_endpoint_url: None,
-            session_id_bearer_token: None,
             auth_key: None,
             wine: WineConfig::default(),
         }

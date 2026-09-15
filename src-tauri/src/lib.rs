@@ -12,7 +12,6 @@ mod launch_args;
 mod models;
 mod oauth_server;
 mod public_api;
-mod session_id;
 mod state;
 mod steam;
 mod storage;
