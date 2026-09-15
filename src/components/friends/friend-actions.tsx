@@ -1,12 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import {
-  X,
-  Send,
-  UserMinus,
-  UserPlus,
-} from 'lucide-react'
+import { X, UserMinus, UserPlus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
@@ -100,8 +95,9 @@ export function AcceptDeclineActions({
 }
 
 /**
- * Outgoing friend request — a single "Cancel request" button (paper
- * plane).
+ * Outgoing friend request — a single "Cancel request" button,
+ * styled like the decline button so the destructive actions feel
+ * like a matched pair across the panel.
  */
 export function CancelRequestAction({
   targetId,
@@ -116,9 +112,9 @@ export function CancelRequestAction({
       onClick={() => onAction(targetId)}
       disabled={disabled}
       aria-label={t('friends.actions.cancel')}
-      className="text-muted-foreground hover:text-foreground"
+      className="text-muted-foreground hover:text-destructive"
     >
-      <Send className="!size-4" aria-hidden="true" />
+      <X className="!size-4" aria-hidden="true" />
       <span className="sr-only">{t('friends.actions.cancel')}</span>
     </Button>
   )
