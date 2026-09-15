@@ -139,6 +139,7 @@ zemu-launcher/
 
 | Variable | Required | Description |
 |---|---|---|
+| `VITE_API_BASE_URL` | Yes | Auth service base URL (OAuth initiate/introspect) |
 | `VITE_LAUNCHER_REALTIME_URL` | Yes | WebSocket URL for realtime friend updates |
 | `VITE_API_URL` | Yes | Base URL of the ZEmu REST API |
 
