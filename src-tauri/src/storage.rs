@@ -129,6 +129,46 @@ pub fn detect_game_executable(app: &AppHandle) -> String {
         .unwrap_or_else(|| "H1Z1.exe".to_string())
 }
 
+/// Marker file written by `steamcmd_download_depot` once a SteamCMD
+/// auto-download successfully flattens into the user's chosen folder.
+///
+/// The marker is the source of truth for "Zemu knows about this
+/// install and the auto-download flow ran successfully". The wizard's
+/// Step 3 skips itself when this is present (no point re-downloading
+/// a 15 GB depot that the launcher already pulled).
+pub const ZEMU_INSTALL_MARKER: &str = ".zemu-install-v1";
+pub const ZEMU_INSTALL_EXECUTABLE: &str = "H1Z1.exe";
+
+/// Returns `true` if both the Zemu marker file AND `H1Z1.exe` exist at
+/// the directory root. Used by the wizard to detect a previously-
+/// completed auto-download and skip Step 3.
+///
+/// Note: a user who manually dropped a PS3 folder into the directory
+/// (without going through SteamCMD) will have `H1Z1.exe` but NOT the
+/// marker — that's a separate UI path ("looks like a manually-downloaded
+/// install, but it's a Zemu-known folder"). The wizard's `setup-checks`
+/// distinguishes these two cases via `hasMarker` vs `hasBaseGame`.
+pub fn detect_base_game_installed(directory: &str) -> Result<bool> {
+    let path = Path::new(directory);
+    if !path.exists() || !path.is_dir() {
+        return Ok(false);
+    }
+
+    let marker = path.join(ZEMU_INSTALL_MARKER);
+    let exe = path.join(ZEMU_INSTALL_EXECUTABLE);
+
+    Ok(marker.exists() && exe.is_file())
+}
+
+/// Lightweight path check exposed to the frontend via the
+/// `game_path_exists` IPC. Used by `setup-checks.ts` to detect a
+/// manually-dropped `H1Z1.exe` at the folder root, which has no
+/// marker file and would otherwise look like an empty folder to the
+/// launcher's `isInstalled()` check.
+pub fn path_exists(path: &str) -> Result<bool> {
+    Ok(Path::new(path).exists())
+}
+
 fn trim_base_url(value: &str) -> String {
     value.trim().trim_end_matches('/').to_string()
 }

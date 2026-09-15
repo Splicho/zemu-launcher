@@ -125,13 +125,6 @@ export function AuthKeyModal({ open, onOpenChange, onSaved }: AuthKeyModalProps)
               className="font-mono"
             />
           </div>
-
-          {savedKey ? (
-            <p className="text-xs text-muted-foreground">
-              {t('authKey.currentKey')}{' '}
-              <span className="font-mono">{maskKey(savedKey)}</span>
-            </p>
-          ) : null}
         </div>
 
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
@@ -159,10 +152,4 @@ export function AuthKeyModal({ open, onOpenChange, onSaved }: AuthKeyModalProps)
       </DialogContent>
     </Dialog>
   )
-}
-
-/** Show first 4 and last 4 chars of the key, masking the middle. */
-function maskKey(key: string): string {
-  if (key.length <= 8) return '••••••••'
-  return `${key.slice(0, 4)}••••••••${key.slice(-4)}`
 }

@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { clearSteamInstructionsSeen } from '@/lib/steam-instructions'
-
 export interface GameLaunchState {
   isLaunching: boolean
   isRunning: boolean
@@ -591,11 +589,11 @@ const handleProgress = (status: UpdateStatus) => {
     setGameLaunchState(DEFAULT_GAME_LAUNCH_STATE)
     setError(null)
     setJustCompletedUpdate(false)
-    // Wiping the install means the user is about to set up the game
-    // again — re-arm the Steam instructions modal so they're reminded
-    // how to grab the base game via Steam's depot console. This
-    // matches the "re-show on explicit clear" UX we picked.
-    clearSteamInstructionsSeen()
+    // Wiping the install lands the user on the Play page with the
+    // `Update` button — they can re-run the onboarding wizard from
+    // Settings > General if they want the full guided flow. We no
+    // longer re-arm the Steam instructions modal here; the wizard's
+    // Step 3 owns that UX now.
     hasLoadedRef.current = false
     hasAutoCheckedOnStartupRef.current = false
     lastCheckedDirectoryRef.current = null

@@ -16,33 +16,52 @@ tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
 anyhow = "1.0"
+base64 = "0.22"
+bytes = "1.7"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6.0"
 discord-rich-presence = "1.1.0"
 futures-util = "0.3"
 hex = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
 log = "0.4"
+qrcode = { version = "0.14", default-features = false, features = ["image"] }
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 rfd = "0.14"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
+# Steam protocol + depot-download stack.
+#
+# `steamroom` is a clean-room Rust reimplementation of SteamKit2
+# (the C# library SteamKit uses). `steamroom-client` is its
+# higher-level orchestrator: QR / token login, PICS product info,
+# depot key + CDN server + manifest request code + CDN auth
+# token, manifest parsing (handles V4 + V5 on-wire formats
+# including the magic-prefixed `<payload><metadata><signature>`
+# layout), and pipelined CDN chunk downloading with retry +
+# server pool rotation + SHA-1 verification + delta-update
+# reuse via `depot_config`. Pure Rust, no Node bridge, no
+# DepotDownloader.exe, no JWT forgery, no AES-256-ECB guessing.
+steamroom = "0.3"
+steamroom-client = "0.3"
 tauri = { version = "2.10.3", features = [] }
 tauri-plugin-autostart = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
-tauri-plugin-updater = "2.10.0"
+tauri-plugin-updater = "=2.10.1"
 tiny_http = "0.12"
 tar = "0.4"
 tokio = { version = "1", features = ["full"] }
 url = "2.5"
 walkdir = "2.5"
 webbrowser = "1.0"
-zip = "8"
+zip = "2"
 zstd = "0.13"
 tauri-plugin-fs = "2"
+tauri-plugin-keyring-store = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [

@@ -333,6 +333,77 @@ pub struct UpdateStatus {
     pub error: Option<String>,
 }
 
+/// Phase of a SteamCMD-driven depot download. Mirrors the high-level
+/// phases the wizard's progress dialog renders.
+///
+/// `Downloading` and `Verifying` both come from SteamCMD itself;
+/// `Flattening` is ours (moving files from the staging dir to the
+/// user's chosen folder). `Done` is the terminal success state; `Error`
+/// surfaces the last SteamCMD error line so the UI can render a
+/// context-appropriate recovery CTA.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SteamcmdPhase {
+    Downloading,
+    Verifying,
+    Flattening,
+    Done,
+    Error,
+}
+
+/// Progress event emitted from the Rust SteamCMD wrapper. The wizard's
+/// `<DownloadProgressDialog />` listens for `steamcmd-progress` events
+/// and forwards them into its props.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamcmdProgress {
+    pub phase: SteamcmdPhase,
+    /// 0..=100. Computed from `bytes_done / bytes_total` when known;
+    /// falls back to a coarse estimate derived from SteamCMD's phase
+    /// transitions otherwise.
+    pub percent: u8,
+    pub bytes_done: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bytes_total: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed_bps: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_seconds: Option<u64>,
+    /// Surface this string in the dialog header. Typically used for
+    /// error messages ("Disk write failure", "Steam Guard code
+    /// required", etc).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// Final result returned by `steamcmd_download_depot`. Carries the last
+/// 4 KB of SteamCMD stdout in `log_tail` so support can diagnose
+/// failures without re-running the process.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamcmdResult {
+    pub final_dir: String,
+    pub depot_bytes: u64,
+    pub duration_ms: u64,
+    pub log_tail: String,
+}
+
+/// Inputs to `steamcmd_download_depot`. `expected_bytes` is optional —
+/// when supplied (typically from the launcher config or version
+/// manifest), it's used to compute a percent progress bar; without it,
+/// the UI falls back to an indeterminate spinner with byte counts.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepotSpec {
+    pub app_id: u32,
+    pub depot_id: u32,
+    #[serde(default)]
+    pub expected_bytes: Option<u64>,
+}
+
 impl Default for UpdateStatus {
     fn default() -> Self {
         Self {

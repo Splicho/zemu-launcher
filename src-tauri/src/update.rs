@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use walkdir::WalkDir;
 
 const TEMP_DIR_NAME: &str = "zemu-updates";
@@ -1133,6 +1133,37 @@ fn uses_file_level_manifest(manifest: &VersionManifest) -> bool {
         .folders
         .values()
         .any(|folder| !folder.files.is_empty())
+}
+
+/// Called from `depot.rs` after a Steam depot download finishes, so
+/// the launcher knows the game is installed and doesn't prompt the user
+/// to "Locate PS3 Folder" again. Fetches the current CDN manifest and
+/// writes it as `version.json` inside `game_directory`.
+///
+/// This is intentionally a best-effort write — a failure here is logged
+/// but not surfaced as an error, because the depot files are already
+/// on disk and a future `check_for_updates` can re-derive the manifest
+/// from the CDN on next launch.
+pub async fn persist_installed_manifest_from_cdn(
+    app: &AppHandle,
+    game_directory: &std::path::Path,
+) -> Result<()> {
+    let base_url = match app.try_state::<crate::state::AppState>()
+        .map(|state| state.get_update_base_url())
+        .flatten()
+    {
+        Some(url) => url,
+        None => {
+            return Err(anyhow!(
+                "Update service is not configured — cannot fetch CDN manifest"
+            ));
+        }
+    };
+
+    let client = UpdateClient::new(base_url);
+    let manifest = client.get_version_manifest().await?;
+
+    persist_installed_manifest(app, &game_directory.to_string_lossy(), &manifest)
 }
 
 fn get_folders_to_update(remote: &VersionManifest, local: Option<&VersionManifest>) -> Vec<String> {

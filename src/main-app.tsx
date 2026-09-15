@@ -7,12 +7,14 @@ import type { SidebarType } from '@/components/main-layout'
 import { TitleBar } from '@/components/title-bar'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
+import { OnboardingPage } from '@/pages/onboarding'
 import { PlayPage } from '@/pages/play'
 import { GeneralPage } from '@/pages/settings'
 import { AppearancePage } from '@/pages/appearance'
 import { AccountPage } from '@/pages/account'
 import { AuthProvider, useAuthContext } from '@/contexts/auth-context'
 import { useHash } from '@/hooks/use-hash'
+import { useOnboardingGate } from '@/hooks/use-onboarding-gate'
 import { UpdateProvider } from '@/contexts/update-context'
 import { GameStateProvider } from '@/contexts/game-state-context'
 import { Toaster } from '@/components/ui/sonner'
@@ -28,6 +30,7 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
   if (newsMatch) return { page: 'news-slug', params: { slug: newsMatch[1] } }
 
   if (hash === '/news') return { page: 'news' }
+  if (hash === '/onboarding') return { page: 'onboarding' }
   if (hash === '/play') return { page: 'play' }
   if (hash === '/settings') return { page: 'settings' }
   if (hash === '/settings/appearance') return { page: 'appearance' }
@@ -67,6 +70,8 @@ function AuthedApp() {
   const hash = useHash()
   const route = parseRoute(hash)
   const isDeepRoute = hash !== null && hash !== '/' && route.page === 'home'
+  const onboardingGate = useOnboardingGate()
+  const { state: gateState, refresh: refreshGate } = onboardingGate
 
   useEffect(() => {
     document.documentElement.classList.add('main-window')
@@ -137,6 +142,35 @@ function AuthedApp() {
     sessionStorage.removeItem(INTENDED_HASH_KEY)
   }, [status])
 
+  // First-run wizard redirect.
+  //
+  // For an authed user whose on-disk setup is incomplete, push them
+  // into the wizard at `#/onboarding`. We deliberately run *after*
+  // the intended-hash restore effect above so a deep-link sign-in
+  // (e.g. OAuth callback returning to `/play`) lands on its real
+  // destination first; only the landing page (`/` or empty hash)
+  // gets pushed into the wizard.
+  //
+  // Returning users whose localStorage was wiped but who still have
+  // a valid install on disk are caught by the gate and skip straight
+  // to `/` (handled inside `useOnboardingGate`).
+  useEffect(() => {
+    if (status !== 'authed') return
+    if (route.page === 'onboarding') return
+    if (gateState.kind === 'loading') return
+    if (gateState.kind === 'complete') return
+
+    // Don't override an in-flight deep-link sign-in.
+    const intended = sessionStorage.getItem(INTENDED_HASH_KEY)
+    if (intended && intended !== '/') return
+
+    queueMicrotask(() => {
+      if (window.location.hash !== '#/onboarding') {
+        window.location.hash = '#/onboarding'
+      }
+    })
+  }, [status, route.page, gateState.kind])
+
   if (status === 'loading') {
     return null
   }
@@ -149,6 +183,28 @@ function AuthedApp() {
           <LoginPage />
         </main>
       </div>
+    )
+  }
+
+  // The wizard owns the full screen — no title bar chrome, no main
+  // layout, no sidebar. Renders inside the same rounded-window shell
+  // for visual consistency with the rest of the app.
+  if (route.page === 'onboarding') {
+    const initialChecks =
+      gateState.kind === 'incomplete'
+        ? gateState.inputs
+        : {
+            hasKey: false,
+            hasFolder: false,
+            hasBaseGame: false,
+            hasMarker: false,
+            folderPath: null,
+          }
+    return (
+      <OnboardingPage
+        initialChecks={initialChecks}
+        onRefreshGate={refreshGate}
+      />
     )
   }
 

@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, Check } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
 
 import {
   Dialog,
@@ -61,6 +62,42 @@ export function SteamInstructionsModal({
 }: SteamInstructionsModalProps) {
   const { t } = useTranslation()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const gotItRef = useRef<HTMLButtonElement | null>(null)
+
+  // Detected Steam depot download path. `undefined` while we're
+  // checking (or while the modal is closed), `string` when Steam
+  // was found, `null` after the detector has finished and confirmed
+  // Steam isn't installed.
+  //
+  // We split the "not yet checked" and "checked, not found" cases so
+  // the JSX can render the generic hint immediately (no flash of
+  // missing content) and only swap in the concrete path when it
+  // arrives. Detection runs locally — registry probe on Windows,
+  // path probes elsewhere — and is sub-100ms, but it's still an
+  // async invoke so the modal must not block on it.
+  const [depotPath, setDepotPath] = useState<string | null | undefined>(undefined)
+
+  useEffect(() => {
+    if (!open) {
+      // Reset on close so reopening (e.g. after the user installs
+      // Steam mid-session) re-detects from scratch.
+      setDepotPath(undefined)
+      return
+    }
+    let cancelled = false
+    invoke<string | null>('steam_detect_depot_path')
+      .then((path) => {
+        if (!cancelled) setDepotPath(path)
+      })
+      .catch(() => {
+        // Detection failures are silent — the generic hint covers
+        // the user. Don't surface Rust errors to the modal.
+        if (!cancelled) setDepotPath(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
   const handleAcknowledge = useCallback(async () => {
     if (isSubmitting) return
@@ -75,13 +112,29 @@ export function SteamInstructionsModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/*
-        `sm:max-w-lg` gives the dialog enough room for the depot command
-        to fit on one line. `onPointerDownOutside` is left enabled so the
-        user can dismiss with a backdrop click; X / Escape / backdrop all
-        skip `onAcknowledge` (no flag written), matching the "show again
+        `sm:max-w-xl` (576px) gives the dialog enough room for the
+        Steam depot path (`<steam_root>/steamapps/content/...`) to wrap
+        cleanly across two lines on a default Windows install path
+        while staying narrower than the Properties modal (`max-w-4xl`).
+        `onPointerDownOutside` is left enabled so the user can dismiss
+        with a backdrop click; X / Escape / backdrop all skip
+        `onAcknowledge` (no flag written), matching the "show again
         next time" UX the user picked.
       */}
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent
+        className="sm:max-w-xl"
+        onOpenAutoFocus={(event) => {
+          // Radix's default auto-focus lands on the first tabbable
+          // descendant, which is the copy-to-clipboard button inside
+          // `CopyableCommand`. That fires the tooltip via focus before
+          // the user has interacted with anything. Send focus to the
+          // primary "Got it" button instead — same a11y outcome (some
+          // element inside the dialog receives focus), no surprise
+          // tooltip.
+          event.preventDefault()
+          gotItRef.current?.focus()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{t('steamInstructions.downloadBaseGame')}</DialogTitle>
           <DialogDescription>
@@ -89,7 +142,7 @@ export function SteamInstructionsModal({
           </DialogDescription>
         </DialogHeader>
 
-        <SteamInstructionsSteps />
+        <SteamInstructionsSteps depotPath={depotPath} />
 
         <DialogFooter className="-mx-4 -mb-4 mt-2 sm:justify-end">
           <DialogClose asChild>
@@ -98,6 +151,7 @@ export function SteamInstructionsModal({
             </Button>
           </DialogClose>
           <Button
+            ref={gotItRef}
             type="button"
             variant="gradient"
             onClick={() => {
@@ -118,8 +172,21 @@ export function SteamInstructionsModal({
  * `Installation Guide` pane inside the Properties dialog can render the
  * same instructions as a read-only reference without duplicating the
  * prose (or the helpers below).
+ *
+ * `depotPath` is the absolute Steam depot destination folder when the
+ * Rust detector has found a Steam install on disk. When `undefined`
+ * (still detecting) or `null` (detection finished, no Steam found)
+ * we fall back to the relative `steamapps/content/...` hint so the
+ * step is never broken. The Properties pane always passes `null`
+ * since it shows a static reference copy that doesn't need
+ * runtime-detected paths.
  */
-export function SteamInstructionsSteps() {
+export function SteamInstructionsSteps({
+  depotPath,
+}: {
+  /** Steam depot destination path, or null/undefined for the generic hint. */
+  depotPath?: string | null
+}) {
   const { t } = useTranslation()
   return (
     <ol className="space-y-3 text-sm text-popover-foreground">
@@ -153,10 +220,14 @@ export function SteamInstructionsSteps() {
 
       <li className="flex gap-3">
         <StepBadge>4</StepBadge>
-        <span>
-          {t('steamInstructions.step4WaitDownload')}{' '}
-          <Code>steamapps/content/app_433850/depot_433851/</Code>.
-        </span>
+        <div className="min-w-0 flex-1 space-y-2">
+          {t('steamInstructions.step4WaitDownload')}
+          {depotPath ? (
+            <CopyableCommand command={depotPath} />
+          ) : (
+            <Code>steamapps/content/app_433850/depot_433851/</Code>
+          )}
+        </div>
       </li>
 
       <li className="flex gap-3">
@@ -232,8 +303,18 @@ export function CopyableCommand({ command }: { command: string }) {
   }, [command])
 
   return (
-    <div className="mt-2 flex items-center gap-2 rounded-md border border-border bg-muted/50 p-2">
-      <code className="flex-1 select-all overflow-x-auto whitespace-pre font-mono text-xs text-foreground">
+    <div className="mt-2 flex min-w-0 items-center gap-2 rounded-md border border-border bg-muted/50 p-2">
+      {/*
+        `min-w-0` lets the inner code shrink below its intrinsic
+        content width so `overflow-x-auto` actually engages instead
+        of the flex row ballooning past the dialog's right edge.
+        `whitespace-pre-wrap break-all` is the second layer: the
+        code wraps long file paths onto a second line so the user
+        can read them in full without horizontal scrolling. For
+        short inputs (Step 3's `download_depot 433850 433851`) the
+        wrap is a no-op and the line stays single.
+      */}
+      <code className="min-w-0 flex-1 select-all overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs text-foreground">
         {command}
       </code>
       <Tooltip>

@@ -37,6 +37,100 @@ export default {
       openLauncher: 'Open launcher',
       unexpectedError: 'Unexpected updater error',
     },
+    onboarding: {
+      stepIndicator: 'Step {{current}} of {{total}}',
+      step1: {
+        title: 'Save your auth key',
+        description: 'The key lets the game identify your session. It is stored on this machine and never sent to a server.',
+        continue: 'Save and continue',
+        howTo: {
+          trigger: 'How to get an auth key',
+          triggerAria: 'Open instructions for getting an auth key',
+          title: 'How to get an auth key',
+          description:
+            'Your auth key is tied to your Discord account. Follow these steps to generate one.',
+          openDiscord: 'Open Discord',
+          steps: {
+            join: {
+              title: 'Join the Discord',
+              description: 'Click "Open Discord" below to join the H1Z1 KotK community server.',
+            },
+            verify: {
+              title: 'Verify your account',
+              description:
+                'In the server, run the verification steps so the bot can identify your account.',
+            },
+            commands: {
+              title: 'Head over to #bot-commands',
+              description: 'Open the #bot-commands channel inside the Discord server.',
+            },
+            authkey: {
+              title: 'Run /authkey',
+              description:
+                'Send the /authkey command and copy the key the bot returns. Paste it on the previous step.',
+            },
+          },
+        },
+      },
+      step2: {
+        title: 'Choose where to install',
+        description: 'Pick a folder for the base game and ZEmu patches. We will keep everything tidy in this folder.',
+        choose: 'Choose folder',
+        change: 'Change folder',
+        pathChosen: 'Chosen:',
+        continue: 'Continue',
+      },
+      step3: {
+        title: 'Get the base game',
+        description: 'ZEmu does not bundle the base game. Pick a path below — automatic download is recommended when available.',
+        auto: {
+          label: 'Download automatically',
+          description: 'SteamCMD pulls the depot straight into the folder you just picked. No Steam client required.',
+          unavailable: 'Automatic download is not available in this build. Use the manual instructions instead.',
+          start: 'Start download',
+          running: 'Downloading the base game…',
+          flatten: 'Moving files into your folder…',
+          done: 'Base game installed',
+        },
+        manual: {
+          label: 'I will do it myself',
+          description: 'Follow the Steam depot-console instructions, then come back and finish setup.',
+          open: 'Open instructions',
+        },
+        qrGate: {
+          button: 'Sign in with Steam',
+          connecting: 'Preparing QR code…',
+          scanHint: 'Scan with the Steam Mobile app',
+          scanned: 'Approve the connection on your phone',
+          authed: 'Signed in as {{account}}',
+          authedHint: 'Your Steam account is now linked. We will download the depot files from Steam and put them in your chosen folder.',
+          timeout: 'QR expired — click to retry',
+          retry: 'Retry',
+          failedTitle: 'Steam sign-in failed',
+          failedHint: 'Sign in again, or use the manual instructions below.',
+          signOut: 'Sign out',
+          idleTitle: 'Sign in with Steam to download',
+          idleDescription: "Steam's anonymous download path no longer serves H1Z1 / Z1 Battle Royale. Sign in once and we will pull the depot straight from Steam's CDN — no password ever leaves your phone.",
+          bridgeMissing: 'The Steam bridge was not bundled with this build. Use the manual instructions to drop the base game into your folder.',
+        },
+        errorTitle: 'Could not download the base game',
+        errorRetryable: 'Try again, or use the manual instructions.',
+        errorFatal: 'Steam is not offering this depot for automatic download. Use the manual instructions instead.',
+        cancel: 'Cancel download',
+        continue: 'Continue',
+      },
+      step4: {
+        title: 'Almost done',
+        description: 'Confirm everything looks right, then launch ZEmu.',
+        checklist: {
+          key: 'Auth key saved',
+          folder: 'Install folder selected',
+          baseGame: 'Base game present',
+          patch: 'ZEmu patch will apply automatically on launch',
+        },
+        finish: 'Finish setup',
+      },
+    },
     account: {
       openMenu: 'Open account menu',
       menuItem: 'Account',
@@ -89,6 +183,8 @@ export default {
         languageFrench: 'Français',
         languageChinese: '中文',
         languagePortuguese: 'Português (Brasil)',
+        rerunSetup: 'Re-run setup',
+        rerunSetupDesc: 'Walk through the auth key, install folder, and base game steps again.',
       },
       appearance: {
         title: 'Appearance',
@@ -154,7 +250,6 @@ export default {
       placeholder: 'Enter your auth key',
       save: 'Save',
       clear: 'Clear',
-      currentKey: 'Current key:',
     },
     leaderboard: {
       topPlayers: 'Top 5 Players',

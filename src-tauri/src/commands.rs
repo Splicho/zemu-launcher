@@ -4,11 +4,14 @@ use crate::debug_log;
 use crate::discord;
 use crate::game;
 use crate::models::{
-    AppTheme, AuthToken, CommandResult, DiscordRpcMode, GameLaunchState, OAuthCallbackPayload,
-    UpdateCheckResult, UpdateStatus, VersionManifest, WineConfig, WineRuntime,
+    AppTheme, AuthToken, CommandResult, DiscordRpcMode, GameLaunchState,
+    OAuthCallbackPayload, SteamcmdResult, UpdateCheckResult, UpdateStatus, VersionManifest,
+    WineConfig, WineRuntime,
 };
+use std::path::PathBuf;
 use crate::session_id::{self, SessionIdCache};
 use crate::state::AppState;
+use crate::steam;
 use crate::storage;
 use crate::update;
 use crate::wine;
@@ -196,6 +199,106 @@ pub fn game_select_directory(app: tauri::AppHandle) -> Result<Option<String>, St
 #[tauri::command]
 pub fn game_is_installed(app: tauri::AppHandle) -> Result<bool, String> {
     game::is_game_installed(&app).map_err(|e| e.to_string())
+}
+
+/// True if both `.zemu-install-v1` and `H1Z1.exe` exist at the
+/// directory root. Used by the onboarding wizard's `setup-checks` to
+/// detect a previously-completed SteamCMD auto-download and skip
+/// Step 3 entirely (don't re-download 15 GB).
+#[tauri::command]
+pub fn game_detect_base_game_installed(directory: String) -> Result<bool, String> {
+    storage::detect_base_game_installed(&directory).map_err(|e| e.to_string())
+}
+
+/// Cheap path check exposed to the frontend. Used by `setup-checks.ts`
+/// to distinguish "empty folder" from "manually-dropped PS3 folder
+/// with `H1Z1.exe` at the root".
+#[tauri::command]
+pub fn game_path_exists(path: String) -> Result<bool, String> {
+    storage::path_exists(&path).map_err(|e| e.to_string())
+}
+
+/// Always-true: there is no longer any "is the sidecar present?"
+/// check. Kept as a function for API stability with the React
+/// wizard's probe call.
+#[tauri::command]
+pub fn steam_bridge_is_available(app: tauri::AppHandle) -> Result<bool, String> {
+    Ok(crate::depot::is_available(&app))
+}
+
+/// Returns the current Steam auth status. The renderer only ever
+/// sees a boolean + the public account name; the refresh token is
+/// held in the OS keychain and never crosses an IPC boundary.
+#[tauri::command]
+pub fn steam_login_status(app: tauri::AppHandle) -> Result<crate::depot::SteamAuthStatus, String> {
+    Ok(crate::depot::get_status(&app))
+}
+
+/// Spawn the Steam login flow in `login` mode. The bridge emits
+/// `steam-qr` / `steam-scanned` / `steam-authed` / `steam-error`
+/// events on the AppHandle as the player scans the QR and approves
+/// on their phone.
+#[tauri::command]
+pub fn steam_login_begin(
+    app: tauri::AppHandle,
+    _state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    crate::depot::login_qr(app).map_err(|e| e.to_string())
+}
+
+/// Cooperative cancel for an in-flight Steam login. The download
+/// runs to completion on its dedicated thread; the React wizard's
+/// "cancel" button flips the UI back to the idle state and ignores
+/// further events.
+#[tauri::command]
+pub fn steam_login_cancel(app: tauri::AppHandle) -> Result<(), String> {
+    crate::depot::cancel(&app);
+    Ok(())
+}
+
+/// Forget the stored refresh token + account name. Called when the
+/// bridge reports the token has expired, or when the user clicks
+/// "Sign out" in settings.
+#[tauri::command]
+pub fn steam_logout(app: tauri::AppHandle) -> Result<(), String> {
+    crate::depot::logout(&app).map_err(|e| e.to_string())
+}
+
+/// Spawn the depot download using the refresh token already
+/// stored in the OS keychain. Used when a returning user has
+/// previously completed the QR gate — no second scan needed.
+///
+/// Emits `depot-progress` / `depot-done` / `depot-error` to the
+/// wizard while it runs. The returned `SteamcmdResult` is shaped
+/// to match what the wizard consumed from the (now-removed)
+/// SteamCMD code path.
+#[tauri::command]
+pub async fn steam_install_depot(
+    app: tauri::AppHandle,
+    _state: tauri::State<'_, AppState>,
+    dest_dir: String,
+) -> Result<SteamcmdResult, String> {
+    crate::depot::download_depot(app, PathBuf::from(dest_dir))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Scan-and-go: kick off the QR login and the depot download on
+/// the same dedicated runtime. The wizard subscribes once to
+/// `steam-qr` / `steam-scanned` / `steam-authed` / `depot-progress`
+/// / `depot-done` / `depot-error` and the experience feels like
+/// "the game starts downloading as soon as I scan the code".
+///
+/// Returns immediately after spawning the orchestrator thread; the
+/// command is intentionally fire-and-forget so the React UI can
+/// keep painting the QR while the user opens the Steam mobile app.
+#[tauri::command]
+pub fn steam_start_install_pipeline(
+    app: tauri::AppHandle,
+    dest_dir: String,
+) -> Result<(), String> {
+    crate::depot::start_scan_and_go(app, PathBuf::from(dest_dir))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -573,6 +676,21 @@ pub fn launcher_set_auth_key(app: tauri::AppHandle, key: String) -> Result<(), S
     storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())
 }
 
+/// Detect the user's Steam installation and return the absolute path
+/// of the depot download folder (`<steam_root>/steamapps/content/app_433850/depot_433851/`).
+///
+/// Returns `None` when no Steam installation can be located. The
+/// renderer treats `None` as "no concrete path available" and falls
+/// back to the generic `steamapps/content/...` hint without surfacing
+/// an error to the user.
+///
+/// Detection runs entirely locally: registry lookup on Windows, common
+/// path probes on every platform. No network or filesystem walk.
+#[tauri::command]
+pub fn steam_detect_depot_path() -> Option<String> {
+    steam::detect_kotk_depot_path()
+}
+
 pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static
 {
     tauri::generate_handler![
@@ -643,7 +761,17 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         launcher_get_autostart_enabled,
         launcher_set_autostart_enabled,
         launcher_get_auth_key,
-        launcher_set_auth_key
+        launcher_set_auth_key,
+        steam_bridge_is_available,
+        steam_login_status,
+        steam_login_begin,
+        steam_login_cancel,
+        steam_logout,
+        steam_install_depot,
+        steam_start_install_pipeline,
+        game_detect_base_game_installed,
+        game_path_exists,
+        steam_detect_depot_path
     ]
 }
 

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useHashRouter } from '@/hooks/use-hash'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -12,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { SUPPORTED_LANGUAGES, normalizeLanguageCode, setPersistedLanguage } from '@/lib/i18n'
+import { clearOnboardingCompleted } from '@/lib/onboarding'
 
 export type DiscordRpcMode = 'always' | 'playing_only' | 'never'
 
@@ -48,6 +51,7 @@ const RPC_MODE_OPTIONS: { value: DiscordRpcMode; labelKey: string; descriptionKe
  */
 export function GeneralPage() {
   const { t, i18n } = useTranslation()
+  const { navigate } = useHashRouter()
   const [discordEnabled, setDiscordEnabled] = useState<boolean | null>(null)
   const [rpcMode, setRpcMode] = useState<DiscordRpcMode | null>(null)
   const [autostartEnabled, setAutostartEnabled] = useState<boolean | null>(null)
@@ -85,6 +89,14 @@ export function GeneralPage() {
   const handleLanguageChange = (code: string) => {
     setPersistedLanguage(code as typeof SUPPORTED_LANGUAGES[number]['code'])
     void i18n.changeLanguage(code)
+  }
+
+  const handleRerunSetup = () => {
+    // Drop the "completed" flag so the gate re-routes the user into
+    // the wizard at `#/onboarding`. The on-disk checks (key + folder +
+    // base game) will pre-fill whichever steps are already satisfied.
+    clearOnboardingCompleted()
+    navigate('#/onboarding')
   }
 
   return (
@@ -199,6 +211,28 @@ export function GeneralPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-5">
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{t('settings.general.rerunSetup')}</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {t('settings.general.rerunSetupDesc')}
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleRerunSetup}
+              aria-label={t('settings.general.rerunSetup')}
+            >
+              {t('settings.general.rerunSetup')}
+            </Button>
           </div>
         </div>
 

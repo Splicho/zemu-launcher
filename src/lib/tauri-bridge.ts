@@ -78,6 +78,27 @@ export interface UpdateInfo {
   isFileLevel?: boolean
 }
 
+export interface DepotProgress {
+  stage?: string | null
+  message?: string | null
+  bytesDone?: number | null
+  bytesTotal?: number | null
+  speedBps?: number | null
+  etaSeconds?: number | null
+}
+
+export interface SteamAuthStatus {
+  authed: boolean
+  accountName?: string | null
+}
+
+export interface SteamcmdResult {
+  finalDir: string
+  depotBytes: number
+  durationMs: number
+  logTail: string
+}
+
 function safeStringify(value: unknown): string {
   try {
     return JSON.stringify(value)
@@ -188,6 +209,121 @@ function setupCompatibilityBridge() {
       }
     },
     launchGame: () => invoke<{ success: boolean; error?: string }>('game_launch'),
+    detectBaseGameInstalled: (directory: string) =>
+      invoke<boolean>('game_detect_base_game_installed', { directory }),
+    pathExists: (path: string) => invoke<boolean>('game_path_exists', { path }),
+  }
+
+  window.steamApi = {
+    isAvailable: () => invoke<boolean>('steam_bridge_is_available'),
+    loginStatus: () =>
+      invoke<SteamAuthStatus>('steam_login_status'),
+    loginBegin: () => invoke<void>('steam_login_begin'),
+    loginCancel: () => invoke<void>('steam_login_cancel'),
+    logout: () => invoke<void>('steam_logout'),
+    installDepot: (destDir: string) =>
+      invoke<SteamcmdResult>('steam_install_depot', { destDir }),
+    /**
+     * Scan-and-go: kicks off the QR login and the depot download
+     * on the same runtime. Subscribers on `steam-qr` /
+     * `steam-scanned` / `steam-authed` / `depot-progress` /
+     * `depot-done` / `depot-error` get every event for both
+     * phases — the QR scan transitions straight into the download
+     * with no extra user click required.
+     */
+    startInstallPipeline: (destDir: string) =>
+      invoke<void>('steam_start_install_pipeline', { destDir }),
+    onQr: (callback: (dataUrl: string) => void): (() => void) => {
+      let unlistenPromise: Promise<UnlistenFn> | null = null
+      listen<string>('steam-qr', (event) => {
+        callback(event.payload)
+      }).then((unlisten) => {
+        unlistenPromise = Promise.resolve(unlisten)
+      })
+      return () => {
+        if (unlistenPromise) {
+          void unlistenPromise.then((unlisten) => unlisten())
+        }
+      }
+    },
+    onScanned: (callback: () => void): (() => void) => {
+      let unlistenPromise: Promise<UnlistenFn> | null = null
+      listen<void>('steam-scanned', () => {
+        callback()
+      }).then((unlisten) => {
+        unlistenPromise = Promise.resolve(unlisten)
+      })
+      return () => {
+        if (unlistenPromise) {
+          void unlistenPromise.then((unlisten) => unlisten())
+        }
+      }
+    },
+    onAuthed: (callback: (accountName: string) => void): (() => void) => {
+      let unlistenPromise: Promise<UnlistenFn> | null = null
+      listen<string>('steam-authed', (event) => {
+        callback(event.payload)
+      }).then((unlisten) => {
+        unlistenPromise = Promise.resolve(unlisten)
+      })
+      return () => {
+        if (unlistenPromise) {
+          void unlistenPromise.then((unlisten) => unlisten())
+        }
+      }
+    },
+    onLoginError: (callback: (message: string) => void): (() => void) => {
+      let unlistenPromise: Promise<UnlistenFn> | null = null
+      listen<string>('steam-error', (event) => {
+        callback(event.payload)
+      }).then((unlisten) => {
+        unlistenPromise = Promise.resolve(unlisten)
+      })
+      return () => {
+        if (unlistenPromise) {
+          void unlistenPromise.then((unlisten) => unlisten())
+        }
+      }
+    },
+    onDepotProgress: (callback: (progress: DepotProgress) => void): (() => void) => {
+      let unlistenPromise: Promise<UnlistenFn> | null = null
+      listen<DepotProgress>('depot-progress', (event) => {
+        callback(event.payload)
+      }).then((unlisten) => {
+        unlistenPromise = Promise.resolve(unlisten)
+      })
+      return () => {
+        if (unlistenPromise) {
+          void unlistenPromise.then((unlisten) => unlisten())
+        }
+      }
+    },
+    onDepotDone: (callback: (result: { finalDir: string; bytes: number }) => void): (() => void) => {
+      let unlistenPromise: Promise<UnlistenFn> | null = null
+      listen<{ finalDir: string; bytes: number }>('depot-done', (event) => {
+        callback(event.payload)
+      }).then((unlisten) => {
+        unlistenPromise = Promise.resolve(unlisten)
+      })
+      return () => {
+        if (unlistenPromise) {
+          void unlistenPromise.then((unlisten) => unlisten())
+        }
+      }
+    },
+    onDepotError: (callback: (message: string) => void): (() => void) => {
+      let unlistenPromise: Promise<UnlistenFn> | null = null
+      listen<string>('depot-error', (event) => {
+        callback(event.payload)
+      }).then((unlisten) => {
+        unlistenPromise = Promise.resolve(unlisten)
+      })
+      return () => {
+        if (unlistenPromise) {
+          void unlistenPromise.then((unlisten) => unlisten())
+        }
+      }
+    },
   }
 
   window.discordAPI = {
@@ -415,6 +551,14 @@ declare global {
        */
       openInFileManager: (directory: string) => Promise<void>
       isInstalled: () => Promise<boolean>
+      /**
+       * True iff `.zemu-install-v1` AND `H1Z1.exe` exist at the
+       * directory root. Used by the wizard to detect a previously-
+       * completed SteamCMD auto-download.
+       */
+      detectBaseGameInstalled: (directory: string) => Promise<boolean>
+      /** Cheap path existence check. */
+      pathExists: (path: string) => Promise<boolean>
       getLocalVersion: () => Promise<VersionManifest | null>
       checkUpdate: () => Promise<UpdateInfo>
       downloadUpdate: (gameDirectory: string) => Promise<{ success: boolean; error?: string }>
@@ -424,6 +568,31 @@ declare global {
       onUpdateProgress: (callback: (status: UpdateStatus) => void) => () => void
       onLaunchState: (callback: (state: GameLaunchState) => void) => () => void
       launchGame: () => Promise<{ success: boolean; error?: string }>
+    }
+    steamApi: {
+      isAvailable: () => Promise<boolean>
+      loginStatus: () => Promise<SteamAuthStatus>
+      loginBegin: () => Promise<void>
+      loginCancel: () => Promise<void>
+      logout: () => Promise<void>
+      installDepot: (destDir: string) => Promise<SteamcmdResult>
+      /**
+       * Scan-and-go: kicks off the QR login and the depot download
+       * on the same runtime. Subscribers on `steam-qr` /
+       * `steam-scanned` / `steam-authed` / `depot-progress` /
+       * `depot-done` / `depot-error` get every event for both
+       * phases.
+       */
+      startInstallPipeline: (destDir: string) => Promise<void>
+      onQr: (callback: (dataUrl: string) => void) => () => void
+      onScanned: (callback: () => void) => () => void
+      onAuthed: (callback: (accountName: string) => void) => () => void
+      onLoginError: (callback: (message: string) => void) => () => void
+      onDepotProgress: (callback: (progress: DepotProgress) => void) => () => void
+      onDepotDone: (
+        callback: (result: { finalDir: string; bytes: number }) => void
+      ) => () => void
+      onDepotError: (callback: (message: string) => void) => () => void
     }
     discordAPI: {
       setInLauncher: () => void

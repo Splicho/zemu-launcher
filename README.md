@@ -14,6 +14,7 @@ for login, and pulls game assets down as `.tar.zst` archives.
 | GitHub Actions release pipeline (NSIS + updater JSON) | ✅ scaffolded |
 | Discord Rich Presence | ✅ scaffolded (placeholder client ID) |
 | Auth.js / OAuth integration with zemu-website | ✅ wired (Discord / Steam hosted + JSON credentials login) |
+| **SteamKit integration** (QR login + depot download) | ✅ implemented on `steamroom` + `steamroom-client`; single-file `src-tauri/src/depot.rs`, end-to-end scan-and-go path active |
 | Frontend UI (login, install, settings, news, play) | ⏳ not started — coming next |
 
 This commit ships the **backend + release plumbing** so the frontend can be
@@ -36,6 +37,87 @@ built on top of a working IPC surface.
   email+password.
 - **Discord**: `discord-rich-presence` crate, runs in a background worker
   thread with auto-reconnect
+
+## Steam integration
+
+The launcher authenticates against Steam with QR-code login (the user
+scans a code in the Steam mobile app), stores the refresh token in the
+OS keychain, and downloads the depot for Z1 Battle Royale (app
+`433850` / depot `433851`, pinned to manifest `6098349229565958949`).
+
+Everything runs **in-process in Rust** on a single Tokio runtime —
+no Node child, no esbuild bundle, no `node_modules`, no
+`DepotDownloader.exe`, no `steamcmd`. The implementation lives in
+`src-tauri/src/depot.rs` and is a thin orchestrator on top of the
+[`steamroom`](https://crates.io/crates/steamroom) +
+[`steamroom-client`](https://crates.io/crates/steamroom-client) crates
+(the cleanroom Rust reimplementations of SteamKit2 + DepotDownloader
+that `steamroom-cli` ships as the official replacement for both).
+
+### What `depot.rs` actually does
+
+It does not implement the Steam protocol itself; it only wires
+`steamroom` / `steamroom-client` calls into our Tauri event surface.
+Concretely, every public function maps 1:1 to a phase of the canonical
+SteamKit2 flow:
+
+| Function              | SteamKit2 phase                                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `login_qr(app)`       | `BeginAuthSessionViaQR` → render the challenge URL as a PNG data URL → poll until the user approves on phone → return `AuthTokens { refresh_token, access_token, account_name }`. |
+| `download_depot`      | (skipping QR) reuse a stored refresh token, then run the full download pipeline below.                       |
+| `drive_download`      | CM logon via `LoginBuilder::with_refresh_token(...).login()` → `get_depot_decryption_key` → `get_cdn_servers` → `get_manifest_request_code` → `get_cdn_auth_token` → `CdnClient::download_manifest_pooled` → `DepotManifest::parse` → `DepotJob::download` (concurrent chunk fetcher, CDN pool rotation, retry with backoff, SHA-1 verification, content-addressed reuse for delta updates, atomic file writes). |
+
+`drive_download` is the function the user-visible "scan-and-go" entry
+point ultimately invokes after the QR phase succeeds; it is also what
+the `install_depot` (returning-user) path calls when a refresh token
+is already in the keychain.
+
+### Why `steamroom` is the right choice
+
+| Concern                                | What `steamroom` gives us                                                                                                              |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| QR auth                                | `LoginBuilder::new().with_qr().begin()` — uses Steam's OAuth-ish `BeginAuthSessionViaQR` proto, no `steam-auth-rs` HTTP detour, no `LoginSession::start_with_qr` console. |
+| CM logon                               | `LoginBuilder::new().with_refresh_token(account, token).login()` — passes the QR-issued refresh token untouched to the CM logon message's `access_token` field. SteamKit2's documented pattern. No JWT signature rewriting, no `iss` claim forgery, no `LoginError(Invalid)` debugging session. |
+| Manifest wire format                   | `DepotManifest::parse` handles both V4 (`0x71F617D0` payload, `0x1F4812BE` metadata) and V5 (`0x1B81B817` payload, `0x1F4DB10B` metadata, `0x1B81B813` signature, `0xD64BF064` end) on-wire layouts, including the magic-prefixed `<payload><metadata><signature><endmagic>` concatenated blobs. |
+| CDN auth token                         | `client.get_cdn_auth_token(app, depot, host)` — the same service-method RPC Steam uses internally. Soft-fails (logs + continues without token) for depots that reject it, matching `steamroom-cli`'s behavior. |
+| CDN server selection                   | `CdnServerPool` rotates across every server Steam returns on a failed request. Steam's directory often lists internal Valve hosts at the top of the load-sorted list that don't resolve publicly — picking the first one (which the old bridge did) deterministically 403'd. |
+| Concurrent chunk download              | `CdnChunkFetcher` + `DepotJob` give concurrent HTTPS chunk pulls with retry-with-backoff, rate-limit-aware server cooldown, and SHA-1 verification of every assembled file. |
+| Delta updates / resume                 | `DepotConfig` + content-addressed chunk reuse via `old_manifest_files` / `old_file_layouts`. A re-run only downloads changed chunks by content SHA, regardless of which file they live in. |
+| Filename decryption                    | `manifest.decrypt_filenames(&depot_key)` — AES-256-ECB + AES-256-CBC over the depot key, for depots that ship with encrypted filenames. |
+
+### Tauri event surface
+
+The React wizard subscribes to the same event names it did before —
+the rewrite preserves the IPC contract byte-for-byte:
+
+| Event              | Payload                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------ |
+| `steam-qr`         | `string` — PNG data URL (`data:image/png;base64,…`) the wizard drops into an `<img src>`.        |
+| `steam-scanned`    | `()` — user scanned the QR (Steam returned `pollAuthSessionStatus = Success`).                   |
+| `steam-authed`     | `string` — public account name from the `AuthTokens`.                                            |
+| `steam-error`      | `string` — error message; the wizard flips to a "retry" CTA.                                     |
+| `depot-progress`   | `{ stage, message, bytesDone, bytesTotal, speedBps, etaSeconds }` — the wizard's progress card.  |
+| `depot-done`       | `{ finalDir: string, bytes: number }` — terminal event; the wizard advances to the next step.   |
+| `depot-error`      | `string` — same shape as `steam-error` but for the download phase.                               |
+
+### Why not Node / SteamCMD / DepotDownloader
+
+| Approach                              | Why we don't use it today                                                                                |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **SteamCMD anonymous**                | Disallowed by Valve post-2022; the `+download_depot` path for app 433850 returns "missing app info".     |
+| **`steamcmd.exe` + auth**             | Still requires the same Steam login flow the SteamKit crate gives us, plus it ships an extra binary.     |
+| **DepotDownloader with `-qr`**        | The C# reference launcher's approach. Requires an interactive console to render the QR + drive SteamKit2's `InitializeSteam`; spawning it from a non-interactive Node child on Windows reliably fails with `AsyncJobFailedException` inside SteamKit2. We hit this in production. |
+| **Node bridge (`steam-bridge.cjs`)**  | Required bundling SteamKit2 ports + ~100 MB of `node_modules` (lzma, protobufjs, @protobufjs/aspromise, etc.); one Node bump could break the externals. We deleted it. |
+| **Custom SteamKit2 in Rust** (old)    | Wrote our own QR client, our own CM logon, our own JWT-claim rewriter, our own ZIP + magic-prefixed protobuf unwrapper, our own CDN auth token RPC, and our own per-file HTTPS downloader. Each step needed its own debug session because every failure mode was opaque to a library we'd have to debug too. We deleted it. |
+| **`steamroom` / `steamroom-client`**  | One binary, no bundling hell, no env-var token leak, real `Result`-typed errors, and the protocol surface we get matches what the official `steamroom-cli` (the canonical DepotDownloader replacement) calls into. |
+
+### Refresh-token storage
+
+The refresh token never crosses an IPC boundary. `LoginBuilder::with_qr().begin()` returns it
+in-process via `ApprovedAuth::tokens()`. We persist it to the OS keychain
+with `tauri-plugin-keyring-store`
+(`service: <bundle id>`, `account: "steam.refresh_token"`). The React
+wizard only ever sees the public `accountName` via `steam_login_status`.
 
 ## Repository layout
 
@@ -70,7 +152,11 @@ built on top of a working IPC surface.
 │       ├── game.rs               # Game directory mgmt + H1Z1.exe launch + process-tree monitor
 │       ├── api.rs                # Generic bearer-auth passthrough to zemu-website
 │       ├── discord.rs            # Discord Rich Presence worker thread
-│       └── debug_log.rs          # Rotating launch log file
+│       ├── debug_log.rs          # Rotating launch log file
+│       ├── steam.rs              # Local Steam install detection (registry / paths)
+│       ├── depot.rs              # Steam login + depot download (thin orchestrator over steamroom)
+│       ├── launch_args.rs        # Steam launch arg builder (-condext, -novid, +app_id, ...)
+│       └── wine.rs               # Wine registry for Linux launch
 ├── .github/workflows/
 │   ├── ci.yml                    # Warm Rust + Vite cache on every push / PR
 │   └── release.yml               # Build on `v*` tag, publish NSIS + updater JSON
@@ -220,6 +306,13 @@ Events emitted from Rust → frontend:
 - `update-progress` — `UpdateStatus` payload, fired on every progress tick during download / extract
 - `auth:oauth-callback` — `OAuthCallbackPayload` payload, fired when the OAuth callback URL is parsed (deep-link or local HTTP)
 - `game-launch-state` — `GameLaunchState` payload, fired when the launching/running state changes
+- `steam-qr` — string payload (data URL of the current QR PNG); fired once per QR refresh
+- `steam-scanned` — unit payload; fired the moment Steam sees the user scan the code on their phone
+- `steam-authed` — string payload (`account_name`); fired after the phone confirms the login
+- `steam-error` — string payload; fatal Steam-side error (auth failure, manifest miss, etc.)
+- `depot-progress` — `{ stage, message, bytesDone, bytesTotal, speedBps, etaSeconds }`; fired on every progress tick during the Steam download
+- `depot-done` — `{ finalDir, bytes }`; fired when the depot finishes downloading successfully
+- `depot-error` — string payload; fatal download error (CDN 404 after retries, disk write error, etc.)
 
 ## Next steps (frontend work)
 

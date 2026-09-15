@@ -3,6 +3,7 @@ mod auth;
 mod child_process;
 mod commands;
 mod debug_log;
+mod depot;
 mod discord;
 mod game;
 mod launch_args;
@@ -11,6 +12,7 @@ mod oauth_server;
 mod public_api;
 mod session_id;
 mod state;
+mod steam;
 mod storage;
 mod update;
 mod wine;
@@ -26,6 +28,7 @@ pub fn run() {
     let app_state = AppState::default();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_keyring_store::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             commands::focus_primary_window(app);
