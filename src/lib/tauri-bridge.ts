@@ -416,6 +416,10 @@ function setupCompatibilityBridge() {
 
   window.launcherAPI = {
     setRuntimeUpdateUrl: (url: string) => invoke<void>('launcher_set_runtime_update_url', { url }),
+    /** Push the realtime socket URL from the renderer to the Rust side. Called
+     * once on startup so the socket loop reads the correct URL without needing
+     * the Rust side to mirror Vite env vars. */
+    setRealtimeUrl: (url: string) => invoke<void>('launcher_set_realtime_url', { url }),
     /**
      * Returns the currently saved auth key, if any. The value is stored
      * locally and is never validated against a server.
@@ -653,6 +657,8 @@ declare global {
     }
     launcherAPI: {
       setRuntimeUpdateUrl: (url: string) => Promise<void>
+      /** Push the realtime socket URL from the renderer to the Rust side. */
+      setRealtimeUrl: (url: string) => Promise<void>
       /** Returns the currently saved auth key, if any. */
       getAuthKey: () => Promise<string | null>
       /** Persist a new auth key. An empty string clears the key. */

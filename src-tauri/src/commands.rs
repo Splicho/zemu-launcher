@@ -180,6 +180,16 @@ pub fn launcher_set_runtime_update_url(
 }
 
 #[tauri::command]
+pub fn launcher_set_realtime_url(
+    _app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    url: String,
+) -> Result<(), String> {
+    state.set_realtime_url(url);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn launcher_set_oauth_callback_protocol(
     app: tauri::AppHandle,
     protocol: String,
@@ -799,6 +809,7 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         wine_select_runtime_executable,
         launcher_set_update_base_url,
         launcher_set_runtime_update_url,
+        launcher_set_realtime_url,
         launcher_set_oauth_callback_protocol,
         launcher_set_api_base_url,
         game_select_directory,

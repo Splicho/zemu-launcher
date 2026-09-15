@@ -17,6 +17,7 @@ import {
   useFriendsRemove,
   useFriendsRequest,
   useFriendsSearch,
+  useFriendsRealtimeSync,
 } from '@/hooks/use-friends'
 import {
   PeopleSection,
@@ -68,6 +69,11 @@ const SKELETON_RESULTS = Array.from({ length: 4 }, (_, i) => ({
  * search form, and the per-row action buttons.
  */
 export function FriendsPanel({ active }: FriendsPanelProps) {
+  // Subscribe to realtime friend-change events when the panel is open.
+  // The Rust socket client emits `friends-changed` whenever a friend
+  // request is created / accepted / declined / cancelled / removed.
+  useFriendsRealtimeSync(active)
+
   const graphQuery = useFriendsGraph({ enabled: active })
   const requestMutation = useFriendsRequest()
   const acceptMutation = useFriendsAccept()

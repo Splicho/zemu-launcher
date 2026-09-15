@@ -5,6 +5,8 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query'
+import { listen } from '@tauri-apps/api/event'
+import { useEffect } from 'react'
 
 import {
   dispatchFriends,
@@ -23,6 +25,34 @@ export const friendsKeys = {
   all: ['friends'] as const,
   graph: () => [...friendsKeys.all, 'graph'] as const,
   search: (query: string) => [...friendsKeys.all, 'search', query] as const,
+}
+
+/**
+ * Subscribes to the `friends-changed` Tauri event emitted by the Rust
+ * realtime socket client (`src-tauri/src/friends_realtime.rs`). When
+ * received, invalidates the whole friends cache so the FriendsPanel
+ * re-fetches without polling.
+ *
+ * Call this once in the component tree that owns the FriendsPanel.
+ * No-ops outside of Tauri (the event listener is a no-op in a browser).
+ *
+ * @param enabled - pass `true` when the user is logged in and the
+ *   friends panel may be shown. Prevents unnecessary event listeners
+ *   for logged-out users.
+ */
+export function useFriendsRealtimeSync(enabled: boolean) {
+  const qc = useQueryClient()
+  useEffect(() => {
+    if (!enabled) return
+
+    const unlistenPromise = listen('friends-changed', () => {
+      void qc.invalidateQueries({ queryKey: friendsKeys.all })
+    })
+
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten())
+    }
+  }, [enabled, qc])
 }
 
 /**

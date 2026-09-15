@@ -6,6 +6,7 @@ mod debug_log;
 mod depot;
 mod discord;
 mod friends;
+mod friends_realtime;
 mod game;
 mod launch_args;
 mod models;
@@ -27,6 +28,13 @@ use url::Url;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = AppState::default();
+
+    // One-shot shutdown channel. When the app exits, the `Sender` is dropped
+    // and `rx.await` resolves, stopping the socket loop cleanly.
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    // Keep the sender alive for the lifetime of the app. Dropping it at
+    // app exit will close the channel and wake the socket loop.
+    std::mem::forget(shutdown_tx);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_keyring_store::init())
@@ -157,6 +165,10 @@ pub fn run() {
             if let Err(error) = discord::set_in_launcher(app.handle()) {
                 eprintln!("[startup] failed to queue initial launcher activity: {error}");
             }
+
+            // Start the friends realtime socket. Runs in the background,
+            // reconnecting with exponential back-off until the app exits.
+            friends_realtime::spawn(app.handle().clone(), shutdown_rx);
 
             #[cfg(any(target_os = "linux", windows))]
             {

@@ -27,6 +27,12 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 log = "0.4"
 qrcode = { version = "0.14", default-features = false, features = ["image"] }
 rand = "0.8"
+# Socket.IO v4 client for the friends realtime connection.
+# Keeps the socket lifecycle (auth, reconnect, event forwarding) in the
+# Rust backend so the renderer stays unaware of the protocol.
+rust_socketio = { version = "0.6", features = ["async"] }
+# Tracing facade used by rust_socketio internally.
+tracing = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 rfd = "0.14"
 serde = { version = "1.0", features = ["derive"] }

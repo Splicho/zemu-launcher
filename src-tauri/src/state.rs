@@ -27,6 +27,10 @@ pub struct AppState {
     pub pending_oauth_callback: Arc<Mutex<Option<OAuthCallbackPayload>>>,
     pub processed_oauth_states: Arc<Mutex<HashMap<String, i64>>>,
     pub runtime_update_url: Arc<Mutex<Option<String>>>,
+    /// WebSocket URL for the friends realtime socket server.
+    /// Set by the renderer on startup via `set_realtime_url` so the Rust
+    /// side doesn't need to mirror Vite env vars.
+    pub realtime_url: Arc<Mutex<Option<String>>>,
 }
 
 impl AppState {
@@ -149,5 +153,16 @@ impl AppState {
 
     pub fn get_update_base_url(&self) -> Option<String> {
         self.get_runtime_update_url()
+    }
+
+    pub fn set_realtime_url(&self, url: String) {
+        let trimmed = url.trim().trim_end_matches('/').to_string();
+        if let Ok(mut guard) = self.realtime_url.lock() {
+            *guard = if trimmed.is_empty() { None } else { Some(trimmed) };
+        }
+    }
+
+    pub fn get_realtime_url(&self) -> Option<String> {
+        self.realtime_url.lock().ok().and_then(|g| g.clone())
     }
 }
