@@ -1,0 +1,79 @@
+# ZEmu Launcher End User Licence Agreement
+
+**Version 1.0**
+
+Copyright (c) 2024–2026 ZEmu. All rights reserved.
+
+## Preamble
+
+ZEmu Launcher is open source in the spirit of transparency. You are free to view, study, and submit improvements. You are not free to redistribute, republish, or present this software or its derivative works as your own, or to modify it without written permission from ZEmu.
+
+If you agree to these terms, you may download and use ZEmu Launcher. If you do not agree, do not use the software.
+
+## 1. Definitions
+
+**"Software"** means all source code, documentation, assets, configuration files, and other materials distributed by ZEmu, including all versions currently published and all future releases.
+
+**"You"** means the individual or entity accessing or using the Software.
+
+**"ZEmu"** means ZEmu and its authorised representatives.
+
+**"Contribution"** means any change, addition, or new material submitted by you through a pull request or patch that is accepted and merged into the official Software.
+
+## 2. Grant of Permission
+
+Subject to the terms of this EULA, ZEmu grants you a limited, non-exclusive, non-transferable, revocable licence to:
+
+- **(a)** download and use the Software for personal or internal purposes;
+- **(b)** view the source code for the purpose of understanding how the Software works;
+- **(c)** submit Contributions to the Project, subject to the Contributor Licence Agreement in `CONTRIBUTOR_LICENSE_AGREEMENT.md`.
+
+## 3. Prohibited Actions
+
+You may NOT do any of the following without the prior written consent of ZEmu:
+
+- **(a)** redistribute, share, publish, or re-publish the Software, in whole or in part, in any form or medium;
+- **(b)** modify, alter, adapt, translate, or create derivative works from the Software, in whole or in part;
+- **(c)** use the Software, or any derivative work of it, for commercial purposes, including as part of a paid product or service;
+- **(d)** present the Software, or any portion of it, as original work or as work created by you or anyone other than ZEmu;
+- **(e)** remove, obscure, or alter any copyright notice, trademark notice, or attribution included in or on the Software;
+- **(f)** sublicence, rent, lease, or lend the Software to any third party;
+- **(g)** use the Software in any way that violates applicable law or regulation.
+
+## 4. Attribution and Credit
+
+Any use of the Software, in whole or in part, must include and retain the following credit in all copies, distributions, and derivative works:
+
+> ZEmu Launcher — https://zemu.uk
+
+Where technically feasible, this credit must be visible to end users and must appear in any documentation or about-screen. For software derivatives, it must appear in the source code or relevant attribution file.
+
+Any Contribution you make, once merged, must retain attribution to you as specified in `CONTRIBUTOR_LICENSE_AGREEMENT.md`.
+
+## 5. Contributions
+
+If you submit a Contribution, you agree to the terms of `CONTRIBUTOR_LICENSE_AGREEMENT.md` in full. By opening a pull request you confirm you have read and agree to those terms.
+
+## 6. Intellectual Property
+
+The Software and all intellectual property rights in it are and remain the exclusive property of ZEmu. This EULA does not transfer ownership of any intellectual property to you. No licence is granted to you beyond the limited grant in Section 2.
+
+## 7. Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL ZEMU BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING BUT NOT LIMITED TO PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF OR INABILITY TO USE THE SOFTWARE, EVEN IF ZEMU HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+## 8. Termination
+
+This EULA is effective from the date you first access or use the Software and continues until terminated. Your rights under this EULA automatically terminate without notice if you breach any term. Upon termination, you must cease all use of the Software and destroy all copies in your possession.
+
+## 9. Governing Law
+
+This EULA is governed by the laws of England and Wales, without regard to conflict of law principles. Any dispute arising out of or in connection with this EULA shall be subject to the exclusive jurisdiction of the courts of England and Wales.
+
+## 10. Entire Agreement
+
+This EULA, together with `CONTRIBUTOR_LICENSE_AGREEMENT.md`, constitutes the entire agreement between you and ZEmu regarding the Software and supersedes all prior agreements, understandings, and communications.
+
+---
+
+> ⚠️ **Note:** This is a custom licence drafted for ZEmu. Before deploying this licence for an open source project, we strongly recommend having it reviewed by a qualified IP/technology lawyer in your jurisdiction.
