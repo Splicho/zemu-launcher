@@ -47,6 +47,34 @@ export default {
         title: 'Enregistrez votre clé d’authentification',
         description: 'La clé permet au jeu d’identifier votre session. Elle est stockée sur cette machine et n’est jamais envoyée à un serveur.',
         continue: 'Enregistrer et continuer',
+        howTo: {
+          trigger: 'Comment obtenir une clé d’authentification',
+          triggerAria: 'Ouvrir les instructions pour obtenir une clé d’authentification',
+          title: 'Comment obtenir une clé d’authentification',
+          description:
+            'Votre clé d’authentification est liée à votre compte Discord. Suivez ces étapes pour en générer une.',
+          openDiscord: 'Ouvrir Discord',
+          steps: {
+            join: {
+              title: 'Rejoindre le Discord',
+              description: 'Cliquez sur « Ouvrir Discord » ci-dessous pour rejoindre le serveur communautaire H1Z1 KotK.',
+            },
+            verify: {
+              title: 'Vérifier votre compte',
+              description:
+                'Sur le serveur, effectuez les étapes de vérification pour que le bot puisse identifier votre compte.',
+            },
+            commands: {
+              title: 'Allez dans #bot-commands',
+              description: 'Ouvrez le salon #bot-commands à l’intérieur du serveur Discord.',
+            },
+            authkey: {
+              title: 'Lancer /authkey',
+              description:
+                'Envoyez la commande /authkey et copiez la clé renvoyée par le bot. Collez-la à l’étape précédente.',
+            },
+          },
+        },
       },
       step2: {
         title: 'Choisissez le dossier d’installation',
@@ -130,10 +158,12 @@ export default {
     nav: {
       home: "Accueil",
       news: "Actualités",
+      streams: "Streams",
       leaderboard: "Classement",
       play: "Jouer",
       settings: "Paramètres",
       socialize: "Socialiser",
+      friends: "Amis",
       account: "Compte",
     },
     friends: {
@@ -323,6 +353,9 @@ export default {
     streams: {
       failedLoad: 'Impossible de charger les streams : {{error}}',
       title: "Streams",
+      subtitle: "Regardez des streams en direct de ZEmu sur Twitch et Kick.",
+      tabTwitch: "Twitch",
+      tabKick: "Kick",
       noStreams: "Personne ne fait un stream de ZEmu pour le moment. Revenez plus tard !",
       liveBadge: "EN DIRECT",
     },

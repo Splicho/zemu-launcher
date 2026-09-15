@@ -154,6 +154,7 @@ export default {
     nav: {
       home: 'Home',
       news: 'News',
+      streams: 'Streams',
       leaderboard: 'Leaderboard',
       play: 'Play',
       settings: 'Settings',
@@ -432,6 +433,9 @@ export default {
     streams: {
       failedLoad: 'Could not load streams: {{error}}',
       title: 'Streams',
+      subtitle: 'Watch live streams playing ZEmu on Twitch and Kick.',
+      tabTwitch: 'Twitch',
+      tabKick: 'Kick',
       noStreams: "Nobody is streaming ZEmu right now. Check back later!",
       liveBadge: 'LIVE',
     },

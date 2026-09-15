@@ -357,10 +357,23 @@ export function WindowRestore({ ...props }: IconProps) {
 }
 
 export function WindowClose({ ...props }: IconProps) {
-  
+
   return (
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="1em" height="1em" {...props}>
 	<path fill="currentColor" d="M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12z"></path>
+</svg>
+  )
+}
+
+export function Streams({ ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" {...props}>
+	<g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}>
+		<path d="M2 8a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z"></path>
+		<path d="M11 9.5v5l4-2.5z"></path>
+		<path d="M18 16.5l2 2"></path>
+		<path d="M20 14.5l2 2"></path>
+	</g>
 </svg>
   )
 }

@@ -43,6 +43,34 @@ export default {
         title: 'Salve sua chave de autenticação',
         description: 'A chave permite que o jogo identifique sua sessão. Ela fica armazenada nesta máquina e nunca é enviada a um servidor.',
         continue: 'Salvar e continuar',
+        howTo: {
+          trigger: 'Como obter uma chave de autenticação',
+          triggerAria: 'Abrir instruções para obter uma chave de autenticação',
+          title: 'Como obter uma chave de autenticação',
+          description:
+            'Sua chave de autenticação está vinculada à sua conta Discord. Siga estes passos para gerar uma.',
+          openDiscord: 'Abrir Discord',
+          steps: {
+            join: {
+              title: 'Entre no Discord',
+              description: 'Clique em "Abrir Discord" abaixo para entrar no servidor da comunidade H1Z1 KotK.',
+            },
+            verify: {
+              title: 'Verifique sua conta',
+              description:
+                'No servidor, conclua as etapas de verificação para que o bot consiga identificar sua conta.',
+            },
+            commands: {
+              title: 'Vá até #bot-commands',
+              description: 'Abra o canal #bot-commands dentro do servidor Discord.',
+            },
+            authkey: {
+              title: 'Execute /authkey',
+              description:
+                'Envie o comando /authkey e copie a chave que o bot retornar. Cole-a na etapa anterior.',
+            },
+          },
+        },
       },
       step2: {
         title: 'Escolha onde instalar',
@@ -126,10 +154,12 @@ export default {
     nav: {
       home: 'Início',
       news: 'Notícias',
+      streams: 'Transmissões',
       leaderboard: 'Ranking',
       play: 'Jogar',
       settings: 'Configurações',
       socialize: 'Socializar',
+      friends: 'Amigos',
       account: 'Conta',
     },
     friends: {
@@ -253,6 +283,8 @@ export default {
       gameDescription: 'ZEmu: King of the Kill é um battle royale competitivo e frenético. Paraquede e busque armas, munição, veículos e suprimentos para sobreviver. Enquanto o gás tóxico comprime o mapa, desenvolva uma estratégia vencedora e prepare-se para o confronto final.',
     },
     authKey: {
+      loadFailed: 'Não foi possível carregar a chave salva.',
+      saveFailed: 'Não foi possível salvar a chave. Tente novamente.',
       modalTitle: 'Chave de Autenticação',
       description: 'Insira sua chave de autenticação para jogar.',
       inputLabel: 'Chave de Autenticação',
@@ -380,6 +412,9 @@ export default {
     streams: {
       failedLoad: 'Não foi possível carregar as transmissões: {{error}}',
       title: 'Transmissões',
+      subtitle: 'Assista transmissões ao vivo de ZEmu na Twitch e na Kick.',
+      tabTwitch: 'Twitch',
+      tabKick: 'Kick',
       noStreams: 'Ninguém está transmitindo ZEmu agora. Volte mais tarde!',
       liveBadge: 'AO VIVO',
     },

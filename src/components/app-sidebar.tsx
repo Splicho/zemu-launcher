@@ -5,13 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import {
   DiscordFilled,
+  Friends,
   Home,
   Leaderboard,
   News,
+  Play,
   Socialize,
   Twitch,
   Twitter,
-  Users,
   YouTube,
 } from '@/components/icons'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -47,6 +48,7 @@ import { useUpdate } from '@/contexts/update-context'
 import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { CircularProgress } from '@/components/circular-progress'
 import { Badge } from '@/components/ui/badge'
+import { LiveIndicator } from '@/components/live-indicator'
 import { useIncomingRequestsCount } from '@/hooks/use-friends'
 import { useAuthContext } from '@/contexts/auth-context'
 import type { PropertiesSectionId } from '@/components/properties-sidebar'
@@ -241,6 +243,17 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                     <span>{t('nav.news')}</span>
                   </a>
                 </SidebarMenuButton>
+                {/* The Streams row carries a static red dot right after
+                    the label to flag "someone is live right now". Layout
+                    matches the website: dot sits in normal flow next to
+                    the text via `ml-auto`, no absolute positioning. */}
+                <SidebarMenuButton asChild isActive={isActive('/streams')} size="lg" className="px-4">
+                  <a href="#/streams">
+                    <Play className="size-5!" />
+                    <span>{t('nav.streams')}</span>
+                    <LiveIndicator className="ml-auto" />
+                  </a>
+                </SidebarMenuButton>
                 <SidebarMenuButton asChild isActive={isActive('/leaderboard')} size="lg" className="px-4 opacity-50 cursor-not-allowed pointer-events-none">
                   <span>
                     <Leaderboard className="size-5!" />
@@ -358,7 +371,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
               className="px-4 cursor-pointer"
               onClick={() => setFriendsOpen(true)}
             >
-              <Users className="size-5!" />
+              <Friends className="size-5!" />
               <span>{t('nav.friends')}</span>
               {incomingCount > 0 && (
                 <Badge

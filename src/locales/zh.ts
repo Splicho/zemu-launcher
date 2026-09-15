@@ -42,6 +42,32 @@ export default {
         title: '保存您的授权密钥',
         description: '该密钥用于让游戏识别您的会话。它存储在本机，永不上传到服务器。',
         continue: '保存并继续',
+        howTo: {
+          trigger: '如何获取授权密钥',
+          triggerAria: '打开获取授权密钥的说明',
+          title: '如何获取授权密钥',
+          description:
+            '您的授权密钥与您的 Discord 账号绑定。按照以下步骤生成一个。',
+          openDiscord: '打开 Discord',
+          steps: {
+            join: {
+              title: '加入 Discord',
+              description: '点击下方的"打开 Discord"加入 H1Z1 KotK 社区服务器。',
+            },
+            verify: {
+              title: '验证您的账户',
+              description: '在服务器中执行验证步骤，以便机器人识别您的账户。',
+            },
+            commands: {
+              title: '前往 #bot-commands 频道',
+              description: '在 Discord 服务器内打开 #bot-commands 频道。',
+            },
+            authkey: {
+              title: '运行 /authkey',
+              description: '发送 /authkey 命令并复制机器人返回的密钥，然后粘贴到上一步。',
+            },
+          },
+        },
       },
       step2: {
         title: '选择安装位置',
@@ -125,10 +151,12 @@ export default {
     nav: {
       home: '首页',
       news: '新闻',
+      streams: '直播',
       leaderboard: '排行榜',
       play: '开始游戏',
       settings: '设置',
       socialize: '社交',
+      friends: '好友',
       account: '账户',
     },
     friends: {
@@ -264,6 +292,8 @@ export default {
       gameSize: '15GB',
     },
     authKey: {
+      loadFailed: '无法加载已保存的密钥。',
+      saveFailed: '无法保存密钥，请重试。',
       modalTitle: '身份验证密钥',
       description: '输入您的身份验证密钥以开始游戏。',
       inputLabel: '身份验证密钥',
@@ -301,6 +331,9 @@ export default {
     streams: {
       failedLoad: '无法加载直播：{{error}}',
       title: '直播',
+      subtitle: '在 Twitch 和 Kick 上观看 ZEmu 的实时直播。',
+      tabTwitch: 'Twitch',
+      tabKick: 'Kick',
       noStreams: '当前没有用户在直播 ZEmu，敬请期待！',
       liveBadge: '直播中',
     },
