@@ -226,28 +226,30 @@ function FriendsListPage({
             <PeopleSection
               title={t('friends.sections.outgoing')}
               people={result.outgoing}
-              emptyMessage={t('friends.empty')}
               renderActions={(person) =>
                 renderRowActions(person, 'outgoing')
               }
             />
           ) : null}
 
-          <PeopleSection
-            title={t('friends.sections.friends')}
-            people={result.friends}
-            emptyMessage={t('friends.empty')}
-            renderActions={(person) =>
-              renderRowActions(person, 'friend')
-            }
-            headerAfter={
-              <FriendRequestsRow
-                people={result.incoming}
-                count={result.incoming.length}
-                onClick={onRequestsClick}
-              />
-            }
-          />
+          {result.friends.length > 0 ? (
+            <PeopleSection
+              title={t('friends.sections.friends')}
+              people={result.friends}
+              renderActions={(person) =>
+                renderRowActions(person, 'friend')
+              }
+              headerAfter={
+                result.incoming.length > 0 ? (
+                  <FriendRequestsRow
+                    people={result.incoming}
+                    count={result.incoming.length}
+                    onClick={onRequestsClick}
+                  />
+                ) : null
+              }
+            />
+          ) : null}
         </div>
       </ScrollArea>
 
@@ -402,7 +404,6 @@ function AddFriendsPage({ onBack }: AddFriendsPageProps) {
               <PeopleSection
                 title={t('friends.sections.resultsFound', { count: 0 })}
                 people={SKELETON_RESULTS}
-                emptyMessage={t('friends.empty')}
                 renderActions={() => null}
                 renderItem={() => <SearchResultSkeleton />}
               />
@@ -410,7 +411,6 @@ function AddFriendsPage({ onBack }: AddFriendsPageProps) {
               <PeopleSection
                 title={t('friends.sections.resultsFound', { count: result.results.length })}
                 people={result.results}
-                emptyMessage={t('friends.empty')}
                 renderActions={renderSearchRowActions}
               />
             )
@@ -466,11 +466,7 @@ function FriendRequestsPage({
       {/* Scrollable body: incoming request rows. */}
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-2 px-4 py-4">
-          {result.incoming.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground/80">
-              {t('friends.empty')}
-            </p>
-          ) : (
+          {result.incoming.length === 0 ? null : (
             <div className="flex flex-col">
               {result.incoming.map((person) => (
                 <div

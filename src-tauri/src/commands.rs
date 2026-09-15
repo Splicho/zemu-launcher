@@ -3,6 +3,7 @@ use crate::auth;
 use crate::debug_log;
 use crate::discord;
 use crate::friends;
+use crate::friends_debug_log;
 use crate::game;
 use crate::models::{
     AppTheme, AuthToken, CommandResult, DiscordRpcMode, GameLaunchState,
@@ -666,11 +667,30 @@ pub async fn friends_dispatch(
     action: String,
     payload: Option<friends::FriendsPayload>,
 ) -> friends::FriendsActionResult {
-    friends::friends_dispatch(app, action, payload).await
+    let payload_summary = match &payload {
+        Some(p) => format!(
+            "(target_id={:?}, query={:?}, display_name={:?})",
+            p.target_id, p.query, p.display_name
+        ),
+        None => String::from("(no payload)"),
+    };
+    friends_debug_log::write_with_app(&app, "ipc", &format!("dispatch: action={action} {payload_summary}"));
+
+    let result = friends::friends_dispatch(app.clone(), action.clone(), payload).await;
+
+    let ok_str = if result.ok { "ok" } else { "no" };
+    let reason = result.reason.as_deref().unwrap_or("-");
+    friends_debug_log::write_with_app(
+        &app,
+        "ipc",
+        &format!("dispatch: action={action} -> ok={ok_str} reason={reason}"),
+    );
+    result
 }
 
 #[tauri::command]
 pub async fn friends_list(app: tauri::AppHandle) -> friends::FriendsActionResult {
+    friends_debug_log::write_with_app(&app, "ipc", "list");
     friends::friends_list(app).await
 }
 
@@ -679,6 +699,7 @@ pub async fn friends_search(
     app: tauri::AppHandle,
     query: String,
 ) -> friends::FriendsActionResult {
+    friends_debug_log::write_with_app(&app, "ipc", &format!("search: query={query:?}"));
     friends::friends_search(app, query).await
 }
 
@@ -687,6 +708,7 @@ pub async fn friends_request(
     app: tauri::AppHandle,
     target_id: String,
 ) -> friends::FriendsActionResult {
+    friends_debug_log::write_with_app(&app, "ipc", &format!("request: target_id={target_id}"));
     friends::friends_request(app, target_id).await
 }
 
@@ -695,6 +717,7 @@ pub async fn friends_accept(
     app: tauri::AppHandle,
     target_id: String,
 ) -> friends::FriendsActionResult {
+    friends_debug_log::write_with_app(&app, "ipc", &format!("accept: target_id={target_id}"));
     friends::friends_accept(app, target_id).await
 }
 
@@ -703,6 +726,7 @@ pub async fn friends_decline(
     app: tauri::AppHandle,
     target_id: String,
 ) -> friends::FriendsActionResult {
+    friends_debug_log::write_with_app(&app, "ipc", &format!("decline: target_id={target_id}"));
     friends::friends_decline(app, target_id).await
 }
 
@@ -711,6 +735,7 @@ pub async fn friends_cancel(
     app: tauri::AppHandle,
     target_id: String,
 ) -> friends::FriendsActionResult {
+    friends_debug_log::write_with_app(&app, "ipc", &format!("cancel: target_id={target_id}"));
     friends::friends_cancel(app, target_id).await
 }
 
@@ -719,6 +744,7 @@ pub async fn friends_remove(
     app: tauri::AppHandle,
     target_id: String,
 ) -> friends::FriendsActionResult {
+    friends_debug_log::write_with_app(&app, "ipc", &format!("remove: target_id={target_id}"));
     friends::friends_remove(app, target_id).await
 }
 
@@ -727,7 +753,41 @@ pub async fn friends_save_profile(
     app: tauri::AppHandle,
     display_name: String,
 ) -> friends::FriendsActionResult {
+    friends_debug_log::write_with_app(&app, "ipc", &format!("save_profile: display_name={display_name:?}"));
     friends::friends_save_profile(app, display_name).await
+}
+
+// ---------------------------------------------------------------------------
+// Friends debug log commands
+//
+// Mirror of `debug_log_*` so users can read/clear the dedicated
+// `friendlist-debug.log` from the front-end (e.g. from a dev tools
+// panel) without touching the main `launcher-debug.log`.
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn friends_debug_log_path(app: tauri::AppHandle) -> String {
+    friends_debug_log::log_path_string(&app)
+}
+
+#[tauri::command]
+pub fn friends_debug_log_read(app: tauri::AppHandle) -> Result<String, String> {
+    friends_debug_log::read(&app).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn friends_debug_log_clear(app: tauri::AppHandle) -> Result<(), String> {
+    friends_debug_log::clear(&app).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn friends_debug_log_write(
+    app: tauri::AppHandle,
+    source: String,
+    message: String,
+) -> Result<(), String> {
+    friends_debug_log::write_with_app(&app, &source, &message);
+    Ok(())
 }
 
 pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static
@@ -817,6 +877,10 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         friends_cancel,
         friends_remove,
         friends_save_profile,
+        friends_debug_log_write,
+        friends_debug_log_path,
+        friends_debug_log_read,
+        friends_debug_log_clear,
         debug_fire_friend_request
     ]
 }
@@ -893,10 +957,22 @@ pub fn debug_fire_friend_request(
     avatar_url: Option<String>,
 ) -> Result<(), String> {
     use tauri::Emitter;
+
+    let resolved_name = display_name
+        .clone()
+        .unwrap_or_else(|| "Test User".to_string());
+    friends_debug_log::write_with_app(
+        &app,
+        "debug-fire",
+        &format!(
+            "synthetic incoming-request: display_name={resolved_name:?} avatar_url={avatar_url:?}"
+        ),
+    );
+
     let payload = serde_json::json!({
         "fromUser": {
             "id": "debug-user-id",
-            "displayName": display_name.unwrap_or_else(|| "Test User".to_string()),
+            "displayName": resolved_name,
             "avatarUrl": avatar_url,
         }
     });

@@ -33,6 +33,45 @@
 
 import { readPersistedToken } from '@/lib/auth'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
+import { invoke, isTauri } from '@tauri-apps/api/core'
+
+// ─── Friends debug log bridge ───────────────────────────────────────────
+//
+// Thin shim around the Rust `friends_debug_log_*` commands. Every
+// friends system call writes a line to `%APPDATA%\com.zemuuk.launcher
+// \friendlist-debug.log` so we can reproduce any user-reported bug
+// without rerunning it under the webview debugger.
+//
+// When we're not running inside Tauri (`isTauri()` is false, e.g.
+// `vite dev` in a plain browser tab), the helper falls back to
+// `console.log` so dev-time console monitoring keeps working.
+
+async function flog(source: string, message: string): Promise<void> {
+  const line = `[${source}] ${message}`
+  if (!isTauri()) {
+    console.log(`[friendlist-debug] ${line}`)
+    return
+  }
+  try {
+    await invoke('friends_debug_log_write', { source, message })
+  } catch {
+    // Best-effort — never propagate log-write failures.
+  }
+}
+
+async function flogPath(): Promise<string | null> {
+  if (!isTauri()) return null
+  try {
+    return (await invoke<string>('friends_debug_log_path')) ?? null
+  } catch {
+    return null
+  }
+}
+
+export const friendsDebugLog = {
+  log: flog,
+  getPath: flogPath,
+}
 
 // ─── URL resolution (mirrors src/lib/news.ts) ─────────────────────────────
 //
@@ -189,6 +228,10 @@ async function apiFetch<T>(
   const url = `${base}${path}`
   const startedAt = performance.now()
   console.log(`[friends] → ${method} ${url}`)
+  void flog(
+    'http',
+    `→ ${method} ${path} bearer=${bearer ? 'yes' : 'no'}`,
+  )
   let response: Response
   try {
     response = await fetch(url, {
@@ -197,10 +240,13 @@ async function apiFetch<T>(
       credentials: 'omit',
     })
   } catch (networkError) {
+    const errMsg =
+      networkError instanceof Error ? networkError.message : String(networkError)
     console.error(
       `[friends] fetch threw for ${method} ${path}`,
       networkError,
     )
+    void flog('http', `× ${method} ${path} network_error err=${errMsg}`)
     throw networkError
   }
   const elapsed = Math.round(performance.now() - startedAt)
@@ -216,8 +262,13 @@ async function apiFetch<T>(
   console.log(
     `[friends] ← ${response.status} ${method} ${path} (${elapsed}ms)`,
   )
+  void flog(
+    'http',
+    `← ${response.status} ${method} ${path} (${elapsed}ms)`,
+  )
   if (response.status === 401) {
     console.warn('[friends] 401 — token missing or expired')
+    void flog('http', `401 unauthenticated for ${method} ${path}`)
     return null as T
   }
   if (!response.ok) {
@@ -232,6 +283,10 @@ async function apiFetch<T>(
     console.error(
       `[friends] HTTP ${response.status} ${method} ${path}:`,
       message,
+    )
+    void flog(
+      'http',
+      `✗ HTTP ${response.status} ${method} ${path} message=${message}`,
     )
     throw new Error(message || `HTTP ${response.status}`)
   }

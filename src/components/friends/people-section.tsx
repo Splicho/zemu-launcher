@@ -16,7 +16,12 @@ interface PeopleSectionProps<T extends PersonLike> {
   /** Optional count shown as a chip next to the heading. */
   badge?: number
   people: readonly T[]
-  emptyMessage: string
+  /**
+   * Optional fallback rendered when `people` is empty. Pass nothing
+   * to suppress the empty state entirely (the section silently renders
+   * nothing below the heading when the list is empty).
+   */
+  emptyMessage?: string
   /** Renders the trailing action slot of each row. */
   renderActions?: (person: T) => React.ReactNode
   /** Optional override that takes full control of the row rendering
@@ -61,9 +66,11 @@ export function PeopleSection<T extends PersonLike>({
       </header>
       {headerAfter}
       {people.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground/80">
-          {emptyMessage}
-        </p>
+        emptyMessage ? (
+          <p className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground/80">
+            {emptyMessage}
+          </p>
+        ) : null
       ) : (
         <div className="flex flex-col">
           {people.map((person) =>

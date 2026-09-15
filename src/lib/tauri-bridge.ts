@@ -392,6 +392,20 @@ function setupCompatibilityBridge() {
     clear: () => invoke<void>('debug_log_clear'),
   }
 
+  // Friends-specific debug log — writes to `%APPDATA%\com.zemuuk.launcher
+  // \friendlist-debug.log` instead of the main `launcher-debug.log`.
+  // Exposed for ad-hoc probing from DevTools:
+  //   await window.friendsDebugLog.getPath()
+  //   await window.friendsDebugLog.read()
+  //   await window.friendsDebugLog.clear()
+  window.friendsDebugLog = {
+    write: (source: string, message: string) =>
+      invoke<void>('friends_debug_log_write', { source, message }).catch(() => {}),
+    getPath: () => invoke<string>('friends_debug_log_path'),
+    read: () => invoke<string>('friends_debug_log_read'),
+    clear: () => invoke<void>('friends_debug_log_clear'),
+  }
+
   window.wineAPI = {
     getConfig: () => invoke<WineConfig>('wine_get_config'),
     saveConfig: (config: WineConfig) =>

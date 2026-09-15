@@ -6,6 +6,7 @@ mod debug_log;
 mod depot;
 mod discord;
 mod friends;
+mod friends_debug_log;
 mod friends_realtime;
 mod game;
 mod launch_args;
