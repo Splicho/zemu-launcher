@@ -23,6 +23,7 @@ const DISCORD_INVITE_URL = 'https://discord.gg/h1z1kotk'
 import { markOnboardingCompleted } from '@/lib/onboarding'
 import type { SetupChecks } from '@/lib/setup-checks'
 import type { DepotProgress } from '@/lib/tauri-bridge'
+import { useGameStateContext } from '@/hooks/use-game-state-context'
 
 /**
  * Four-step first-run wizard.
@@ -134,6 +135,8 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate }: Onboa
   }, [])
   const back = useCallback(() => setStep((s) => (s > 1 ? ((s - 1) as Step) : s)), [])
 
+  const { refreshFromDisk } = useGameStateContext()
+
   const finish = useCallback(() => {
     markOnboardingCompleted()
     // Re-run the gate *before* the hash flip. Without this, the
@@ -142,13 +145,26 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate }: Onboa
     // into `#/onboarding`. Once `onRefreshGate()` resolves the gate
     // will publish `{ kind: 'complete' }` and the redirect effect's
     // next run is a no-op.
-    void onRefreshGate?.().then(() => {
+    //
+    // We also push the wizard's writes into the play-page state
+    // store before the route flip. Without `refreshFromDisk`, the
+    // store's mount effect loaded `authKey` / `gameDirectory` /
+    // `isInstalled` once — long before the user typed anything —
+    // so the play page would land on `AUTH_KEY_REQUIRED` (or
+    // `NEEDS_DESTINATION`) even though the wizard had just saved
+    // both. The previous symptom was: click "Auth Key Required"
+    // → modal pre-fills → save → button flips to "Locate PS3
+    // folder" (the *next* stale value that surfaced once the
+    // auth-key gate cleared). Forcing a full disk refresh here
+    // makes the play page see the same world the wizard just
+    // left.
+    void Promise.all([onRefreshGate?.(), refreshFromDisk()]).then(() => {
       onFinish?.()
       if (typeof window !== 'undefined') {
         window.location.hash = '#/'
       }
     })
-  }, [onFinish, onRefreshGate])
+  }, [onFinish, onRefreshGate, refreshFromDisk])
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -187,6 +203,18 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate }: Onboa
                     authKey={authKey}
                     setAuthKey={setAuthKey}
                     onContinue={advance}
+                    onAfterSave={() => {
+                      // Push the just-saved key into the play-page
+                      // state store immediately so a returning
+                      // user who paused on Step 1 (e.g. clicked
+                      // Back from Step 2 then routed to `/`) sees
+                      // the auth-key gate cleared instead of
+                      // "Auth Key Required". The full disk
+                      // refresh happens again on `finish()`
+                      // before the hash flip — this one is for
+                      // mid-wizard navigation only.
+                      void refreshFromDisk()
+                    }}
                     t={t}
                   />
                 </motion.div>
@@ -206,6 +234,15 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate }: Onboa
                       setFolder(f)
                       setHasMarker(false)
                       setHasBaseGame(false)
+                      // `selectDirectory` already persists the
+                      // path on the Rust side, so push the
+                      // updated directory + (potentially new)
+                      // installed flag into the play-page store
+                      // now. Without this the store's
+                      // mount-time `getDirectory()` cache stays
+                      // pinned at the empty default until the
+                      // wizard finishes.
+                      void refreshFromDisk()
                     }}
                     onBack={back}
                     onContinue={advance}
@@ -228,11 +265,26 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate }: Onboa
                     onContinue={() => {
                       setHasBaseGame(true)
                       setHasMarker(true)
+                      // The depot just finished writing files
+                      // into the install folder; the marker's
+                      // now present, so `isInstalled` should
+                      // flip on the play page too. Same rationale
+                      // as the Step 1 / Step 2 refreshes — the
+                      // wizard writes directly to disk and the
+                      // store needs a hint to re-read.
+                      void refreshFromDisk()
                       advance()
                     }}
                     onSkip={() => {
                       setHasBaseGame(true)
                       setHasMarker(false)
+                      // Manual path: the user said they'll drop
+                      // the PS3 folder in themselves. The
+                      // directory was set in Step 2, but `version.json`
+                      // isn't there yet, so `isInstalled` will
+                      // stay false — the play page should still
+                      // see the directory though.
+                      void refreshFromDisk()
                       advance()
                     }}
                     t={t}
@@ -310,10 +362,19 @@ interface AccessKeyStepProps {
   authKey: string
   setAuthKey: (v: string) => void
   onContinue: () => void
+  /**
+   * Invoked once the IPC `setAuthKey` write has resolved. The
+   * parent uses this to push the freshly-saved key into the
+   * play-page state store so a mid-wizard detour (Back + hash
+   * flip, abort toast, etc.) doesn't strand the store on a stale
+   * empty auth key. See `OnboardingPage`'s `finish` for the same
+   * concern at the wizard's tail.
+   */
+  onAfterSave?: () => void
   t: (key: string, params?: Record<string, unknown>) => string
 }
 
-function AccessKeyStep({ authKey, setAuthKey, onContinue, t }: AccessKeyStepProps) {
+function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, t }: AccessKeyStepProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -339,6 +400,12 @@ function AccessKeyStep({ authKey, setAuthKey, onContinue, t }: AccessKeyStepProp
     setError(null)
     try {
       await window.launcherAPI?.setAuthKey?.(authKey.trim())
+      // Fire-and-forget the parent callback — it pushes the just-
+      // saved key into the play-page state store so the wizard's
+      // finish-time refresh isn't the *only* moment the store
+      // learns about the write. Not awaited so the modal-feel
+      // advance (`onContinue()`) stays snappy.
+      onAfterSave?.()
       onContinue()
     } catch {
       setError(t('authKey.saveFailed'))

@@ -599,26 +599,78 @@ const handleProgress = (status: UpdateStatus) => {
     lastCheckedDirectoryRef.current = null
   }, [])
 
-  // Re-read the saved auth key from disk. Called by the Auth Key
-  // modal after a save so the gate clears and the Play button
-  // becomes active without a launcher restart.
-  const refreshAuthKey = useCallback(async (): Promise<void> => {
-    if (!window.launcherAPI?.getAuthKey) return
+  // Re-read the auth key, install directory, and installed flag from
+  // disk and push them into the state machine.
+  //
+  // Why this exists:
+  //
+  // The onboarding wizard writes the auth key (Step 1), install
+  // folder (Step 2), and Zemu marker (Step 3) **directly** through
+  // `window.launcherAPI.*` / `window.gameAPI.*`, bypassing the
+  // `useGameState` store. The store's mount effect loads these values
+  // exactly once — but it runs *before* the user has typed anything,
+  // so the store stays pinned at the empty defaults (no key, no
+  // directory) until the user explicitly re-triggers a refresh from
+  // the play page.
+  //
+  // The bug this caused was visible after finishing the wizard: the
+  // Play page immediately showed "Auth Key Required" (the store
+  // didn't know onboarding had saved a key). Clicking that button
+  // opened the Auth Key modal pre-filled with the right value,
+  // confirming the key was on disk; saving it cleared the auth-key
+  // gate but exposed the next stale value — `gameDirectory` was
+  // still empty in the store, so the button flipped to "Locate PS3
+  // folder". The fix is to refresh the store at the end of onboarding
+  // so the play page sees the same world the wizard just left.
+  //
+  // The auth-key modal's `onSaved` callback (on the play page) also
+  // routes through here for the same reason — when the user re-saves
+  // an auth key from the modal, we want the directory / installed
+  // flag carried along so a follow-up save doesn't have to refresh
+  // two separate fields. Previously this was a separate
+  // `refreshAuthKey` that only touched the key, leaving directory
+  // writes still stranded.
+  const refreshFromDisk = useCallback(async (): Promise<void> => {
     try {
-      const savedKey = await window.launcherAPI.getAuthKey()
-      // Map Rust's `Option::None` ("no key saved") to `''` so the
-      // auth-key gate can distinguish it from `null` ("haven't
-      // loaded yet"). Keeping `null` reserved for the loading
-      // window avoids flashing the gate on every mount before the
-      // IPC round-trip lands.
-      setAuthKey(savedKey ?? '')
+      if (window.launcherAPI?.getAuthKey) {
+        const savedKey = await window.launcherAPI.getAuthKey()
+        // Map Rust's `Option::None` ("no key saved") to `''` so
+        // the auth-key gate fires; keep `null` reserved for the
+        // brief loading window before this read completes.
+        setAuthKey(savedKey ?? '')
+      }
+      if (window.gameAPI) {
+        const directory = await window.gameAPI.getDirectory()
+        setGameDirectory(directory)
+        if (directory) {
+          const installed = await window.gameAPI.isInstalled()
+          setIsInstalled(installed)
+          // Force a fresh update check so the play button shows
+          // "Install Patch" / "Update Available" against the
+          // just-loaded directory rather than the stale
+          // `updateInfo` we previously cached for a no-longer-used
+          // path.
+          hasAutoCheckedOnStartupRef.current = false
+          lastCheckedDirectoryRef.current = null
+        } else {
+          setIsInstalled(false)
+        }
+      }
     } catch {
-      // On failure, leave `authKey` at `null` so we fall through
-      // to the rest of the state machine rather than incorrectly
-      // gating behind an unread disk read.
-      setAuthKey(null)
+      // Swallow — a failed refresh leaves the store at whatever
+      // values it already held, which is preferable to a partial
+      // reset (e.g. clearing the auth key because the keyring IPC
+      // errored) that would put the play page in an unrecoverable
+      // "Auth Key Required" loop the user has no path out of.
     }
   }, [])
+
+  // Back-compat alias. The Auth Key modal on the play page used to
+  // call `refreshAuthKey` to clear the `AUTH_KEY_REQUIRED` gate;
+  // now it should really run the full disk refresh so a re-save
+  // doesn't strand the directory. Keep the old name forwarding so
+  // the call-site doesn't need a parallel rename.
+  const refreshAuthKey = refreshFromDisk
 
   // Derive state
   //
@@ -744,5 +796,6 @@ const handleProgress = (status: UpdateStatus) => {
     applyPatch,
     retryLastStep,
     refreshAuthKey,
+    refreshFromDisk,
   }
 }
