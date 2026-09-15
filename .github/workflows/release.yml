@@ -148,6 +148,32 @@ jobs:
       - name: Sync generated launcher metadata
         run: pnpm run sync:launcher-config
 
+      # Safety net: production bundles must not contain dev-only
+      # hostnames. Vite inlines `VITE_*` from `.env.local` at build
+      # time, and `LAUNCHER_CONFIG` is bundled as JS — both can leak
+      # `localhost` / `127.0.0.1` / `tauri.localhost` into a release
+      # if a contributor hardcodes a dev URL. Fail the job loudly
+      # so we never ship a build that talks to someone's laptop.
+      - name: Assert no dev hostnames in bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d dist ]; then
+            echo "::error::dist/ not found — frontend build did not produce output."
+            exit 1
+          fi
+          # Match whole words only (so e.g. "ws://localhost:3007"
+          # catches but "localhost:false" doesn't).
+          hits=$(grep -rEn --binary-files=without-match \
+            -e 'localhost' -e '127\.0\.0\.1' -e 'tauri\.localhost' \
+            dist/ || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Dev-only hostname found in production bundle:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "OK: no dev hostnames in dist/."
+
       - name: Build and publish release artifacts
         uses: tauri-apps/tauri-action@v0
         env:
