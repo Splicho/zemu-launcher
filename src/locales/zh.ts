@@ -386,6 +386,13 @@ export default {
       installationGuide: '安装指南',
       placeholderTitle: '游戏设置',
       placeholderDesc: '此部分的设置将在此处显示。这是该部分内容设计期间的占位符。',
+      language: '语言',
+      languageDescription:
+        '选择游戏启动时使用的语言。',
+      languagePlaceholder: '选择语言',
+      languageSave: '保存',
+      languageSaving: '正在保存…',
+      languageSaveFailed: '无法保存语言设置：{{error}}',
     },
     license: {
       redeem: '兑换',

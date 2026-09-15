@@ -1,3 +1,4 @@
+use crate::client_config;
 use crate::debug_log;
 use crate::discord;
 use crate::launch_args;
@@ -9,7 +10,7 @@ use crate::storage::{
 };
 #[cfg(not(target_os = "windows"))]
 use crate::wine;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 #[cfg(target_os = "windows")]
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -310,7 +311,20 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
             .as_deref()
             .filter(|key| !key.trim().is_empty())
             .ok_or_else(|| anyhow!("Auth key required. Save your auth key before launching."))?;
+        let locale = config.locale.as_deref();
         let client_args = launch_args::client_arguments(auth_key);
+
+        // Persist the locale into the game's own ClientConfig.ini
+        // before spawning. The game reads `[Internationalization]`
+        // / `Locale=` from its install directory at startup — that's
+        // where it actually picks its in-game language. We do this
+        // here (rather than on every setLocale click) so any out-of-
+        // band edits to the file aren't fought with by the launcher;
+        // `client_config::set_locale` is a no-op if the value is
+        // already correct, so this is cheap.
+        let client_ini = PathBuf::from(&game_directory).join("ClientConfig.ini");
+        client_config::set_locale(&client_ini, locale.unwrap_or(""))
+            .context("write ClientConfig.ini locale")?;
 
         #[cfg(target_os = "windows")]
         {

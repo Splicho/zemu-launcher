@@ -177,6 +177,17 @@ pub struct LauncherConfig {
     /// validation is performed on this value.
     #[serde(default)]
     pub auth_key: Option<String>,
+    /// Game language override (lowercase `xx_yy` tag such as
+    /// `en_us`, `fr_fr`, `zh_cn`). The launcher writes this into
+    /// the game's own `[Internationalization] Locale=` block in
+    /// `ClientConfig.ini` inside the install directory at launch
+    /// time — that's where the game actually picks its in-game
+    /// language. `None` means "fall back to the game's built-in
+    /// default" — which today is `en_us`. The renderer is
+    /// responsible for keeping this aligned with the
+    /// `KNOWN_LOCALES` set it surfaces in the Properties pane.
+    #[serde(default = "default_locale")]
+    pub locale: Option<String>,
     #[serde(default)]
     pub wine: WineConfig,
 }
@@ -195,6 +206,7 @@ impl Default for LauncherConfig {
             discord_rpc_mode: DiscordRpcMode::Always,
             theme: AppTheme::System,
             auth_key: None,
+            locale: default_locale(),
             wine: WineConfig::default(),
         }
     }
@@ -202,6 +214,13 @@ impl Default for LauncherConfig {
 
 fn default_true() -> bool {
     true
+}
+
+/// Default game locale when the user hasn't picked one yet. Mirrors
+/// the `en_us` fallback the game itself documents — we keep the
+/// launcher's behavior consistent with "first launch = English".
+fn default_locale() -> Option<String> {
+    Some("en_us".to_string())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { BookOpen, FolderTree, Settings2 } from 'lucide-react'
+import { BookOpen, FolderTree, Languages, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -14,9 +14,10 @@ import {
  * the label — so adding/renaming sections never breaks the API.
  *
  * Available sections:
- *  - `install`: file-management view (size, locate, change).
- *  - `wine`: compatibility runtime, prefix, and environment variables.
- *  - `guide`:   read-only copy of the Steam depot install steps.
+ *  - `install`:  file-management view (size, locate, change).
+ *  - `wine`:     compatibility runtime, prefix, and environment variables.
+ *  - `language`: in-game language picker (writes `[Internationalization] Locale=` into the game's `ClientConfig.ini`).
+ *  - `guide`:    read-only copy of the Steam depot install steps.
  *
  * The license tab has been removed as part of the auth key rework —
  * the auth key is now entered through the in-game Auth Key modal
@@ -25,6 +26,7 @@ import {
 export const PROPERTIES_SECTIONS = [
   { id: 'install', labelKey: 'properties.installedFiles', Icon: FolderTree },
   { id: 'wine', labelKey: 'properties.wineConfiguration', Icon: Settings2 },
+  { id: 'language', labelKey: 'properties.language', Icon: Languages },
   { id: 'guide', labelKey: 'properties.installationGuide', Icon: BookOpen },
 ] as const satisfies ReadonlyArray<{
   id: string

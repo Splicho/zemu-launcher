@@ -12,9 +12,19 @@ fn default_game_server() -> String {
 }
 
 /// Arguments shared by native, elevated, Wine, and Proton game launches.
-pub fn client_arguments(session_id: &str) -> [String; 3] {
+///
+/// `session_id` becomes the `SessionId=` arg (mirrors the auth key).
+///
+/// The game locale is *not* passed on the command line — the game
+/// reads its language from `[Internationalization] Locale=` in
+/// `ClientConfig.ini` inside the install directory, which
+/// `game::launch_game` keeps in sync before each spawn. Keeping
+/// launch args to the bits the game genuinely reads from the
+/// command line (`server`, `SessionId`, `CasSessionId`) avoids
+/// surprising anyone debugging the process tree with extra args.
+pub fn client_arguments(session_id: &str) -> Vec<String> {
     let server = default_game_server();
-    [
+    vec![
         format!("server={server}"),
         format!("SessionId={session_id}"),
         "CasSessionId=zemu-local-session".into(),
@@ -50,7 +60,6 @@ pub fn windows_command_line(args: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use temp_env::with_var;
 
     #[test]
     fn passes_exact_server_session_and_cas_arguments() {
@@ -59,10 +68,10 @@ mod tests {
         temp_env::with_var("ZEMU_GAME_SERVER", Some("eu.zemu.uk:1115"), || {
             assert_eq!(
                 client_arguments("test-session"),
-                [
-                    "server=eu.zemu.uk:1115",
-                    "SessionId=test-session",
-                    "CasSessionId=zemu-local-session",
+                vec![
+                    "server=eu.zemu.uk:1115".to_string(),
+                    "SessionId=test-session".to_string(),
+                    "CasSessionId=zemu-local-session".to_string(),
                 ]
             );
         });

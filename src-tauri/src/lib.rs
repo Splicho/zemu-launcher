@@ -1,6 +1,7 @@
 mod api;
 mod auth;
 mod child_process;
+mod client_config;
 mod commands;
 mod debug_log;
 mod depot;

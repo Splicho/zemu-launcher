@@ -321,12 +321,19 @@ pub fn game_get_local_version(app: tauri::AppHandle) -> Result<Option<VersionMan
 pub async fn game_check_update(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
+    // Files the renderer wants excluded from the "update available"
+    // verdict — typically files the launcher itself rewrites at
+    // runtime (e.g. `ClientConfig.ini` for the in-game locale).
+    // Matched case-insensitively against the basename of each
+    // manifest entry's path. See `LAUNCHER_CONFIG.updateSkipFiles`
+    // on the renderer side for the source of truth.
+    skip_files: Option<Vec<String>>,
 ) -> Result<UpdateCheckResult, String> {
     let directory = game::get_game_directory(&app)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Game directory is required to check for updates".to_string())?;
 
-    update::check_for_updates(&app, &state, directory)
+    update::check_for_updates(&app, &state, directory, skip_files.unwrap_or_default())
         .await
         .map_err(|e| e.to_string())
 }
@@ -636,6 +643,50 @@ pub fn launcher_set_auth_key(app: tauri::AppHandle, key: String) -> Result<(), S
     storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())
 }
 
+/// Locales the H1Z1 client understands. Mirrors the whitelist in
+/// `KNOWN_LOCALES` (renderer) so the Rust side enforces the same
+/// bounds. The game is documented to default to `en_us` when an
+/// unknown or missing locale is supplied, but we'd rather surface a
+/// clear error than ship a malformed value silently — the launcher
+/// is the source of truth for this field.
+const SUPPORTED_LAUNCHER_LOCALES: &[&str] = &[
+    "en_us", "de_de", "fr_fr", "es_es", "ru_ru", "pt_br", "it_it",
+    "tr_tr", "pl_pl", "zh_cn", "zh_tw", "ja_jp", "ko_kr",
+];
+
+fn is_supported_locale(value: &str) -> bool {
+    SUPPORTED_LAUNCHER_LOCALES.iter().any(|known| *known == value)
+}
+
+/// Returns the persisted game locale (the lowercase `xx_yy` tag
+/// written into `ClientConfig.ini` before each launch). Falls
+/// back to `en_us` for fresh installs or configs written before
+/// this field existed.
+#[tauri::command]
+pub fn launcher_get_locale(app: tauri::AppHandle) -> Result<String, String> {
+    let config = storage::load_launcher_config(&app).map_err(|e| e.to_string())?;
+    Ok(config.locale.unwrap_or_else(|| "en_us".to_string()))
+}
+
+/// Persist the game locale. An empty / unknown value clears the
+/// stored tag so subsequent launches fall back to the game's
+/// default. We reject (rather than silently coerce) unknown tags
+/// so a renderer bug doesn't ship a malformed launch arg.
+#[tauri::command]
+pub fn launcher_set_locale(app: tauri::AppHandle, locale: String) -> Result<(), String> {
+    let trimmed = locale.trim();
+    if !trimmed.is_empty() && !is_supported_locale(trimmed) {
+        return Err(format!("Unsupported locale tag: {trimmed}"));
+    }
+    let mut config = storage::load_launcher_config(&app).map_err(|e| e.to_string())?;
+    config.locale = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    };
+    storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())
+}
+
 /// Detect the user's Steam installation and return the absolute path
 /// of the depot download folder (`<steam_root>/steamapps/content/app_433850/depot_433851/`).
 ///
@@ -858,6 +909,8 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         launcher_set_autostart_enabled,
         launcher_get_auth_key,
         launcher_set_auth_key,
+        launcher_get_locale,
+        launcher_set_locale,
         steam_bridge_is_available,
         steam_login_status,
         steam_login_begin,

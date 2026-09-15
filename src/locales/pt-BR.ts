@@ -354,6 +354,13 @@ export default {
       // Properties section placeholder
       placeholderTitle: 'Configurações do jogo',
       placeholderDesc: 'As configurações para esta seção aparecerão aqui. Isso é um espaço reservado enquanto o conteúdo da seção é desenvolvido.',
+      language: 'Idioma',
+      languageDescription:
+        'Escolha o idioma em que o jogo será iniciado.',
+      languagePlaceholder: 'Escolha um idioma',
+      languageSave: 'Salvar',
+      languageSaving: 'Salvando…',
+      languageSaveFailed: 'Não foi possível salvar o idioma: {{error}}',
     },
     // Steam instructions modal
     steamInstructions: {

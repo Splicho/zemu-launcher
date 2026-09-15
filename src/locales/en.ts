@@ -379,6 +379,13 @@ export default {
       installationGuide: 'Installation Guide',
       placeholderTitle: 'Game Settings',
       placeholderDesc: 'Settings for this section will appear here. This is a placeholder while the section content is being designed.',
+      language: 'Language',
+      languageDescription:
+        'Choose the language the game launches in.',
+      languagePlaceholder: 'Pick a language',
+      languageSave: 'Save',
+      languageSaving: 'Saving…',
+      languageSaveFailed: 'Could not save the language: {{error}}',
     },
     steamInstructions: {
       openSteam: 'Open Steam on your computer.',

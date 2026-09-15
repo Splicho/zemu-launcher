@@ -10,6 +10,7 @@ import {
   PROPERTIES_SECTIONS,
   type PropertiesSectionId,
 } from '@/components/properties-sidebar'
+import { LanguageSection } from '@/components/properties-language-section'
 import { SteamInstructionsSteps } from '@/components/steam-instructions-modal'
 import { WineSection } from '@/components/properties-wine-section'
 import { formatBytes } from '@/lib/format'
@@ -65,6 +66,8 @@ export function PropertiesSection({
           />
         ) : activeId === 'wine' ? (
           <WineSection />
+        ) : activeId === 'language' ? (
+          <LanguageSection />
         ) : activeId === 'guide' ? (
           <InstallationGuideSection />
         ) : (

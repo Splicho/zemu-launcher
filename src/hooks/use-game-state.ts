@@ -1,3 +1,4 @@
+import { LAUNCHER_CONFIG } from '../config/launcher'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -262,7 +263,7 @@ export function useGameState() {
       // ("Install") with `hasUpdate: true` — flashing the wrong label
       // for a frame, or sticking there if the second read is slow.
       const [info, installed] = await Promise.all([
-        window.gameAPI.checkUpdate(),
+        window.gameAPI.checkUpdate(LAUNCHER_CONFIG.updateSkipFiles),
         window.gameAPI.isInstalled(),
       ])
 

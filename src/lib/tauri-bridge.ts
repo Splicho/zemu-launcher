@@ -170,7 +170,8 @@ function setupCompatibilityBridge() {
       invoke<void>('game_open_in_file_manager', { directory }),
     isInstalled: () => invoke<boolean>('game_is_installed'),
     getLocalVersion: () => invoke<VersionManifest | null>('game_get_local_version'),
-    checkUpdate: () => invoke<UpdateInfo>('game_check_update'),
+    checkUpdate: (skipFiles: string[] = []) =>
+      invoke<UpdateInfo>('game_check_update', { skipFiles }),
     downloadUpdate: (gameDirectory: string) =>
       invoke<{ success: boolean; error?: string }>('game_download_update', { gameDirectory }),
     getUpdateStatus: () => invoke<UpdateStatus | null>('game_get_update_status'),
@@ -445,6 +446,20 @@ function setupCompatibilityBridge() {
      */
     setAuthKey: (key: string) => invoke<void>('launcher_set_auth_key', { key }),
     /**
+     * Read the persisted game locale (lowercase `xx_yy` tag like
+     * `en_us`, `fr_fr`, `zh_cn`). Falls back to `en_us` when the
+     * user hasn't picked one yet or the config was written before
+     * this field existed.
+     */
+    getLocale: () => invoke<string>('launcher_get_locale'),
+    /**
+     * Persist the game locale. An empty string clears the stored
+     * tag so subsequent launches fall back to the game's default.
+     * Unknown tags are rejected by the Rust side.
+     */
+    setLocale: (locale: string) =>
+      invoke<void>('launcher_set_locale', { locale }),
+    /**
      * Whether the launcher is currently registered with the OS
      * autostart mechanism (e.g. `HKCU\...\Run` on Windows). Reading
      * reflects the real OS state — not a cached config value — so the
@@ -589,7 +604,7 @@ declare global {
       /** Cheap path existence check. */
       pathExists: (path: string) => Promise<boolean>
       getLocalVersion: () => Promise<VersionManifest | null>
-      checkUpdate: () => Promise<UpdateInfo>
+      checkUpdate: (skipFiles?: string[]) => Promise<UpdateInfo>
       downloadUpdate: (gameDirectory: string) => Promise<{ success: boolean; error?: string }>
       getUpdateStatus: () => Promise<UpdateStatus | null>
       getLaunchState: () => Promise<GameLaunchState>
@@ -677,6 +692,10 @@ declare global {
       getAuthKey: () => Promise<string | null>
       /** Persist a new auth key. An empty string clears the key. */
       setAuthKey: (key: string) => Promise<void>
+      /** Returns the persisted game locale (`xx_yy` tag), defaulting to `en_us`. */
+      getLocale: () => Promise<string>
+      /** Persist the game locale. Empty string clears it. */
+      setLocale: (locale: string) => Promise<void>
       getAutostartEnabled: () => Promise<boolean>
       setAutostartEnabled: (enabled: boolean) => Promise<void>
       getTheme: () => Promise<string>

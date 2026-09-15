@@ -10,6 +10,7 @@ A desktop gaming launcher for H1Z1, built with Tauri (Rust + React). Provides a 
 - **Matchmaking** — Browser-based competitive matchmaking for H1Z1
 - **Discord Rich Presence** — Shows current game status in Discord
 - **Multi-Account** — Switch between multiple Steam accounts
+- **In-game Language** — Pick the locale the game launches in (written into the game's `ClientConfig.ini` as `[Internationalization] Locale=`)
 
 ## Architecture
 

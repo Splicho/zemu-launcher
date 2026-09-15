@@ -457,7 +457,7 @@ mod tests {
         fs::write(&fake, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
         fs::set_permissions(&fake, fs::Permissions::from_mode(0o700)).unwrap();
         let executable = root.join("H1Z1.exe");
-        let client_args = crate::launch_args::client_arguments("test key 'quoted' $(literal)");
+        let client_args = crate::launch_args::client_arguments("test key 'quoted' $(literal)", None);
         for kind in [WineRuntimeKind::Wine, WineRuntimeKind::Proton] {
             let mut runtime = runtime(kind.clone());
             runtime.path = fake.to_string_lossy().into_owned();

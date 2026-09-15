@@ -140,6 +140,13 @@ pub async fn check_for_updates(
     app: &AppHandle,
     state: &AppState,
     game_directory: String,
+    // Filenames (basenames) the caller wants excluded from the
+    // update verdict — matched case-insensitively against the
+    // basename of each manifest entry's relative path. Typically
+    // files the launcher rewrites at runtime (e.g.
+    // `ClientConfig.ini`) so a local edit doesn't read as a
+    // tampered file forever.
+    skip_files: Vec<String>,
 ) -> Result<UpdateCheckResult> {
     if game_directory.trim().is_empty() {
         return Err(anyhow!("Game directory is required to check for updates"));
@@ -290,12 +297,33 @@ pub async fn check_for_updates(
     let local_version = local_version.expect("local version checked above");
 
     if is_file_level {
-        let files_to_update = get_files_to_update(
+        let files_to_update_raw = get_files_to_update(
             &remote_manifest,
             Some(&local_version),
             &game_directory,
             false,
         )?;
+        // Drop files the caller asked us to ignore (e.g. files
+        // the launcher itself rewrites at runtime, such as
+        // `ClientConfig.ini` for the in-game locale). After this
+        // pass `files_to_update` reflects only "real" deltas, so
+        // `has_update` below is computed on the filtered list.
+        let mut files_to_update: Vec<FileUpdateItem> = Vec::with_capacity(files_to_update_raw.len());
+        let mut skipped = 0usize;
+        for item in files_to_update_raw {
+            if should_skip_path(&item.file_path, &skip_files) {
+                skipped += 1;
+            } else {
+                files_to_update.push(item);
+            }
+        }
+        if skipped > 0 {
+            let _ = debug_log::append(
+                app,
+                "update",
+                &format!("check_for_updates skipped {skipped} file(s) per skip_files"),
+            );
+        }
         let result = UpdateCheckResult {
             has_update: !files_to_update.is_empty(),
             cdn_available: true,
@@ -345,6 +373,14 @@ pub async fn check_for_updates(
     }
 
     let mut folders_to_update = Vec::new();
+    // Legacy folder-level path. `skip_files` is NOT applied here:
+    // the folder-level diff compares aggregate folder checksums /
+    // file counts, not individual file paths, so we'd need to
+    // re-derive "is the diff entirely explained by skipped
+    // files?" which is out of scope. The modern file-level path
+    // (above) handles skips; this branch is only hit on
+    // pre-file-level manifests where skip semantics don't apply
+    // cleanly anyway.
     for (folder_name, folder_info) in &remote_manifest.folders {
         let local_folder = local_version.folders.get(folder_name);
         if folder_needs_update(local_folder, folder_info) {
@@ -1325,6 +1361,25 @@ fn normalize_checksum_opt(value: Option<&str>) -> Option<String> {
         .filter(|checksum| !checksum.is_empty())
 }
 
+/// True when `path` matches any name in `skip_files` by basename,
+/// case-insensitively. `path` is expected to be a manifest entry's
+/// relative path (forward or back slashes). Empty / whitespace-only
+/// skip entries are ignored.
+fn should_skip_path(path: &str, skip_files: &[String]) -> bool {
+    if skip_files.is_empty() {
+        return false;
+    }
+    let basename = match path.rsplit(['/', '\\']).next() {
+        Some(name) => name,
+        None => return false,
+    };
+    let basename_lower = basename.to_lowercase();
+    skip_files.iter().any(|entry| {
+        let trimmed = entry.trim();
+        !trimmed.is_empty() && trimmed.to_lowercase() == basename_lower
+    })
+}
+
 fn folder_needs_update(
     local_folder: Option<&FolderManifestEntry>,
     remote_folder: &FolderManifestEntry,
@@ -1453,4 +1508,78 @@ fn ensure_not_cancelled(state: &AppState) -> Result<()> {
         return Err(anyhow!("Update cancelled by user"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn skip_list(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn empty_skip_list_skips_nothing() {
+        assert!(!should_skip_path("ClientConfig.ini", &[]));
+        assert!(!should_skip_path("any/file/path.dll", &[]));
+    }
+
+    #[test]
+    fn exact_basename_match_is_skipped() {
+        let list = skip_list(&["ClientConfig.ini"]);
+        assert!(should_skip_path("ClientConfig.ini", &list));
+    }
+
+    #[test]
+    fn match_is_case_insensitive() {
+        let list = skip_list(&["clientconfig.ini"]);
+        assert!(should_skip_path("ClientConfig.ini", &list));
+        assert!(should_skip_path("CLIENTCONFIG.INI", &list));
+    }
+
+    #[test]
+    fn match_works_for_nested_paths() {
+        let list = skip_list(&["ClientConfig.ini"]);
+        assert!(should_skip_path("H1Z1/ClientConfig.ini", &list));
+        assert!(should_skip_path("a/b/c/ClientConfig.ini", &list));
+        assert!(should_skip_path("ClientConfig.ini", &list));
+    }
+
+    #[test]
+    fn path_with_backslashes_uses_basename_too() {
+        let list = skip_list(&["ClientConfig.ini"]);
+        assert!(should_skip_path("H1Z1\\ClientConfig.ini", &list));
+    }
+
+    #[test]
+    fn similar_but_different_filenames_are_not_skipped() {
+        // Substring-style false positives must not happen —
+        // this is the safety check that exact-basename matching
+        // gives us.
+        let list = skip_list(&["ClientConfig.ini"]);
+        assert!(!should_skip_path("ClientConfig.bak", &list));
+        assert!(!should_skip_path("MyClientConfig.ini", &list));
+        assert!(!should_skip_path("ClientConfig.ini.bak", &list));
+    }
+
+    #[test]
+    fn whitespace_only_entries_are_ignored() {
+        let list = skip_list(&["", "   ", "\t", "ClientConfig.ini"]);
+        assert!(should_skip_path("ClientConfig.ini", &list));
+        assert!(!should_skip_path("anything-else.dll", &list));
+    }
+
+    #[test]
+    fn multiple_skip_entries_all_match() {
+        let list = skip_list(&["ClientConfig.ini", "UserOptions.ini"]);
+        assert!(should_skip_path("ClientConfig.ini", &list));
+        assert!(should_skip_path("UserOptions.ini", &list));
+        assert!(!should_skip_path("SomethingElse.txt", &list));
+    }
+
+    #[test]
+    fn trim_whitespace_around_entry() {
+        let list = skip_list(&["  ClientConfig.ini  "]);
+        assert!(should_skip_path("ClientConfig.ini", &list));
+    }
 }

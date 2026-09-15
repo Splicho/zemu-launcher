@@ -421,6 +421,13 @@ export default {
       installationGuide: "Guide d'installation",
       placeholderTitle: "Paramètres du jeu",
       placeholderDesc: "Les paramètres de cette section apparaîtront ici. Il s'agit d'un espace réservé en attendant la conception du contenu.",
+      language: 'Langue',
+      languageDescription:
+        'Choisissez la langue dans laquelle le jeu se lance.',
+      languagePlaceholder: 'Choisir une langue',
+      languageSave: 'Enregistrer',
+      languageSaving: 'Enregistrement…',
+      languageSaveFailed: 'Impossible d’enregistrer la langue : {{error}}',
     },
     steamInstructions: {
       openSteam: "Ouvrez Steam sur votre ordinateur.",

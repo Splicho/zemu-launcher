@@ -38,4 +38,15 @@ export const LAUNCHER_CONFIG = {
   oauthCallbackProtocol: 'zemu-launcher://',
   // Executable the launcher spawns after a successful install + launch.
   gameExecutable: 'H1Z1.exe',
+  // Files the update check should ignore when computing "Update
+  // available" — typically files the launcher itself writes to at
+  // runtime, so a hash mismatch with the remote manifest doesn't
+  // trip a false positive. Matched by exact filename (case
+  // insensitive), relative to the game install root.
+  //
+  // `ClientConfig.ini` is in here because the launcher's locale
+  // picker writes `[Internationalization] Locale=` into it on
+  // every launch — without this filter, that local edit would
+  // look like a tampered file forever.
+  updateSkipFiles: ['ClientConfig.ini'],
 } as const
