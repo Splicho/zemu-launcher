@@ -500,6 +500,14 @@ function BaseGameStep({ folder, onBack, onContinue, onSkip, t }: BaseGameStepPro
   // pipeline lifecycle — those are independent concerns.
   const [alreadyAuthed, setAlreadyAuthed] = useState(false)
 
+  // True once the user has intentionally triggered the Steam auth flow
+  // (either via QR scan or the "download without QR" shortcut). Until
+  // this is set, we treat a pre-existing `authed: true` from
+  // `loginStatus` as "not our doing" and fall through to the QR gate
+  // instead of the "Signed in as X" card — so a fresh install never
+  // shows that card out of the box.
+  const [authInitiated, setAuthInitiated] = useState(false)
+
   // Initial Steam auth probe — if a token is already in the keychain
   // we skip the QR entirely and let the user click "Start download"
   // right away. The single `pipelineState` machine encodes both the
@@ -613,6 +621,7 @@ function BaseGameStep({ folder, onBack, onContinue, onSkip, t }: BaseGameStepPro
     setPipelineError(null)
     setQrDataUrl(null)
     setDepotProgress(null)
+    setAuthInitiated(true)
     try {
       await window.steamApi.startInstallPipeline(folder)
     } catch (e) {
@@ -651,6 +660,7 @@ function BaseGameStep({ folder, onBack, onContinue, onSkip, t }: BaseGameStepPro
     setPipelineError(null)
     setDepotProgress(null)
     setAlreadyAuthed(false)
+    setAuthInitiated(false)
   }, [])
 
   // When a returning user is already authed, drop them straight into
@@ -660,6 +670,7 @@ function BaseGameStep({ folder, onBack, onContinue, onSkip, t }: BaseGameStepPro
     setPipelineState('downloading')
     setPipelineError(null)
     setDepotProgress(null)
+    setAuthInitiated(true)
     try {
       await window.steamApi.installDepot(folder)
       setPipelineState('done')
@@ -721,7 +732,7 @@ function BaseGameStep({ folder, onBack, onContinue, onSkip, t }: BaseGameStepPro
   //                     confirm, failed). Show `QrSteamGate`; it
   //                     owns its own UI for failed/connecting/etc.
 
-  const authedIdle = alreadyAuthed && !isDownloading && !isFailed
+  const authedIdle = authInitiated && alreadyAuthed && !isDownloading && !isFailed
   const showQrGate = !authedIdle && !isDownloading
   const showProgress = isDownloading
 
