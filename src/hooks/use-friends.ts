@@ -46,7 +46,17 @@ export function useFriendsRealtimeSync(enabled: boolean) {
     if (!enabled) return
 
     const unlistenPromise = listen('friends:graph-changed', () => {
-      void qc.invalidateQueries({ queryKey: friendsKeys.all })
+      // Mark the friends cache as stale so the next time any component
+      // reads it (e.g. the sidebar badge re-renders, the user opens
+      // the Friends panel) it fetches fresh data. We use
+      // `refetchType: 'none'` to avoid racing with a server-side write
+      // that may not have committed yet — the `useFriendsIncomingToast`
+      // hook optimistically bumps the incoming count immediately, so the
+      // badge shows the new request without waiting for a round-trip.
+      void qc.invalidateQueries({
+        queryKey: friendsKeys.all,
+        refetchType: 'none',
+      })
     })
 
     return () => {

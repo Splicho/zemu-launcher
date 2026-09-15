@@ -13,9 +13,15 @@
  */
 import { useEffect, useRef } from 'react'
 import { listen } from '@tauri-apps/api/event'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-import { useFriendsAccept, useFriendsDecline } from '@/hooks/use-friends'
+import {
+  useFriendsAccept,
+  useFriendsDecline,
+  friendsKeys,
+} from '@/hooks/use-friends'
+import type { FriendsGraph } from '@/lib/friends'
 import { FriendRequestToast } from '@/components/friends/friend-request-toast'
 
 /** Max size of the de-duplication set. */
@@ -38,6 +44,7 @@ export interface FriendsIncomingRequestPayload {
 export function useFriendsIncomingToast(enabled: boolean) {
   const accept = useFriendsAccept()
   const decline = useFriendsDecline()
+  const qc = useQueryClient()
 
   /** De-duplication set — keyed by sender userId. */
   const seenIds = useRef(new Set<string>())
@@ -63,6 +70,40 @@ export function useFriendsIncomingToast(enabled: boolean) {
           const first = seenIds.current.values().next().value
           if (first !== undefined) seenIds.current.delete(first)
         }
+
+        // Optimistically bump the incoming-request count on the
+        // sidebar badge immediately. The realtime event often arrives
+        // before the postgres write has committed, so an immediate
+        // refetch would race and return the OLD empty `incoming`
+        // list — leaving the badge stuck at 0 even though the user
+        // can see the toast. We mutate the cache directly so the
+        // sidebar re-renders with the new entry before any HTTP
+        // round-trip; the eventual panel refetch will reconcile to
+        // the server's view of the world.
+        qc.setQueryData<FriendsGraph | undefined>(
+          friendsKeys.graph(),
+          (prev) => {
+            if (!prev) return prev
+            // Skip if this user is already in the list (e.g. the
+            // backend realtime server re-delivered an event).
+            if (prev.incoming.some((p) => p.id === userId)) return prev
+            return {
+              ...prev,
+              incoming: [
+                ...prev.incoming,
+                {
+                  id: userId,
+                  displayName: fromUser.displayName,
+                  avatarUrl: fromUser.avatarUrl,
+                  country: null,
+                  friendsSince: null,
+                  relationship: 'incoming',
+                  status: 'offline',
+                },
+              ],
+            }
+          },
+        )
 
         const dismiss = (toastId: string | number) =>
           toast.dismiss(toastId)
@@ -107,5 +148,5 @@ export function useFriendsIncomingToast(enabled: boolean) {
       void unlistenP.then((fn) => fn())
       seenIds.current.clear()
     }
-  }, [enabled, accept, decline])
+  }, [enabled, accept, decline, qc])
 }
