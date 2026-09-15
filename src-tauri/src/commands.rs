@@ -675,6 +675,7 @@ pub async fn friends_list(app: tauri::AppHandle) -> friends::FriendsActionResult
 }
 
 #[tauri::command]
+#[tauri::command]
 pub async fn friends_search(
     app: tauri::AppHandle,
     query: String,
