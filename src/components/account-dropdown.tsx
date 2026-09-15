@@ -10,6 +10,7 @@ import { LogOut, UserCircle } from 'lucide-react'
 import { useAuthContext } from '@/contexts/auth-context'
 import { useTranslation } from 'react-i18next'
 import { useHashRouter } from '@/hooks/use-hash'
+import { emit } from '@tauri-apps/api/event'
 
 /**
  * Account dropdown anchored to the user's avatar.
@@ -58,6 +59,18 @@ export function AccountDropdown() {
           <span>{t('account.menuItem')}</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          onSelect={() => {
+            if (import.meta.env.DEV) {
+              void emit('friends:incoming-request', {
+                fromUser: { id: 'debug-user-id', displayName: 'Test User', avatarUrl: null },
+              })
+            }
+          }}
+        >
+          <span>🔥 Fire friend-request toast (dev)</span>
+        </DropdownMenuItem>
         <DropdownMenuItem variant="destructive" onSelect={() => logout()}>
           <LogOut className="size-4" />
           <span>{t('account.signOut')}</span>

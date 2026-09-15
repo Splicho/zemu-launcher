@@ -816,7 +816,8 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         friends_decline,
         friends_cancel,
         friends_remove,
-        friends_save_profile
+        friends_save_profile,
+        debug_fire_friend_request
     ]
 }
 
@@ -867,4 +868,35 @@ fn focus_window(window: &tauri::WebviewWindow) {
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();
+}
+
+/// Debug helper: fires the `friends:incoming-request` Tauri event locally so
+/// the friend-request toast can be smoke-tested without a running backend or
+/// Socket.IO connection.
+///
+/// Usage in the browser console (or anywhere `invoke` is available):
+///   const { invoke } = window.__TAURI__
+///   await invoke('debug_fire_friend_request', {
+///     displayName: 'TestUser',
+///     avatarUrl: null
+///   })
+///
+/// This is only compiled into dev builds (guarded by `cfg(debug_assertions)`).
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub fn debug_fire_friend_request(
+    app: tauri::AppHandle,
+    display_name: Option<String>,
+    avatar_url: Option<String>,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    let payload = serde_json::json!({
+        "fromUser": {
+            "id": "debug-user-id",
+            "displayName": display_name.unwrap_or_else(|| "Test User".to_string()),
+            "avatarUrl": avatar_url,
+        }
+    });
+    app.emit("friends:incoming-request", payload)
+        .map_err(|e| e.to_string())
 }

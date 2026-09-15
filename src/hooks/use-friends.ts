@@ -28,7 +28,7 @@ export const friendsKeys = {
 }
 
 /**
- * Subscribes to the `friends-changed` Tauri event emitted by the Rust
+ * Subscribes to the `friends:graph-changed` Tauri event emitted by the Rust
  * realtime socket client (`src-tauri/src/friends_realtime.rs`). When
  * received, invalidates the whole friends cache so the FriendsPanel
  * re-fetches without polling.
@@ -45,7 +45,7 @@ export function useFriendsRealtimeSync(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return
 
-    const unlistenPromise = listen('friends-changed', () => {
+    const unlistenPromise = listen('friends:graph-changed', () => {
       void qc.invalidateQueries({ queryKey: friendsKeys.all })
     })
 

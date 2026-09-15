@@ -258,6 +258,11 @@ export default {
         missing_target: 'Pick a player first.',
         unknown_action: 'That action is not supported yet.',
       },
+      toast: {
+        incomingRequest: '{{name}} sent you a friend request',
+        accept: 'Accept',
+        decline: 'Decline',
+      },
     },
     appSidebar: {
       play: 'Play',

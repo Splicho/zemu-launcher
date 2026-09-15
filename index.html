@@ -12,7 +12,7 @@
           var prefersDark =
             window.matchMedia &&
             window.matchMedia('(prefers-color-scheme: dark)').matches;
-          var theme = persisted || 'system';
+          var theme = persisted || 'dark';
           var html = document.documentElement;
           if (theme === 'dark' || (theme === 'system' && prefersDark !== false)) {
             html.classList.add('dark');

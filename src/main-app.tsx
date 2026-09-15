@@ -19,6 +19,7 @@ import { UpdateProvider } from '@/contexts/update-context'
 import { GameStateProvider } from '@/contexts/game-state-context'
 import { Toaster } from '@/components/ui/sonner'
 import { useDownloadSpeedToast } from '@/hooks/use-download-speed-toast'
+import { useFriendsIncomingToast } from '@/hooks/use-friends-incoming-toast'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
@@ -44,6 +45,13 @@ function DownloadSpeedToast() {
   return null
 }
 
+/** Mounted at the top level so friend-request toasts fire even when the Friends panel is closed. */
+function FriendsIncomingToastHost() {
+  const { status } = useAuthContext()
+  useFriendsIncomingToast(status === 'authed')
+  return null
+}
+
 export default function MainApp() {
   return (
     <AuthProvider>
@@ -51,6 +59,7 @@ export default function MainApp() {
         <GameStateProvider>
           <AuthedApp />
           <DownloadSpeedToast />
+          <FriendsIncomingToastHost />
           <Toaster />
         </GameStateProvider>
       </UpdateProvider>

@@ -33,3 +33,4 @@ export { SearchResultSkeleton } from '@/components/friends/search-result-skeleto
 
 export { AvatarStack } from '@/components/friends/avatar-stack'
 export { FriendRequestsRow } from '@/components/friends/friend-requests-row'
+export { FriendRequestToast } from '@/components/friends/friend-request-toast'

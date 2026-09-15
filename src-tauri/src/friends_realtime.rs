@@ -4,9 +4,11 @@
  * Spawns a Socket.IO v4 connection from the Rust backend (not the renderer)
  * so the connection lifecycle and auth token are managed by the same
  * process that owns the persistent auth store. On each incoming
- * `friends:changed` event the module emits a Tauri `friends-changed`
- * event to the renderer, which invalidates the TanStack Query friends
- * cache and causes the FriendsPanel to re-fetch.
+ * `friends:changed` event the module parses the payload, extracts the `kind`
+ * field, and emits one of two typed Tauri events to the renderer:
+ *
+ *   - `friends:incoming-request`  → payload: `{ fromUser: { id, displayName, avatarUrl } }`
+ *   - `friends:graph-changed`     → payload: `()`
  *
  * `rust_socketio` handles network disconnect / reconnect internally with
  * exponential back-off (1 s → 30 s cap, `reconnect: true`).
@@ -36,8 +38,21 @@ const REALTIME_URL_DEFAULT: &str = "ws://localhost:3007";
 /// Maximum reconnect back-off in seconds. Matches `rust_socketio`'s `reconnect_delay`.
 const MAX_BACKOFF_SECS: u64 = 30;
 
-/// The Tauri event name the renderer listens for.
-const TAURI_EVENT: &str = "friends:changed";
+/// Tauri event emitted when the friends graph changed and the panel should
+/// refetch (decline, cancel, remove, or any other non-toast action).
+const GRAPH_CHANGED_EVENT: &str = "friends:graph-changed";
+
+/// Tauri event emitted when another user sent the signed-in user a friend
+/// request. Payload is `FriendsIncomingRequestPayload` (see below).
+const INCOMING_REQUEST_EVENT: &str = "friends:incoming-request";
+
+/// Payload forwarded as the `friends:incoming-request` Tauri event.
+///
+/// Defined inline in the `on("friends:changed", …)` handler so the types
+/// are co-located with the parsing logic. Extracted into module-level
+/// structs would require a `#[serde(deserialize_with)]` helper to handle
+/// the snake_case / camelCase mismatch between the api's payload and the
+/// Rust struct fields — not worth the ceremony for a single call site.
 
 /// Resolve the realtime URL from AppState (set by the renderer on startup).
 fn realtime_url(app: &AppHandle) -> String {
@@ -101,6 +116,8 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
             .reconnect(true)
             .reconnect_delay(1, MAX_BACKOFF_SECS)
             // `connect` fires on initial connect AND after each reconnect.
+            // Join the user's private room on connect so the realtime server
+            // can route events to us.
             .on("connect", move |_payload: Payload, socket| {
                 let app = app_handle.clone();
                 let token = token_for_connect.clone();
@@ -116,19 +133,58 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
                             info!(room = %room, "realtime: joined room");
                         }
                     }
-
-                    if let Err(e) = app.emit(TAURI_EVENT, ()) {
+                    // Emit the generic graph-changed event so the friends panel
+                    // refetches on connect/reconnect (e.g. after a network blip).
+                    if let Err(e) = app.emit(GRAPH_CHANGED_EVENT, ()) {
                         error!(err = %e, "realtime: connect-event emit failed");
                     }
                 }
                 .boxed()
             })
-            .on("friends:changed", move |_payload: Payload, _socket| {
+            .on("friends:changed", move |payload: Payload, _socket| {
                 let app = app_handle2.clone();
                 async move {
-                    info!("realtime: received friends:changed");
-                    if let Err(e) = app.emit(TAURI_EVENT, ()) {
-                        error!(err = %e, "realtime: emit failed");
+                    // Normalize any payload variant to a JSON value.
+                    let json_value = match payload {
+                        Payload::Text(vals) => vals.first().cloned().unwrap_or(serde_json::Value::Null),
+                        Payload::Binary(data) => {
+                            serde_json::from_slice(&data).unwrap_or(serde_json::Value::Null)
+                        }
+                        #[allow(deprecated)]
+                        Payload::String(s) => serde_json::Value::String(s),
+                    };
+
+                    // Parse the `kind` discriminator.
+                    let kind = json_value
+                        .get("kind")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("invalidate");
+
+                    match kind {
+                        "incoming_request" => {
+                            // Extract `fromUser` from the payload and forward it
+                            // as the typed Tauri event.
+                            let from_user = json_value.get("fromUser");
+                            let payload = serde_json::json!({
+                                "fromUser": {
+                                    "id": from_user.and_then(|o| o.get("id")).and_then(|v| v.as_str()).unwrap_or_default(),
+                                    "displayName": from_user.and_then(|o| o.get("displayName")).and_then(|v| v.as_str()).or(from_user.and_then(|o| o.get("display_name")).and_then(|v| v.as_str())),
+                                    "avatarUrl": from_user.and_then(|o| o.get("avatarUrl")).and_then(|v| v.as_str()).or(from_user.and_then(|o| o.get("avatar_url")).and_then(|v| v.as_str())),
+                                }
+                            });
+                            info!(?payload, "realtime: incoming_request → friends:incoming-request");
+                            if let Err(e) = app.emit(INCOMING_REQUEST_EVENT, payload) {
+                                error!(err = %e, "realtime: emit friends:incoming-request failed");
+                            }
+                        }
+                        _ => {
+                            // All other kinds (accepted, invalidate, decline, cancel, etc.)
+                            // are treated as a generic graph invalidation.
+                            info!(kind = %kind, "realtime: graph-changed");
+                            if let Err(e) = app.emit(GRAPH_CHANGED_EVENT, ()) {
+                                error!(err = %e, "realtime: emit friends:graph-changed failed");
+                            }
+                        }
                     }
                 }
                 .boxed()

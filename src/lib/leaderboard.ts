@@ -81,5 +81,14 @@ export async function fetchTopLeaderboard(
   const data = await response.json()
   const entries = (data.entries ?? []) as LeaderboardEntry[]
   const matchingEntries = tier === 'all' ? entries : entries.filter(entry => entry.tier === tier)
+
+  // Sort by Total Score (top10TotalScore), highest first.
+  matchingEntries.sort((a, b) => b.top10TotalScore - a.top10TotalScore)
+
+  // Re-assign position numbers after sorting so #1 reflects the highest score.
+  matchingEntries.forEach((entry, index) => {
+    entry.position = index + 1
+  })
+
   return matchingEntries.slice(0, limit)
 }
