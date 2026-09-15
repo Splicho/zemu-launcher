@@ -11,6 +11,7 @@ import {
   Socialize,
   Twitch,
   Twitter,
+  Users,
   YouTube,
 } from '@/components/icons'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -37,6 +38,7 @@ import {
 } from '@/components/ui/context-menu'
 import { SteamInstructionsModal } from '@/components/steam-instructions-modal'
 import { PropertiesModal } from '@/components/properties-modal'
+import { FriendsSheet } from '@/components/friends-sheet'
 import {
   hasSeenSteamInstructions,
   markSteamInstructionsSeen,
@@ -96,6 +98,7 @@ function useHashRoute() {
 export function AppSidebar({ registerOpener }: AppSidebarProps) {
   const { t } = useTranslation()
   const [socialOpen, setSocialOpen] = React.useState(false)
+  const [friendsOpen, setFriendsOpen] = React.useState(false)
   const [hasAcknowledgedSteamInstructions, setHasAcknowledgedSteamInstructions] =
     React.useState<boolean>(hasSeenSteamInstructions)
   const [showSteamModal, setShowSteamModal] = React.useState(false)
@@ -347,6 +350,16 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
             <SidebarMenuButton
               size="lg"
               className="px-4 cursor-pointer"
+              onClick={() => setFriendsOpen(true)}
+            >
+              <Users className="size-5!" />
+              <span>{t('nav.friends')}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
+              className="px-4 cursor-pointer"
               onClick={() => setSocialOpen((o) => !o)}
               aria-expanded={socialOpen}
             >
@@ -435,6 +448,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
         gameDirectory={gameDirectory}
         onChangeFolder={handleLocateGameFiles}
       />
+      <FriendsSheet open={friendsOpen} onOpenChange={setFriendsOpen} />
     </Sidebar>
   )
 }

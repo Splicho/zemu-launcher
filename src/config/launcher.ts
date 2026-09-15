@@ -15,13 +15,18 @@ export const LAUNCHER_CONFIG = {
   //   - GET  /api/launcher/oauth/initiate     (browser redirect start)
   //   - GET  /api/launcher/oauth/complete     (session cookie → bearer JWT → 302)
   apiBaseUrl: 'https://id.zemu.uk',
-  // Public news API. The renderer fetches `/v1/news` and `/v1/news/:slug`
-  // from this host (via Rust on Linux). In dev, override via VITE_NEWS_API_BASE_URL
-  // in `.env.local` to point at a local checkout of
-  // zemu-website/apps/api (defaults to port 3002 — see
-  // `apps/api/src/main.ts`).
+  // Friends API. The launcher exchanges the bearer JWT it received
+  // from the auth app into `Authorization: Bearer …` calls against
+  // the zemu-website NestJS api (port 3002 in dev, api.zemu.uk in
+  // prod). In dev, set VITE_API_URL=http://localhost:3002 in
+  // `.env.local` to point the launcher at a local api checkout.
+  friendsApiBaseUrl: 'https://api.zemu.uk',
+  // Public news API. The renderer fetches `/v1/news` and
+  // `/v1/news/:slug` from this host. In dev, set
+  // VITE_API_URL=http://localhost:3002 in `.env.local`.
   newsApiBaseUrl: 'https://api.zemu.uk/v1/news',
-  // Stats API for leaderboards and player data.
+  // Stats API for leaderboards and player data. In dev, set
+  // VITE_API_URL=http://localhost:3002 in `.env.local`.
   statsApiBaseUrl: 'https://api.zemu.uk/v1/stats',
   // Deep-link scheme registered with the OS so the OAuth callback can hand
   // control back to the running launcher.

@@ -37,10 +37,15 @@ export interface LeaderboardEntry {
   topMatches?: MatchData[]
 }
 
+// ─── URL resolution ───────────────────────────────────────────────────────
+//
+// All four API consumers (friends, news, streams, leaderboard) share
+// `VITE_API_URL`, which points at the root of the api server.
+
 function getStatsApiBaseUrl(): string {
-  const fromEnv = import.meta.env.VITE_STATS_API_BASE_URL as string | undefined
-  if (import.meta.env.DEV && fromEnv) return fromEnv
-  return `${LAUNCHER_CONFIG.statsApiBaseUrl}`
+  const fromEnv = import.meta.env.VITE_API_URL as string | undefined
+  if (import.meta.env.DEV && fromEnv) return `${fromEnv}/v1/stats`
+  return LAUNCHER_CONFIG.statsApiBaseUrl
 }
 
 const STATS_API_BASE = getStatsApiBaseUrl()

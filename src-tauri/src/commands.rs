@@ -2,6 +2,7 @@ use crate::api;
 use crate::auth;
 use crate::debug_log;
 use crate::discord;
+use crate::friends;
 use crate::game;
 use crate::models::{
     AppTheme, AuthToken, CommandResult, DiscordRpcMode, GameLaunchState,
@@ -691,6 +692,86 @@ pub fn steam_detect_depot_path() -> Option<String> {
     steam::detect_kotk_depot_path()
 }
 
+// ---------------------------------------------------------------------------
+// Friends IPC surface
+//
+// Each `friends_*` command is a thin wrapper around
+// `friends::dispatch`. The body of `dispatch` is currently a stub that
+// returns `ok: false, reason: "not_implemented"` — see the TODO at the
+// top of `src-tauri/src/friends.rs`. Once the real game API is wired
+// up, none of these wrappers need to change.
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn friends_dispatch(
+    app: tauri::AppHandle,
+    action: String,
+    payload: Option<friends::FriendsPayload>,
+) -> friends::FriendsActionResult {
+    friends::friends_dispatch(app, action, payload).await
+}
+
+#[tauri::command]
+pub async fn friends_list(app: tauri::AppHandle) -> friends::FriendsActionResult {
+    friends::friends_list(app).await
+}
+
+#[tauri::command]
+pub async fn friends_search(
+    app: tauri::AppHandle,
+    query: String,
+) -> friends::FriendsActionResult {
+    friends::friends_search(app, query).await
+}
+
+#[tauri::command]
+pub async fn friends_request(
+    app: tauri::AppHandle,
+    target_id: String,
+) -> friends::FriendsActionResult {
+    friends::friends_request(app, target_id).await
+}
+
+#[tauri::command]
+pub async fn friends_accept(
+    app: tauri::AppHandle,
+    target_id: String,
+) -> friends::FriendsActionResult {
+    friends::friends_accept(app, target_id).await
+}
+
+#[tauri::command]
+pub async fn friends_decline(
+    app: tauri::AppHandle,
+    target_id: String,
+) -> friends::FriendsActionResult {
+    friends::friends_decline(app, target_id).await
+}
+
+#[tauri::command]
+pub async fn friends_cancel(
+    app: tauri::AppHandle,
+    target_id: String,
+) -> friends::FriendsActionResult {
+    friends::friends_cancel(app, target_id).await
+}
+
+#[tauri::command]
+pub async fn friends_remove(
+    app: tauri::AppHandle,
+    target_id: String,
+) -> friends::FriendsActionResult {
+    friends::friends_remove(app, target_id).await
+}
+
+#[tauri::command]
+pub async fn friends_save_profile(
+    app: tauri::AppHandle,
+    display_name: String,
+) -> friends::FriendsActionResult {
+    friends::friends_save_profile(app, display_name).await
+}
+
 pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static
 {
     tauri::generate_handler![
@@ -771,7 +852,16 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         steam_start_install_pipeline,
         game_detect_base_game_installed,
         game_path_exists,
-        steam_detect_depot_path
+        steam_detect_depot_path,
+        friends_dispatch,
+        friends_list,
+        friends_search,
+        friends_request,
+        friends_accept,
+        friends_decline,
+        friends_cancel,
+        friends_remove,
+        friends_save_profile
     ]
 }
 

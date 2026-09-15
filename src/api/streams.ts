@@ -1,6 +1,15 @@
 import { fetchPublicApi } from '@/lib/public-api'
 
-const API_BASE = import.meta.env.VITE_STREAMS_API_BASE_URL ?? 'https://api.zemu.uk'
+// ─── URL resolution ───────────────────────────────────────────────────────
+//
+// All four API consumers (friends, news, streams, leaderboard) share
+// `VITE_API_URL`, which points at the root of the api server.
+
+const API_BASE = (() => {
+  const fromEnv = import.meta.env.VITE_API_URL as string | undefined
+  if (import.meta.env.DEV && fromEnv) return `${fromEnv}/streams`
+  return 'https://api.zemu.uk/streams'
+})()
 
 export type StreamInfo = {
   id: string

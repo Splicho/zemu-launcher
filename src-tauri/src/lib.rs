@@ -5,6 +5,7 @@ mod commands;
 mod debug_log;
 mod depot;
 mod discord;
+mod friends;
 mod game;
 mod launch_args;
 mod models;

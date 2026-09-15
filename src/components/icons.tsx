@@ -6,6 +6,34 @@ interface IconProps extends React.SVGAttributes<SVGSVGElement> {
   size?: number
 }
 
+export function Friends({ ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" {...props}>
+	<g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}>
+		<path d="M13 11a4 4 0 1 0-8 0a4 4 0 0 0 8 0"></path>
+		<path d="M11.039 7.558a4 4 0 1 1 1.923 2.885M15 21a6 6 0 0 0-12 0"></path>
+		<path d="M21 17a6 6 0 0 0-6-6"></path>
+	</g>
+</svg>
+  )
+}
+
+export function FriendPlus({ ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" {...props}>
+	<path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.5 20c.23-2.903 2.681-5.328 5.688-5.47q.38-.018.812-.03l.808.052a6.2 6.2 0 0 1 3.692 1.511M12.25 8.75a3.25 3.25 0 1 1-6.5 0a3.25 3.25 0 0 1 6.5 0M15 10.996a6.12 6.12 0 0 1 3.5 1.524M15.488 8A3.25 3.25 0 0 0 17 5.25C17 3.455 15.55 2 13.76 2c-.879 0-1.676.351-2.26.921M18.5 16v6m3-3h-6"></path>
+</svg>
+  )
+}
+
+export function Check({ ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" {...props}>
+	<path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m5 13.26l2.586 2.697C8.252 16.652 8.586 17 9 17s.748-.348 1.414-1.043L19 7"></path>
+</svg>
+  )
+}
+
 
 export function Home({ ...props }: IconProps) {
   
@@ -102,6 +130,19 @@ export function ChevronRight({ ...props }: IconProps) {
   return (
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" {...props}>
 	<path fill="currentColor" d="M12.6 12L8 7.4L9.4 6l6 6l-6 6L8 16.6z"></path>
+</svg>
+  )
+}
+
+export function Users({ ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+	<g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}>
+		<path d="M2.5 19.5c0-2.485 3.582-4.5 8-4.5s8 2.015 8 4.5"></path>
+		<circle cx={10.5} cy={8.5} r={3.5}></circle>
+		<path d="M17.5 13.5c2.485 0 4.5-1.567 4.5-3.5S19.985 6.5 17.5 6.5"></path>
+		<path d="M21.5 19.5c0-1.657-1.791-3.022-4.143-3.45"></path>
+	</g>
 </svg>
   )
 }

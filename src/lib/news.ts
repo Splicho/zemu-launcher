@@ -37,16 +37,13 @@ export interface NewsFull extends NewsListItem {
 /**
  * Resolve the news API base URL.
  *
- * Mirrors the precedence in `src/lib/auth.ts`: in dev, a local API
- * is preferred so you can iterate against a checkout of
- * `zemu-website/apps/api` (default `http://localhost:3002`, matching
- * its `PORT` env default in `src/main.ts`) without round-tripping
- * through `api.zemu.uk`. Production uses the bundled default.
+ * All four API consumers (friends, news, streams, leaderboard) share
+ * `VITE_API_URL`, which points at the root of the api server.
+ * This function appends the news-specific route.
  *
  * Precedence (first wins):
- *   1. `VITE_NEWS_API_BASE_URL` set in `.env.local` — Vite exposes
- *      this only at dev-time, so production bundles ignore it
- *      entirely. Use it to point at any local/staging API.
+ *   1. `VITE_API_URL` set in `.env.local` — Vite exposes this only
+ *      at dev-time, so production bundles ignore it entirely.
  *   2. `LAUNCHER_CONFIG.newsApiBaseUrl` — the bundled default,
  *      `https://api.zemu.uk/v1/news` in published builds.
  *
@@ -55,8 +52,8 @@ export interface NewsFull extends NewsListItem {
  * and the launcher session are independent of the news feed.
  */
 function getNewsApiBaseUrl(): string {
-  const fromEnv = import.meta.env.VITE_NEWS_API_BASE_URL as string | undefined
-  if (import.meta.env.DEV && fromEnv) return fromEnv
+  const fromEnv = import.meta.env.VITE_API_URL as string | undefined
+  if (import.meta.env.DEV && fromEnv) return `${fromEnv}/v1/news`
   return LAUNCHER_CONFIG.newsApiBaseUrl
 }
 

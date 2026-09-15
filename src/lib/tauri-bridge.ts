@@ -403,6 +403,17 @@ function setupCompatibilityBridge() {
       invoke<string | null>('wine_select_runtime_executable'),
   }
 
+  window.friendsAPI = {
+    dispatch: (action: string, payload?: Record<string, unknown>) =>
+      invoke<unknown>('friends_dispatch', { action, payload }).catch((error) => {
+        writeDebugLog('friends', 'dispatch failed', {
+          action,
+          error: safeStringify(error),
+        })
+        throw error
+      }),
+  }
+
   window.launcherAPI = {
     setRuntimeUpdateUrl: (url: string) => invoke<void>('launcher_set_runtime_update_url', { url }),
     /**
@@ -627,6 +638,18 @@ declare global {
       listRuntimes: () => Promise<WineRuntime[]>
       selectPrefixDirectory: () => Promise<string | null>
       selectRuntimeExecutable: () => Promise<string | null>
+    }
+    friendsAPI: {
+      /**
+       * Single RPC entry point for every friends action. The Rust
+       * side maps the discriminated `action` string to the
+       * appropriate handler (`list`, `search`, `request`,
+       * `accept`, `decline`, `cancel`, `remove`, `profile`).
+       */
+      dispatch: (
+        action: string,
+        payload?: Record<string, unknown>,
+      ) => Promise<unknown>
     }
     launcherAPI: {
       setRuntimeUpdateUrl: (url: string) => Promise<void>
