@@ -238,6 +238,21 @@ function FriendsListPage({
             </p>
           ) : null}
 
+          {/* Incoming requests row — always shown when there are
+           * pending requests, independently of whether the user
+           * already has any accepted friends. Nesting this inside
+           * the friends section (the previous layout) hid it for
+           * brand-new users who have only incoming requests and no
+           * accepted friends yet, leaving the toast as the only way
+           * to accept/decline. */}
+          {result.incoming.length > 0 ? (
+            <FriendRequestsRow
+              people={result.incoming}
+              count={result.incoming.length}
+              onClick={onRequestsClick}
+            />
+          ) : null}
+
           {result.outgoing.length > 0 ? (
             <PeopleSection
               title={t('friends.sections.outgoing')}
@@ -254,15 +269,6 @@ function FriendsListPage({
               people={result.friends}
               renderActions={(person) =>
                 renderRowActions(person, 'friend')
-              }
-              headerAfter={
-                result.incoming.length > 0 ? (
-                  <FriendRequestsRow
-                    people={result.incoming}
-                    count={result.incoming.length}
-                    onClick={onRequestsClick}
-                  />
-                ) : null
               }
             />
           ) : null}
@@ -482,7 +488,11 @@ function FriendRequestsPage({
       {/* Scrollable body: incoming request rows. */}
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-2 px-4 py-4">
-          {result.incoming.length === 0 ? null : (
+          {result.incoming.length === 0 ? (
+            <p className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-xs text-muted-foreground/80">
+              {t('friends.requestsEmpty')}
+            </p>
+          ) : (
             <div className="flex flex-col">
               {result.incoming.map((person) => (
                 <div

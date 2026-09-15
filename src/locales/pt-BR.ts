@@ -139,6 +139,7 @@ export default {
       addFriendHeading: 'Adicionar amigos',
       friendRequests: 'Solicitações',
       friendRequestsHeading: 'Solicitações de amizade',
+      requestsEmpty: 'Nenhuma solicitação de amizade pendente no momento.',
       searchPlaceholder: 'Buscar jogadores…',
       searchHint: 'Digite pelo menos 2 caracteres para buscar.',
       loading: 'Carregando amigos…',

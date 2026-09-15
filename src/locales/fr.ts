@@ -143,6 +143,7 @@ export default {
       addFriendHeading: 'Ajouter des amis',
       friendRequests: 'Demandes d’ami',
       friendRequestsHeading: 'Demandes d’ami',
+      requestsEmpty: 'Aucune demande d’ami en attente pour le moment.',
       searchPlaceholder: 'Rechercher des joueurs…',
       searchHint: 'Tapez au moins 2 caractères pour rechercher des joueurs.',
       loading: 'Chargement des amis…',

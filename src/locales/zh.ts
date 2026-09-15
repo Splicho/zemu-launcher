@@ -138,6 +138,7 @@ export default {
       addFriendHeading: '添加好友',
       friendRequests: '好友请求',
       friendRequestsHeading: '好友请求',
+      requestsEmpty: '目前没有待处理的好友请求。',
       searchPlaceholder: '搜索玩家…',
       searchHint: '输入至少 2 个字符搜索玩家。',
       loading: '正在加载好友列表…',

@@ -152,8 +152,16 @@ export function useFriendsRemove() {
   return useFriendsMutation('remove')
 }
 
-/** Derived count of incoming (pending) friend requests. */
+/** Derived count of incoming (pending) friend requests.
+ *
+ * The cached graph is a `FriendsActionResult` (extends `FriendsGraph`,
+ * which carries `incoming: Friend[]` directly — there is no `.graph`
+ * wrapper). Reading `data.graph?.incoming` always returned `undefined`
+ * here, so the sidebar badge stayed at 0 even when the graph had
+ * pending requests. Keep this in lock-step with `useFriendsGraph`'s
+ * return type; if a future refactor reshapes the cache, this hook must
+ * be updated or the badge regresses silently. */
 export function useIncomingRequestsCount(options: { enabled?: boolean } = {}): number {
   const { data } = useFriendsGraph({ enabled: options.enabled ?? true })
-  return data?.ok ? (data.graph?.incoming?.length ?? 0) : 0
+  return data?.ok ? data.incoming.length : 0
 }

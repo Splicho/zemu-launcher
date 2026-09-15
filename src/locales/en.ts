@@ -216,6 +216,7 @@ export default {
         addFriendHeading: 'Add friends',
         friendRequests: 'Friend requests',
         friendRequestsHeading: 'Friend requests',
+        requestsEmpty: 'No pending friend requests right now.',
         searchPlaceholder: 'Search for players...',
         searchHint: 'Type at least 2 characters to search for players.',
         loading: 'Loading friends…',
