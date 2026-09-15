@@ -20,6 +20,7 @@ import { GameStateProvider } from '@/contexts/game-state-context'
 import { Toaster } from '@/components/ui/sonner'
 import { useDownloadSpeedToast } from '@/hooks/use-download-speed-toast'
 import { useFriendsIncomingToast } from '@/hooks/use-friends-incoming-toast'
+import { useFriendsRealtimeSync } from '@/hooks/use-friends'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
@@ -52,6 +53,20 @@ function FriendsIncomingToastHost() {
   return null
 }
 
+/**
+ * Mounted at the top level so the sidebar's `incomingRequestsCount`
+ * badge (and any other component that reads the friends graph) is
+ * invalidated whenever the realtime layer says anything changed —
+ * regardless of whether the Friends panel is open. The panel used
+ * to subscribe itself but that left the badge stale when the panel
+ * was closed.
+ */
+function FriendsRealtimeSyncHost() {
+  const { status } = useAuthContext()
+  useFriendsRealtimeSync(status === 'authed')
+  return null
+}
+
 export default function MainApp() {
   return (
     <AuthProvider>
@@ -60,6 +75,7 @@ export default function MainApp() {
           <AuthedApp />
           <DownloadSpeedToast />
           <FriendsIncomingToastHost />
+          <FriendsRealtimeSyncHost />
           <Toaster />
         </GameStateProvider>
       </UpdateProvider>

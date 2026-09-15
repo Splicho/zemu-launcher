@@ -354,6 +354,19 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
                                     &format!("emit friends:incoming-request ok payload={log_payload}"),
                                 );
                             }
+                            // Also invalidate the friends graph so the
+                            // sidebar's incoming-requests badge updates
+                            // even when the toast hook isn't mounted
+                            // (e.g. logged-out user). Cheap and idempotent.
+                            if let Err(e) = app.emit(GRAPH_CHANGED_EVENT, ()) {
+                                error!(err = %e, "realtime: emit friends:graph-changed (alongside incoming-request) failed");
+                            } else {
+                                friends_debug_log::write_with_app(
+                                    &app,
+                                    "rt-emit",
+                                    "emit friends:graph-changed ok kind=incoming_request",
+                                );
+                            }
                         }
                         _ => {
                             // All other kinds (accepted, invalidate, decline, cancel, etc.)

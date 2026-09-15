@@ -18,7 +18,6 @@ import {
   useFriendsRemove,
   useFriendsRequest,
   useFriendsSearch,
-  useFriendsRealtimeSync,
   friendsKeys,
 } from '@/hooks/use-friends'
 import { useAuthContext } from '@/contexts/auth-context'
@@ -72,10 +71,11 @@ const SKELETON_RESULTS = Array.from({ length: 4 }, (_, i) => ({
  * search form, and the per-row action buttons.
  */
 export function FriendsPanel({ active }: FriendsPanelProps) {
-  // Subscribe to realtime friend-change events when the panel is open.
-  // The Rust socket client emits `friends-changed` whenever a friend
-  // request is created / accepted / declined / cancelled / removed.
-  useFriendsRealtimeSync(active)
+  // Realtime invalidation of the friends graph is mounted at the top
+  // level (`FriendsRealtimeSyncHost` in `main-app.tsx`) so the
+  // sidebar badge stays current regardless of whether this panel is
+  // open. We only gate the initial graph fetch on `active` to avoid
+  // hitting the backend while the Sheet is closed.
 
   // Re-fetch the graph whenever the signed-in user changes (login,
   // logout, OAuth re-flow). Without this, a cached `unauthenticated`
