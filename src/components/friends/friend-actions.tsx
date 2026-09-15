@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import {
-  Check,
   X,
   Send,
   UserMinus,
@@ -8,6 +9,8 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
+import { Check } from '@/components/icons'
 import { cn } from '@/lib/utils'
 
 interface ActionBaseProps {
@@ -19,6 +22,10 @@ interface ActionBaseProps {
   /** Extra classes for the wrapper <div> (used to stack two buttons
    *  side by side in the incoming-request row). */
   className?: string
+  pending?: boolean
+  /** True once the mutation has finished — used to swap the icon from
+   *  spinner to a "done" check. */
+  done?: boolean
 }
 
 /**
@@ -124,6 +131,8 @@ export function AddFriendAction({
   targetId,
   onAction,
   disabled,
+  pending,
+  done,
 }: ActionBaseProps) {
   const { t } = useTranslation()
   return (
@@ -131,11 +140,17 @@ export function AddFriendAction({
       variant="ghost"
       size="icon-sm"
       onClick={() => onAction(targetId)}
-      disabled={disabled}
+      disabled={disabled || pending || done}
       aria-label={t('friends.actions.add')}
       className="text-muted-foreground"
     >
-      <UserPlus className="!size-4" aria-hidden="true" />
+      {pending ? (
+        <Spinner className="!size-4" aria-hidden="true" />
+      ) : done ? (
+        <Check className="!size-4 text-emerald-500" aria-hidden="true" />
+      ) : (
+        <UserPlus className="!size-4" aria-hidden="true" />
+      )}
       <span className="sr-only">{t('friends.actions.add')}</span>
     </Button>
   )
@@ -153,7 +168,7 @@ interface FriendActionBarProps {
    *  — `'self'` means "skip this row entirely". */
   relation: 'self' | 'friend' | 'incoming' | 'outgoing' | 'none'
   targetId: string
-  request: { mutate: (args: { targetId: string }) => void }
+  request: { mutate: (args: { targetId: string }, options?: { onSuccess?: () => void; onError?: () => void }) => void }
   accept: { mutate: (args: { targetId: string }) => void }
   decline: { mutate: (args: { targetId: string }) => void }
   cancel: { mutate: (args: { targetId: string }) => void }
@@ -176,6 +191,13 @@ export function FriendActionBar({
   remove,
   disabled,
 }: FriendActionBarProps) {
+  const { t } = useTranslation()
+  /** Per-row pending/done state so the spinner and success check
+   *  animate on **this** row only — the mutation's global
+   *  `isPending`/`isSuccess` would otherwise affect every row in the
+   *  list when one click fires. */
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const [doneId, setDoneId] = useState<string | null>(null)
   if (relation === 'self') return null
   if (relation === 'friend')
     return (
@@ -205,8 +227,25 @@ export function FriendActionBar({
   return (
     <AddFriendAction
       targetId={targetId}
-      onAction={(id) => request.mutate({ targetId: id })}
+      onAction={(id) => {
+        setPendingId(id)
+        request.mutate(
+          { targetId: id },
+          {
+            onSuccess: () => {
+              setPendingId(null)
+              setDoneId(id)
+              toast.success(t('friends.actions.requestSent'))
+            },
+            onError: () => {
+              setPendingId(null)
+            },
+          },
+        )
+      }}
       disabled={disabled}
+      pending={pendingId === targetId}
+      done={doneId === targetId}
     />
   )
 }

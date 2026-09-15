@@ -20,6 +20,7 @@ import {
 import {
   PeopleSection,
   FriendActionBar,
+  SearchResultSkeleton,
 } from '@/components/friends'
 
 interface FriendsPanelProps {
@@ -49,6 +50,14 @@ function resolveReason(
   if (lookup === key) return t('friends.errors.unknown')
   return lookup
 }
+
+/** Stable list of placeholder rows shown while search results stream in. */
+const SKELETON_RESULTS = Array.from({ length: 4 }, (_, i) => ({
+  id: `skeleton-${i}`,
+  displayName: '',
+  avatarUrl: null,
+  status: 'offline',
+}))
 
 /**
  * Renders the body of the Friends Sheet. The Sheet itself is just a
@@ -370,12 +379,22 @@ function AddFriendsPage({ onBack }: AddFriendsPageProps) {
           ) : null}
 
           {searched ? (
-            <PeopleSection
-              title={t('friends.sections.resultsFound', { count: result.results.length })}
-              people={result.results}
-              emptyMessage={t('friends.empty')}
-              renderActions={renderSearchRowActions}
-            />
+            searchQuery.isFetching && result.results.length === 0 ? (
+              <PeopleSection
+                title={t('friends.sections.resultsFound', { count: 0 })}
+                people={SKELETON_RESULTS}
+                emptyMessage={t('friends.empty')}
+                renderActions={() => null}
+                renderItem={() => <SearchResultSkeleton />}
+              />
+            ) : (
+              <PeopleSection
+                title={t('friends.sections.resultsFound', { count: result.results.length })}
+                people={result.results}
+                emptyMessage={t('friends.empty')}
+                renderActions={renderSearchRowActions}
+              />
+            )
           ) : null}
         </div>
       </ScrollArea>

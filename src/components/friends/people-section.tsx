@@ -15,10 +15,13 @@ interface PeopleSectionProps<T extends PersonLike> {
   title: string
   /** Optional count shown as a chip next to the heading. */
   badge?: number
-  people: T[]
+  people: readonly T[]
   emptyMessage: string
   /** Renders the trailing action slot of each row. */
   renderActions?: (person: T) => React.ReactNode
+  /** Optional override that takes full control of the row rendering
+   *  — used for skeleton placeholders while data is streaming in. */
+  renderItem?: (person: T) => React.ReactNode
 }
 
 /**
@@ -32,6 +35,7 @@ export function PeopleSection<T extends PersonLike>({
   people,
   emptyMessage,
   renderActions,
+  renderItem,
 }: PeopleSectionProps<T>) {
   return (
     <section className="flex flex-col gap-2">
@@ -58,11 +62,15 @@ export function PeopleSection<T extends PersonLike>({
         </p>
       ) : (
         <ul className="flex flex-col">
-          {people.map((person) => (
-            <PlayerResultRow key={person.id} person={person}>
-              {renderActions ? renderActions(person) : null}
-            </PlayerResultRow>
-          ))}
+          {people.map((person) =>
+            renderItem ? (
+              <React.Fragment key={person.id}>{renderItem(person)}</React.Fragment>
+            ) : (
+              <PlayerResultRow key={person.id} person={person}>
+                {renderActions ? renderActions(person) : null}
+              </PlayerResultRow>
+            ),
+          )}
         </ul>
       )}
     </section>

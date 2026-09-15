@@ -233,6 +233,7 @@ export default {
         cancel: 'Cancel',
         search: 'Search',
         back: 'Back',
+        requestSent: 'Friend request sent',
       },
       status: {
         online: 'Online',

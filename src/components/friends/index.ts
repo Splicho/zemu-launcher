@@ -28,3 +28,5 @@ export type { FriendAction } from '@/components/friends/friend-actions'
 export { PlayerResultRow, STATUS_DOT_CLASS } from '@/components/friends/player-result-row'
 
 export { PeopleSection } from '@/components/friends/people-section'
+
+export { SearchResultSkeleton } from '@/components/friends/search-result-skeleton'
