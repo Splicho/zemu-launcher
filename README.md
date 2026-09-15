@@ -133,10 +133,22 @@ zemu-launcher/
 
 ## Environment Variables
 
+> **⚠️ Security note:** Variables prefixed with `VITE_` are bundled into the frontend JavaScript and are **public**. Only use `VITE_` for URLs that are already public (e.g. public API endpoints). Secrets and credentials must use the `ZEMU_` prefix, which stays in the Rust backend and is never bundled into the renderer.
+
+### Frontend / Vite (public — bundled into renderer)
+
 | Variable | Required | Description |
 |---|---|---|
 | `VITE_LAUNCHER_REALTIME_URL` | Yes | WebSocket URL for realtime friend updates |
 | `VITE_API_URL` | Yes | Base URL of the ZEmu REST API |
+
+### Backend / Rust (private — never bundled)
+
+| Variable | Required | Description |
+|---|---|---|
+| `ZEMU_SESSION_ID_ENDPOINT` | No | URL of the keys service that issues session ids. Defaults to the production endpoint. |
+| `ZEMU_SESSION_ID_BEARER_TOKEN` | **Yes** | Bearer token for authenticating against the keys service. Must be set before building for production. |
+| `ZEMU_GAME_SERVER` | No | Game server `hostname:port` passed to the game at launch. Defaults to `eu.zemu.uk:1115`. |
 
 ## Contributing
 

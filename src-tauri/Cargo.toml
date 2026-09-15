@@ -78,6 +78,9 @@ windows-sys = { version = "0.61.2", features = [
 ] }
 winreg = "0.52"
 
+[dev-dependencies]
+temp-env = "0.3"
+
 [profile.release]
 panic = "abort"
 codegen-units = 1

@@ -1,7 +1,21 @@
+/// Default game server address (hostname:port) appended to launch args.
+/// This is deliberately not a const — the function reads the env var at
+/// each call so callers don't need to restart the app after changing it.
+///
+/// Override with the `ZEMU_GAME_SERVER` environment variable.
+/// Example: `ZEMU_GAME_SERVER=us.zemu.uk:1115 ./zemu-launcher`
+fn default_game_server() -> String {
+    std::env::var("ZEMU_GAME_SERVER")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "eu.zemu.uk:1115".to_string())
+}
+
 /// Arguments shared by native, elevated, Wine, and Proton game launches.
 pub fn client_arguments(session_id: &str) -> [String; 3] {
+    let server = default_game_server();
     [
-        "server=eu.zemu.uk:1115".into(),
+        format!("server={server}"),
         format!("SessionId={session_id}"),
         "CasSessionId=zemu-local-session".into(),
     ]
@@ -36,17 +50,22 @@ pub fn windows_command_line(args: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use temp_env::with_var;
 
     #[test]
     fn passes_exact_server_session_and_cas_arguments() {
-        assert_eq!(
-            client_arguments("test-session"),
-            [
-                "server=eu.zemu.uk:1115",
-                "SessionId=test-session",
-                "CasSessionId=zemu-local-session",
-            ]
-        );
+        // Reset env var so the test is deterministic regardless of the
+        // machine's ZEMU_GAME_SERVER setting.
+        temp_env::with_var("ZEMU_GAME_SERVER", Some("eu.zemu.uk:1115"), || {
+            assert_eq!(
+                client_arguments("test-session"),
+                [
+                    "server=eu.zemu.uk:1115",
+                    "SessionId=test-session",
+                    "CasSessionId=zemu-local-session",
+                ]
+            );
+        });
     }
 
     #[test]
@@ -59,10 +78,12 @@ mod tests {
 
     #[test]
     fn elevated_command_line_preserves_argument_boundaries() {
-        assert_eq!(
-            windows_command_line(&client_arguments("a key")),
-            r#""server=eu.zemu.uk:1115" "SessionId=a key" "CasSessionId=zemu-local-session""#
-        );
+        temp_env::with_var("ZEMU_GAME_SERVER", Some("eu.zemu.uk:1115"), || {
+            assert_eq!(
+                windows_command_line(&client_arguments("a key")),
+                r#""server=eu.zemu.uk:1115" "SessionId=a key" "CasSessionId=zemu-local-session""#
+            );
+        });
     }
 
     #[test]

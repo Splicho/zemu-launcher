@@ -16,8 +16,9 @@ use tauri::AppHandle;
 /// launcher picks the first key whose `status` is `"fresh"` and writes
 /// its `key` value into `ClientConfig.ini`'s `SessionId=` line.
 ///
-/// Overridable through `LauncherConfig::session_id_endpoint_url` for
-/// development / staging environments.
+/// Overridable through the `ZEMU_SESSION_ID_ENDPOINT` environment
+/// variable. During development this lets you point a local launcher at
+/// a staging keys service without recompiling.
 const DEFAULT_SESSION_ID_ENDPOINT: &str = "http://217.160.250.198:8081/authkeys/unclaimed";
 
 /// Default admin key the launcher uses when calling the keys service.
@@ -25,12 +26,11 @@ const DEFAULT_SESSION_ID_ENDPOINT: &str = "http://217.160.250.198:8081/authkeys/
 /// The keys service doesn't use `Authorization: Bearer …` — it
 /// expects the credential in a custom `x-admin-key` request header.
 /// This value is the launcher's own server-side credential, not a
-/// per-user secret, so baking it in is the same trust model as the
-/// endpoint URL above.
+/// per-user secret.
 ///
-/// Same override semantics as the URL — config wins.
-const DEFAULT_SESSION_ID_BEARER_TOKEN: &str =
-    "17c9a537bc592a414b2174bae76d75db9ff001c459d9f274";
+/// Overridable through the `ZEMU_SESSION_ID_BEARER_TOKEN` environment
+/// variable. The token MUST be set via env var before publishing.
+const DEFAULT_SESSION_ID_BEARER_TOKEN: &str = "PLACEHOLDER_REPLACE_WITH_ENV_VAR";
 
 /// File name of the cached session id inside `app_data_dir`. Persists
 /// across launches so we don't hit the keys endpoint every time the
@@ -73,24 +73,29 @@ pub struct ResolvedEndpoint {
     pub bearer_token: String,
 }
 
-/// Resolve the session-id endpoint config: launcher-config override
-/// wins, otherwise the baked-in defaults. Empty / whitespace overrides
-/// fall back to the default rather than turning into "no endpoint,
-/// fail".
-pub fn resolve_endpoint(app: &AppHandle) -> ResolvedEndpoint {
+/// Resolve the session-id endpoint config: env var wins, then
+/// launcher-config override, then the baked-in defaults.
+/// Env vars are intentionally undocumented (they're build-time overrides
+/// for operators, not user-facing settings).
+fn resolve_endpoint(app: &AppHandle) -> ResolvedEndpoint {
     let config = load_launcher_config(app).ok();
 
-    let url = config
-        .as_ref()
-        .and_then(|c| c.session_id_endpoint_url.as_deref())
+    // Env vars take highest precedence — these are for operators who
+    // need to point the launcher at a staging service without editing
+    // config files or recompiling.
+    let url = std::env::var("ZEMU_SESSION_ID_ENDPOINT")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .or_else(|| config.as_ref().and_then(|c| c.session_id_endpoint_url.clone()))
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .unwrap_or(DEFAULT_SESSION_ID_ENDPOINT)
         .to_string();
 
-    let bearer_token = config
-        .as_ref()
-        .and_then(|c| c.session_id_bearer_token.as_deref())
+    let bearer_token = std::env::var("ZEMU_SESSION_ID_BEARER_TOKEN")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .or_else(|| config.as_ref().and_then(|c| c.session_id_bearer_token.clone()))
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .unwrap_or(DEFAULT_SESSION_ID_BEARER_TOKEN)
