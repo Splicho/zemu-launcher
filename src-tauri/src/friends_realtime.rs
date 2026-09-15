@@ -34,10 +34,22 @@ use crate::friends_debug_log;
 use crate::state::AppState;
 
 /// Default realtime URL when AppState has none set (dev fallback).
+/// Only used as a last-resort fallback when the renderer fails to push
+/// a URL within `REALTIME_URL_WAIT_TIMEOUT` — in production the
+/// renderer always wins with `wss://socket.zemu.uk`.
+#[allow(dead_code)]
 const REALTIME_URL_DEFAULT: &str = "ws://localhost:3007";
 
 /// Maximum reconnect back-off in seconds. Matches `rust_socketio`'s `reconnect_delay`.
 const MAX_BACKOFF_SECS: u64 = 30;
+
+/// How long to wait for the renderer to push a realtime URL before
+/// falling back to `REALTIME_URL_DEFAULT`. Long enough to survive a
+/// slow webview boot (cold start, dev server compile) but short
+/// enough that a renderer that crashed still surfaces a clear
+/// "ws://localhost:3007 in production" log instead of hanging
+/// forever.
+const REALTIME_URL_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Tauri event emitted when the friends graph changed and the panel should
 /// refetch (decline, cancel, remove, or any other non-toast action).
@@ -55,11 +67,64 @@ const INCOMING_REQUEST_EVENT: &str = "friends:incoming-request";
 /// the snake_case / camelCase mismatch between the api's payload and the
 /// Rust struct fields — not worth the ceremony for a single call site.
 
-/// Resolve the realtime URL from AppState (set by the renderer on startup).
-fn realtime_url(app: &AppHandle) -> String {
-    app.try_state::<AppState>()
-        .and_then(|s| s.get_realtime_url())
-        .unwrap_or_else(|| REALTIME_URL_DEFAULT.to_string())
+/// Wait for the renderer to push a realtime URL via
+/// `launcher_set_realtime_url`. Returns the URL when one arrives, or
+/// `None` on shutdown or timeout.
+///
+/// The watcher fires on every `set_realtime_url` call, but we only
+/// care about the first one — the URL is a startup-time config, not
+/// something that changes during the session.
+async fn resolve_realtime_url(
+    mut url_rx: tokio::sync::watch::Receiver<Option<String>>,
+    app: &AppHandle,
+    shutdown_flag: &Arc<AtomicBool>,
+) -> Option<String> {
+    // If the renderer already pushed a URL (e.g. on a re-spawn), use it
+    // without waiting.
+    if let Some(url) = url_rx.borrow().clone() {
+        if !url.is_empty() {
+            return Some(url);
+        }
+    }
+
+    friends_debug_log::write_with_app(
+        app,
+        "rt-start",
+        "renderer URL not yet pushed — waiting",
+    );
+
+    let deadline = tokio::time::Instant::now() + REALTIME_URL_WAIT_TIMEOUT;
+    loop {
+        if shutdown_flag.load(Ordering::SeqCst) {
+            info!("realtime: shutdown while waiting for URL");
+            return None;
+        }
+        // `changed()` resolves on every value update. We re-check the
+        // value afterwards so we don't miss an update that lands
+        // between the deadline check and the await.
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            warn!(
+                "realtime: renderer never pushed a URL within {:?}; giving up",
+                REALTIME_URL_WAIT_TIMEOUT
+            );
+            friends_debug_log::write_with_app(
+                app,
+                "rt-start",
+                &format!(
+                    "renderer never pushed a URL within {:?}; giving up",
+                    REALTIME_URL_WAIT_TIMEOUT
+                ),
+            );
+            return None;
+        }
+        let _ = tokio::time::timeout(remaining, url_rx.changed()).await;
+        if let Some(url) = url_rx.borrow().clone() {
+            if !url.is_empty() {
+                return Some(url);
+            }
+        }
+    }
 }
 
 /**
@@ -69,15 +134,25 @@ fn realtime_url(app: &AppHandle) -> String {
  * background Tokio task that owns the socket. The socket's internal reconnect
  * loop handles network outages. The task exits when `shutdown_rx` resolves
  * (sender dropped on app exit).
+ *
+ * URL resolution: the task **waits** for the renderer to push a URL via
+ * `launcher_set_realtime_url` before connecting. This is necessary because
+ * Rust's `setup` runs synchronously at app boot — well before the
+ * webview has loaded `main.tsx` and executed `syncLauncherRuntimeConfig`.
+ * Without the wait, the task would fall back to the dev default
+ * (`ws://localhost:3007`) in every production build. The wait is
+ * bounded by `REALTIME_URL_WAIT_TIMEOUT` so a renderer that crashed
+ * never hangs the socket task forever.
  */
 pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
-    let url = realtime_url(&app);
-    info!(url = %url, "realtime: starting");
-    let url_for_logging = Arc::new(url.clone());
-    friends_debug_log::write_with_app(&app, "rt-start", &format!("realtime task spawning url={url}"));
+    info!("realtime: starting (waiting for renderer to push URL)");
+    friends_debug_log::write_with_app(
+        &app,
+        "rt-start",
+        "realtime task spawning (waiting for renderer to push real URL)",
+    );
 
     tauri::async_runtime::spawn({
-        let url_for_logging = url_for_logging.clone();
         async move {
         // Shared shutdown flag — set to true when the oneshot sender is dropped
         // (app exiting).
@@ -85,12 +160,43 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
 
         // Watchdog: waits for the oneshot to close, then sets the flag.
         let shutdown_rx = shutdown_rx;
-        let shutdown_flag = shutdown.clone();
+        let watchdog_shutdown = shutdown.clone();
         let _watchdog = tauri::async_runtime::spawn(async move {
             let _ = shutdown_rx.await;
-            shutdown_flag.store(true, Ordering::SeqCst);
+            watchdog_shutdown.store(true, Ordering::SeqCst);
             info!("realtime: watchdog: app shutting down");
         });
+
+        // Subscribe to the watch channel so the realtime task can wait
+        // for the renderer to push a URL before connecting. Rust's
+        // `setup` runs synchronously at app boot — well before the
+        // webview has loaded `main.tsx` — so without this wait the
+        // task would fall back to the dev default (`ws://localhost:3007`)
+        // in every production build.
+        let url_rx = match app.try_state::<AppState>() {
+            Some(state) => state.subscribe_realtime_url(),
+            None => {
+                error!("realtime: AppState not registered; cannot subscribe to URL changes");
+                friends_debug_log::write_with_app(
+                    &app,
+                    "rt-start",
+                    "AppState not registered; cannot subscribe to URL changes",
+                );
+                return;
+            }
+        };
+
+        let shutdown_flag = shutdown.clone();
+        let url = match resolve_realtime_url(url_rx, &app, &shutdown_flag).await {
+            Some(u) => u,
+            None => return, // shutdown or timeout already logged
+        };
+        info!(url = %url, "realtime: using URL");
+        friends_debug_log::write_with_app(
+            &app,
+            "rt-start",
+            &format!("resolved realtime url={url}"),
+        );
 
         // Read the token once. We deliberately do NOT re-read on reconnect:
         // the server verifies the token at handshake time. If the token
@@ -132,9 +238,9 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
 
         // Build and connect the socket. `rust_socketio` owns the reconnect
         // loop; we just hold the `Client` and let it run.
-        let url_owned = url_for_logging.clone();
-        let url_for_connect_log = url_owned.clone();
-        let _socket = match ClientBuilder::new(url_owned.as_ref())
+        let url_for_log = url.clone();
+        let url_for_connect_log = url.clone();
+        let _socket = match ClientBuilder::new(&url)
             .auth(json!({ "token": token }))
             .transport_type(rust_socketio::TransportType::Websocket)
             .reconnect(true)
@@ -145,7 +251,7 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
             .on("connect", move |_payload: Payload, socket| {
                 let app = app_handle.clone();
                 let token = token_for_connect.clone();
-                let url_log = url_owned.clone();
+                let url_log = url_for_log.clone();
                 async move {
                     let room = extract_user_id_from_token(&token)
                         .map(|uid| format!("user:{uid}"))

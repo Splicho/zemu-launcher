@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import { Plus, ArrowLeft } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -18,7 +19,9 @@ import {
   useFriendsRequest,
   useFriendsSearch,
   useFriendsRealtimeSync,
+  friendsKeys,
 } from '@/hooks/use-friends'
+import { useAuthContext } from '@/contexts/auth-context'
 import {
   PeopleSection,
   FriendActionBar,
@@ -73,6 +76,19 @@ export function FriendsPanel({ active }: FriendsPanelProps) {
   // The Rust socket client emits `friends-changed` whenever a friend
   // request is created / accepted / declined / cancelled / removed.
   useFriendsRealtimeSync(active)
+
+  // Re-fetch the graph whenever the signed-in user changes (login,
+  // logout, OAuth re-flow). Without this, a cached `unauthenticated`
+  // result from a stale token sticks around even after the user
+  // re-logs in — the panel would keep showing "Please sign in to
+  // manage friends" until they close and reopen the sheet. By
+  // invalidating on `token?.token` change, the next `useFriendsGraph`
+  // call hits the API with the fresh token and self-corrects.
+  const { token } = useAuthContext()
+  const qc = useQueryClient()
+  React.useEffect(() => {
+    void qc.invalidateQueries({ queryKey: friendsKeys.all })
+  }, [qc, token?.token])
 
   const graphQuery = useFriendsGraph({ enabled: active })
   const requestMutation = useFriendsRequest()

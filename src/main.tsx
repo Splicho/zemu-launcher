@@ -30,8 +30,19 @@ async function syncLauncherRuntimeConfig() {
     // Tell the Rust side the realtime socket URL so it can start the
     // friends socket loop without mirroring Vite env vars. Dev default is
     // ws://localhost:3007; prod default is wss://socket.zemu.uk.
-    const realtimeUrl = (import.meta.env.VITE_LAUNCHER_REALTIME_URL as string | undefined)
-      ?? LAUNCHER_CONFIG.realtimeUrl
+    //
+    // The `import.meta.env` lookup is gated on DEV so a leftover
+    // `VITE_LAUNCHER_REALTIME_URL` in `.env.local` does NOT leak into a
+    // production bundle — Vite still loads `.env.local` for `vite build`
+    // because there is no `.env.production.local` to shadow it, and a
+    // stray dev value there would point the production app at
+    // `ws://localhost:3007` (unreachable from end users). Production
+    // builds always use the bundled `LAUNCHER_CONFIG.realtimeUrl`.
+    const fromEnv = import.meta.env.VITE_LAUNCHER_REALTIME_URL as string | undefined
+    const realtimeUrl =
+      import.meta.env.DEV && fromEnv
+        ? fromEnv
+        : LAUNCHER_CONFIG.realtimeUrl
     await invoke('launcher_set_realtime_url', { url: realtimeUrl })
   } catch (error) {
     console.error('[launcher-config] failed to sync config with Rust backend', error)

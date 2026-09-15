@@ -3,6 +3,7 @@ use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use tokio::sync::watch;
 
 #[derive(Debug, Default)]
 pub struct UpdateRuntime {
@@ -18,7 +19,7 @@ pub struct GameRuntime {
     pub active_pid: Option<u32>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct AppState {
     pub update_runtime: Arc<Mutex<UpdateRuntime>>,
     pub game_runtime: Arc<Mutex<GameRuntime>>,
@@ -31,6 +32,28 @@ pub struct AppState {
     /// Set by the renderer on startup via `set_realtime_url` so the Rust
     /// side doesn't need to mirror Vite env vars.
     pub realtime_url: Arc<Mutex<Option<String>>>,
+    /// Notify channel fired every time `set_realtime_url` is called
+    /// (including the very first call from the renderer on startup).
+    /// The realtime task waits on this before connecting so the URL
+    /// the renderer pushed actually wins over the Rust-side default.
+    pub realtime_url_tx: watch::Sender<Option<String>>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        let (realtime_url_tx, _) = watch::channel(None);
+        Self {
+            update_runtime: Arc::new(Mutex::new(UpdateRuntime::default())),
+            game_runtime: Arc::new(Mutex::new(GameRuntime::default())),
+            bootstrap_active: Arc::new(AtomicBool::new(false)),
+            oauth_server: Arc::new(Mutex::new(None)),
+            pending_oauth_callback: Arc::new(Mutex::new(None)),
+            processed_oauth_states: Arc::new(Mutex::new(HashMap::new())),
+            runtime_update_url: Arc::new(Mutex::new(None)),
+            realtime_url: Arc::new(Mutex::new(None)),
+            realtime_url_tx,
+        }
+    }
 }
 
 impl AppState {
@@ -157,12 +180,25 @@ impl AppState {
 
     pub fn set_realtime_url(&self, url: String) {
         let trimmed = url.trim().trim_end_matches('/').to_string();
+        let value = if trimmed.is_empty() { None } else { Some(trimmed) };
         if let Ok(mut guard) = self.realtime_url.lock() {
-            *guard = if trimmed.is_empty() { None } else { Some(trimmed) };
+            *guard = value.clone();
         }
+        // Notify the realtime task so a connection attempt that's
+        // waiting for the URL can proceed (and so the URL gets
+        // re-read on subsequent reconnect attempts).
+        let _ = self.realtime_url_tx.send(value);
     }
 
+    #[allow(dead_code)]
     pub fn get_realtime_url(&self) -> Option<String> {
         self.realtime_url.lock().ok().and_then(|g| g.clone())
+    }
+
+    /// Subscribe to realtime-URL changes. Used by the realtime task to
+    /// wait for the renderer to push a URL before connecting (and to
+    /// re-read the URL on reconnect after a renderer-driven update).
+    pub fn subscribe_realtime_url(&self) -> watch::Receiver<Option<String>> {
+        self.realtime_url_tx.subscribe()
     }
 }
