@@ -46,6 +46,9 @@ import {
 import { useUpdate } from '@/contexts/update-context'
 import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { CircularProgress } from '@/components/circular-progress'
+import { Badge } from '@/components/ui/badge'
+import { useIncomingRequestsCount } from '@/hooks/use-friends'
+import { useAuthContext } from '@/contexts/auth-context'
 import type { PropertiesSectionId } from '@/components/properties-sidebar'
 import type { OpenProperties } from '@/contexts/open-properties-context'
 
@@ -112,6 +115,9 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
   const { isUpdating, progress } = useUpdate()
   const { checkForUpdates, selectDirectory, isChecking, gameDirectory } =
     useGameStateContext()
+  const { status } = useAuthContext()
+  const isAuthenticated = status === 'authed'
+  const incomingCount = useIncomingRequestsCount({ enabled: isAuthenticated })
   const hash = useHashRoute()
 
   // Stable callback the rest of the app uses (via
@@ -354,6 +360,14 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
             >
               <Users className="size-5!" />
               <span>{t('nav.friends')}</span>
+              {incomingCount > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="ml-auto h-5 min-w-5 justify-center px-1 text-[10px] leading-none bg-red-500 text-foreground dark:bg-red-600"
+                >
+                  {incomingCount}
+                </Badge>
+              )}
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

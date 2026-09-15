@@ -141,3 +141,9 @@ export function useFriendsCancel() {
 export function useFriendsRemove() {
   return useFriendsMutation('remove')
 }
+
+/** Derived count of incoming (pending) friend requests. */
+export function useIncomingRequestsCount(options: { enabled?: boolean } = {}): number {
+  const { data } = useFriendsGraph({ enabled: options.enabled ?? true })
+  return data?.ok ? (data.graph?.incoming?.length ?? 0) : 0
+}
