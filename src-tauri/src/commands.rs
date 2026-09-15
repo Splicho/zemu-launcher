@@ -675,7 +675,6 @@ pub async fn friends_list(app: tauri::AppHandle) -> friends::FriendsActionResult
 }
 
 #[tauri::command]
-#[tauri::command]
 pub async fn friends_search(
     app: tauri::AppHandle,
     query: String,
@@ -882,8 +881,11 @@ fn focus_window(window: &tauri::WebviewWindow) {
 ///     avatarUrl: null
 ///   })
 ///
-/// This is only compiled into dev builds (guarded by `cfg(debug_assertions)`).
-#[cfg(debug_assertions)]
+/// This is only compiled into dev builds (guarded by `cfg(debug_assertions)`
+/// in release builds, the function is still declared so `generate_handler!`
+/// can list it without splitting the handler table into two `cfg`-gated
+/// invocations).
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
 #[tauri::command]
 pub fn debug_fire_friend_request(
     app: tauri::AppHandle,
