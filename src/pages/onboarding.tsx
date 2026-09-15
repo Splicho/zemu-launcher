@@ -263,21 +263,17 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate }: Onboa
         </div>
 
         {/* Right pane — onboarding.jpg fills the full width/height
-            of the pane, hidden on mobile. Slides in from the right
-            on first mount to match the threadlab onboarding rhythm. */}
-        <motion.div
-          initial={{ x: 100, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.5, ease: 'easeOut', delay: 0.5 }}
-          className="relative hidden items-center justify-center overflow-hidden border-l border-border bg-background sm:flex sm:w-1/2"
-        >
+            of the pane, hidden on mobile. Static on first mount; the
+            no-animation request is intentional (the hero art should
+            just be present, not animated in). */}
+        <div className="relative hidden items-center justify-center overflow-hidden border-l border-border bg-background sm:flex sm:w-1/2">
           <img
             src="/background/onboarding.jpg"
             alt=""
             className="h-full w-full object-cover"
             draggable={false}
           />
-        </motion.div>
+        </div>
       </div>
     </div>
     </TooltipProvider>
@@ -554,7 +550,19 @@ function BaseGameStep({ folder, onBack, onContinue, onSkip, t }: BaseGameStepPro
       // isIdle` is logically impossible — `'done'` and `'idle'` are
       // mutually exclusive), and the bottom-bar CTA also dropped
       // into the manual-open outline branch.
-      if (status.authed) setAlreadyAuthed(true)
+      //
+      // We mark the auth flow as "initiated" *only* when the saved
+      // token belongs to the user who is currently sitting in the
+      // wizard — i.e. it was present on Step 3 mount. That way a
+      // fresh install that happens to have a stale keychain entry
+      // (which previously caused the green "Signed in as X" card
+      // to flash before the user clicked anything) falls through
+      // to the QR gate. Returning users with their own real token
+      // still see the card immediately.
+      if (status.authed) {
+        setAlreadyAuthed(true)
+        setAuthInitiated(true)
+      }
     })
     return () => {
       cancelled = true
@@ -732,7 +740,12 @@ function BaseGameStep({ folder, onBack, onContinue, onSkip, t }: BaseGameStepPro
   //                     confirm, failed). Show `QrSteamGate`; it
   //                     owns its own UI for failed/connecting/etc.
 
-  const authedIdle = authInitiated && alreadyAuthed && !isDownloading && !isFailed
+  const authedIdle =
+    authInitiated &&
+    alreadyAuthed &&
+    pipelineState === 'idle' &&
+    !isDownloading &&
+    !isFailed
   const showQrGate = !authedIdle && !isDownloading
   const showProgress = isDownloading
 
