@@ -343,6 +343,20 @@ export default {
       colTotalScore: 'Pontuação Total',
       noPlayersFound: 'Nenhum jogador encontrado.',
     },
+    leaderboardPage: {
+      title: 'Classificação',
+      subtitle: 'Melhores jogadores desta temporada. Clique em uma linha para ver as melhores partidas.',
+      searchPlaceholder: 'Buscar jogadores…',
+      countryAll: 'Todos os países',
+      countryNone: 'Sem país',
+      rowsPerPage: 'Linhas',
+      empty: 'Nenhum jogador corresponde aos filtros.',
+      heroYou: 'Você',
+      heroFilteredOut: 'Filtrado',
+      expandingLoading: 'Carregando partidas…',
+      expandingEmpty: 'Nenhuma partida recente para mostrar.',
+      playerTier: 'Divisão do jogador',
+    },
     // Properties modal
     properties: {
       title: 'Propriedades',

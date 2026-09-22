@@ -5,7 +5,7 @@
  *
  * The hook is mounted from `main-app.tsx` (not inside FriendsPanel) so
  * it fires even when the panel is closed. It is gated by the
- * `enabled` boolean so it is a no-op when the user is not authenticated.
+ * `enabled` boolean so it is a no-op when `enabled` is `false`.
  *
  * De-duplication: a `Set<string>` in a `useRef` tracks the last 20
  * `fromUser.id`s. If the same user sends a duplicate request (server
@@ -113,9 +113,11 @@ export function useFriendsIncomingToast(enabled: boolean) {
           },
         )
 
-        const dismiss = (toastId: string | number) =>
-          toast.dismiss(toastId)
-
+        // Note: `toast.custom`'s render function receives Sonner's internal
+        // `toastId` (string | number) as its first argument. That ID is
+        // what must be passed to `toast.dismiss()`. We capture it in the
+        // `onSettled` callbacks below so the toast disappears as soon as
+        // the accept/decline mutation finishes (success or error).
         toast.custom(
           (toastId) => (
             <FriendRequestToast
@@ -127,7 +129,7 @@ export function useFriendsIncomingToast(enabled: boolean) {
                 accept.mutate(
                   { targetId: id },
                   {
-                    onSettled: () => dismiss(toastId),
+                    onSettled: () => toast.dismiss(toastId),
                   },
                 )
               }
@@ -135,11 +137,11 @@ export function useFriendsIncomingToast(enabled: boolean) {
                 decline.mutate(
                   { targetId: id },
                   {
-                    onSettled: () => dismiss(toastId),
+                    onSettled: () => toast.dismiss(toastId),
                   },
                 )
               }
-              onDismiss={dismiss}
+              onDismiss={(id) => toast.dismiss(id)}
             />
           ),
           {

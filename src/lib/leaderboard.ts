@@ -1,11 +1,23 @@
 /**
  * Leaderboard types mirroring the zemu-website API.
+ *
+ * The website also exposes a `country` field on `LeaderboardEntry` that
+ * is enriched server-side from the `user` table. The launcher's API
+ * service (`apps/api/src/leaderboard/leaderboard.service.ts`) also
+ * resolves this enrichment, so `fetchLeaderboardEntries` types the
+ * field as optional here and normalises `undefined` to `null`.
  */
 
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 import { fetchPublicApi } from '@/lib/public-api'
 
-export type LeaderboardTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond' | 'master'
+export type LeaderboardTier =
+  | 'bronze'
+  | 'silver'
+  | 'gold'
+  | 'platinum'
+  | 'diamond'
+  | 'master'
 
 export const TIER_VALUES: readonly LeaderboardTier[] = [
   'bronze',
@@ -27,6 +39,8 @@ export interface LeaderboardEntry {
   position: number
   name: string
   tier: LeaderboardTier
+  /** ISO 3166-1 alpha-2 country code, or null when unset. */
+  country: string | null
   top10TotalScore: number
   topMatchScore: number
   topMatchKills: number
@@ -79,8 +93,12 @@ export async function fetchTopLeaderboard(
     throw new Error(`Leaderboard request failed (HTTP ${response.status})`)
   }
   const data = await response.json()
-  const entries = (data.entries ?? []) as LeaderboardEntry[]
-  const matchingEntries = tier === 'all' ? entries : entries.filter(entry => entry.tier === tier)
+  const entries = (data.entries ?? []) as Array<
+    Omit<LeaderboardEntry, 'country'> & { country?: string | null }
+  >
+  const matchingEntries = (tier === 'all' ? entries : entries.filter(entry => entry.tier === tier))
+    // Normalise `country: undefined` (old api / player missing a user row) to `null`.
+    .map(e => ({ ...e, country: e.country ?? null }))
 
   // Sort by Total Score (top10TotalScore), highest first.
   matchingEntries.sort((a, b) => b.top10TotalScore - a.top10TotalScore)
@@ -91,4 +109,53 @@ export async function fetchTopLeaderboard(
   })
 
   return matchingEntries.slice(0, limit)
+}
+
+// ─── Full leaderboard (page) ───────────────────────────────────────────────
+
+/** Fetch all standings for the leaderboard page. Server pre-sorts by top10TotalScore. */
+export async function fetchLeaderboardEntries(): Promise<LeaderboardEntry[]> {
+  const response = await fetchPublicApi(`${STATS_API_BASE}/leaderboards`)
+  if (!response.ok) throw new Error(`Leaderboard request failed (HTTP ${response.status})`)
+  const data = await response.json()
+  const entries = (data.entries ?? []) as Array<
+    Omit<LeaderboardEntry, 'country'> & { country?: string | null }
+  >
+  return entries.map(e => ({ ...e, country: e.country ?? null }))
+}
+
+/** Fetch a single player's top-10 match history. */
+export async function fetchPlayerTopMatches(name: string): Promise<MatchData[]> {
+  const response = await fetchPublicApi(
+    `${STATS_API_BASE}/player/${encodeURIComponent(name)}`
+  )
+  if (!response.ok) throw new Error(`Player matches failed (HTTP ${response.status})`)
+  const data = await response.json()
+  return (data.topMatches ?? []) as MatchData[]
+}
+
+// ─── Clantag lookups ──────────────────────────────────────────────────────
+
+export interface ClanTagEntry {
+  /** Lowercased display name — used as the lookup key. */
+  key: string
+  clanSlug: string
+  clanName: string
+  clantag: string
+}
+
+/**
+ * Resolve a batch of display names to their clantag affiliation.
+ * Returns a `Map<nameLower, ClanTagEntry>`. Players without a clan
+ * are simply absent from the map.
+ */
+export async function fetchClantags(
+  names: readonly string[]
+): Promise<Map<string, ClanTagEntry>> {
+  if (names.length === 0) return new Map()
+  const qs = encodeURIComponent(names.join(','))
+  const response = await fetchPublicApi(`${STATS_API_BASE}/clans/clantags?names=${qs}`)
+  if (!response.ok) throw new Error(`Clantags failed (HTTP ${response.status})`)
+  const list = (await response.json()) as ClanTagEntry[]
+  return new Map(list.map(entry => [entry.key, entry]))
 }

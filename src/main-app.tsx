@@ -10,6 +10,7 @@ import { NewsSlugPage } from '@/pages/news-slug'
 import { OnboardingPage } from '@/pages/onboarding'
 import { PlayPage } from '@/pages/play'
 import { StreamsPage } from '@/pages/streams'
+import { LeaderboardPage } from '@/pages/leaderboard'
 import { GeneralPage } from '@/pages/settings'
 import { AppearancePage } from '@/pages/appearance'
 import { AdvancedPage } from '@/pages/advanced'
@@ -39,6 +40,7 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
   if (hash === '/onboarding') return { page: 'onboarding' }
   if (hash === '/play') return { page: 'play' }
   if (hash === '/streams') return { page: 'streams' }
+  if (hash === '/leaderboard') return { page: 'leaderboard' }
   if (hash === '/settings') return { page: 'settings' }
   if (hash === '/settings/appearance') return { page: 'appearance' }
   if (hash === '/settings/advanced') return { page: 'advanced' }
@@ -278,6 +280,7 @@ function AuthedApp() {
         {route.page === 'news-slug' && route.params && <NewsSlugPage slug={route.params.slug} />}
         {route.page === 'play' && <PlayPage />}
         {route.page === 'streams' && <StreamsPage />}
+        {route.page === 'leaderboard' && <LeaderboardPage />}
         {route.page === 'settings' && <GeneralPage />}
         {route.page === 'appearance' && <AppearancePage />}
         {route.page === 'advanced' && <AdvancedPage />}

@@ -254,11 +254,11 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                     <LiveIndicator className="ml-auto" />
                   </a>
                 </SidebarMenuButton>
-                <SidebarMenuButton asChild isActive={isActive('/leaderboard')} size="lg" className="px-4 opacity-50 cursor-not-allowed pointer-events-none">
-                  <span>
+                <SidebarMenuButton asChild isActive={isActive('/leaderboard')} size="lg" className="px-4">
+                  <a href="#/leaderboard">
                     <Leaderboard className="size-5!" />
                     <span>{t('nav.leaderboard')}</span>
-                  </span>
+                  </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
