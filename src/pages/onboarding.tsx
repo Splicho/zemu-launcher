@@ -87,12 +87,22 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerT
   const totalSteps = 4
 
   const [step, setStep] = useState<Step>(() => {
-    // Skip steps whose inputs are already satisfied by the on-disk
-    // setup checks. Step 1 is mandatory per the locked decision — even
-    // with a saved key the user must re-confirm before we treat
-    // onboarding as complete.
-    if (initialChecks.hasFolder && initialChecks.hasBaseGame) return 4
-    if (initialChecks.hasFolder) return 3
+    // Skip past the steps whose inputs are already satisfied by the
+    // on-disk setup checks. The auth-key step auto-fills from the
+    // server when the user is signed in (see `AccessKeyStep`'s
+    // mount effect), so seeding `initialChecks.hasKey = true` here
+    // is enough to skip it on first paint — there's nothing for
+    // the user to confirm once the disk already has a key.
+    //
+    // Step 1 is only mandatory when there's no saved key yet. With
+    // a saved key we drop straight to Step 2 (folder) when the
+    // folder is also missing, or to Step 3/4 when the folder and
+    // base game are present (the gate hook handles the all-present
+    // case — `useOnboardingGate` returns `complete` and we don't
+    // even mount this wizard).
+    if (initialChecks.hasKey && initialChecks.hasFolder && initialChecks.hasBaseGame) return 4
+    if (initialChecks.hasKey && initialChecks.hasFolder) return 3
+    if (initialChecks.hasKey) return 2
     return 1
   })
 
