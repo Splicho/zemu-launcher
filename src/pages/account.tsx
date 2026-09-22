@@ -360,11 +360,17 @@ export function AccountPage() {
 }
 
 /**
- * Show first 4 and last 4 chars of the key, masking the middle.
- * Mirrors `AuthKeyModal.maskKey` so users recognize the same shape
- * in either surface.
+ * Fully redact the auth key with bullets. Same length as the raw
+ * key so the surrounding layout (and any visible width constraint
+ * around the key field) stays stable between masked and revealed
+ * states — only the bullet glyphs swap for the real characters.
+ *
+ * The launcher only has ONE display surface where masking applies
+ * — this account page. The `AuthKeyModal` is an *editing* surface
+ * where the user types the key straight into an Input; masking
+ * there would defeat the point (and break the validator). Keep
+ * maskKey local to this file.
  */
 function maskKey(key: string): string {
-  if (key.length <= 8) return '••••••••'
-  return `${key.slice(0, 4)}••••••••${key.slice(-4)}`
+  return '•'.repeat(key.length)
 }
