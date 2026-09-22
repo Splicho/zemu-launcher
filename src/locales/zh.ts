@@ -59,32 +59,6 @@ export default {
         // they can paste a key manually below.
         fetchFallback:
           '无法自动加载您保存的密钥（{{reason}}）。请在下方粘贴以继续。',
-        howTo: {
-          trigger: '如何获取授权密钥',
-          triggerAria: '打开获取授权密钥的说明',
-          title: '如何获取授权密钥',
-          description:
-            '您的授权密钥与您的 Discord 账号绑定。按照以下步骤生成一个。',
-          openDiscord: '打开 Discord',
-          steps: {
-            join: {
-              title: '加入 Discord',
-              description: '点击下方的"打开 Discord"加入 H1Z1 KotK 社区服务器。',
-            },
-            verify: {
-              title: '验证您的账户',
-              description: '在服务器中执行验证步骤，以便机器人识别您的账户。',
-            },
-            commands: {
-              title: '前往 #bot-commands 频道',
-              description: '在 Discord 服务器内打开 #bot-commands 频道。',
-            },
-            authkey: {
-              title: '运行 /authkey',
-              description: '发送 /authkey 命令并复制机器人返回的密钥，然后粘贴到上一步。',
-            },
-          },
-        },
       },
       step2: {
         title: '选择安装位置',

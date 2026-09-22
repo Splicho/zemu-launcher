@@ -60,34 +60,6 @@ export default {
         // they can paste a key manually below.
         fetchFallback:
           'We could not load your saved key automatically ({{reason}}). Paste it below to continue.',
-        howTo: {
-          trigger: 'How to get an auth key',
-          triggerAria: 'Open instructions for getting an auth key',
-          title: 'How to get an auth key',
-          description:
-            'Your auth key is tied to your Discord account. Follow these steps to generate one.',
-          openDiscord: 'Open Discord',
-          steps: {
-            join: {
-              title: 'Join the Discord',
-              description: 'Click "Open Discord" below to join the H1Z1 KotK community server.',
-            },
-            verify: {
-              title: 'Verify your account',
-              description:
-                'In the server, run the verification steps so the bot can identify your account.',
-            },
-            commands: {
-              title: 'Head over to #bot-commands',
-              description: 'Open the #bot-commands channel inside the Discord server.',
-            },
-            authkey: {
-              title: 'Run /authkey',
-              description:
-                'Send the /authkey command and copy the key the bot returns. Paste it on the previous step.',
-            },
-          },
-        },
       },
       step2: {
         title: 'Choose where to install',

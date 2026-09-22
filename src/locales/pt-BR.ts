@@ -60,34 +60,6 @@ export default {
         // they can paste a key manually below.
         fetchFallback:
           'Não foi possível carregar sua chave salva automaticamente ({{reason}}). Cole-a abaixo para continuar.',
-        howTo: {
-          trigger: 'Como obter uma chave de autenticação',
-          triggerAria: 'Abrir instruções para obter uma chave de autenticação',
-          title: 'Como obter uma chave de autenticação',
-          description:
-            'Sua chave de autenticação está vinculada à sua conta Discord. Siga estes passos para gerar uma.',
-          openDiscord: 'Abrir Discord',
-          steps: {
-            join: {
-              title: 'Entre no Discord',
-              description: 'Clique em "Abrir Discord" abaixo para entrar no servidor da comunidade H1Z1 KotK.',
-            },
-            verify: {
-              title: 'Verifique sua conta',
-              description:
-                'No servidor, conclua as etapas de verificação para que o bot consiga identificar sua conta.',
-            },
-            commands: {
-              title: 'Vá até #bot-commands',
-              description: 'Abra o canal #bot-commands dentro do servidor Discord.',
-            },
-            authkey: {
-              title: 'Execute /authkey',
-              description:
-                'Envie o comando /authkey e copie a chave que o bot retornar. Cole-a na etapa anterior.',
-            },
-          },
-        },
       },
       step2: {
         title: 'Escolha onde instalar',

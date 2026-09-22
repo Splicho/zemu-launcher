@@ -1,26 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AlertTriangle, Check, CheckCircle2, Download, Folder, HelpCircle, LogOut, RotateCw, X } from 'lucide-react'
-
+import { AlertTriangle, Check, CheckCircle2, Download, Folder, LogOut, RotateCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { AuthKeyHelpModal } from '@/components/auth-key-help-modal'
 import { SteamInstructionsModal } from '@/components/steam-instructions-modal'
 import { QrSteamGate, type QrGateState } from '@/components/qr-steam-gate'
 import { TitleBar } from '@/components/title-bar'
 import { markSteamInstructionsSeen } from '@/lib/steam-instructions'
 import { fetchMyAuthKey } from '@/lib/auth'
-
-/**
- * Discord server invite URL. Mirrors the value used by the in-app
- * sidebar link — keep both in sync if the server ever moves.
- */
-const DISCORD_INVITE_URL = 'https://discord.gg/h1z1kotk'
 import { markOnboardingCompleted } from '@/lib/onboarding'
 import type { SetupChecks } from '@/lib/setup-checks'
 import type { DepotProgress } from '@/lib/tauri-bridge'
@@ -419,7 +411,6 @@ function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerTok
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [helpOpen, setHelpOpen] = useState(false)
   // `banner` covers the cases where the server *answered* but the
   // answer doesn't let us auto-save: a `revoked` row (we refuse to
   // persist a revoked key), or a hard transport failure (we let
@@ -590,16 +581,6 @@ function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerTok
             {error}
           </p>
         ) : null}
-
-        <button
-          type="button"
-          onClick={() => setHelpOpen(true)}
-          aria-label={t('onboarding.step1.howTo.triggerAria')}
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
-        >
-          <HelpCircle className="size-3.5" />
-          {t('onboarding.step1.howTo.trigger')}
-        </button>
       </div>
 
       <div className="mt-6 flex justify-end">
@@ -611,12 +592,6 @@ function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerTok
           {t('onboarding.step1.continue')}
         </Button>
       </div>
-
-      <AuthKeyHelpModal
-        open={helpOpen}
-        onOpenChange={setHelpOpen}
-        discordInviteUrl={DISCORD_INVITE_URL}
-      />
     </div>
   )
 }
