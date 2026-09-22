@@ -23,10 +23,10 @@ export function useLeaderboardEntries(initialEntries: LeaderboardEntry[] = []) {
     queryKey: ['leaderboard', 'entries'],
     queryFn: fetchLeaderboardEntries,
     initialData: initialEntries,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-    gcTime: 10 * 60_000,
+    staleTime: 20_000,
+    gcTime: 60_000,
     retry: 1,
+    networkMode: 'offlineFirst',
   })
 }
 
