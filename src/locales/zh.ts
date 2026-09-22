@@ -42,6 +42,23 @@ export default {
         title: '保存您的授权密钥',
         description: '该密钥用于让游戏识别您的会话。它存储在本机，永不上传到服务器。',
         continue: '保存并继续',
+        // Banner shown when the server reports an `authkey` row but
+        // it is `status = 'revoked'`. The launcher refuses to
+        // persist a revoked key — saving it locally would let the
+        // user launch the game with a key the admin has explicitly
+        // disabled upstream. The link opens the website's account
+        // settings page so the user can request a restore from an
+        // admin.
+        revokedBanner:
+          '您的授权密钥已被撤销。启动器无法恢复 — 请通过网站联系管理员。',
+        revokedBannerLink: '打开账户设置',
+        // Soft banner shown when the auto-fetch failed (network
+        // blip, server down, expired token, etc.). We surface the
+        // upstream reason so the bug report from the user has
+        // something useful in it, but the wording still tells them
+        // they can paste a key manually below.
+        fetchFallback:
+          '无法自动加载您保存的密钥（{{reason}}）。请在下方粘贴以继续。',
         howTo: {
           trigger: '如何获取授权密钥',
           triggerAria: '打开获取授权密钥的说明',
@@ -144,6 +161,19 @@ export default {
       changeKey: '更改身份验证密钥',
       addKey: '添加身份验证密钥',
       noKey: '尚未设置身份验证密钥。请添加一个以开始游戏。',
+      // Banner above the key panel when the launcher's server-side
+      // fetch returned a `revoked` row. Mirrors the onboarding
+      // banner — the user has to walk over to the website to ask
+      // an admin to restore their key.
+      revokedBanner:
+        '您的身份验证密钥已被撤销。请通过网站联系管理员以恢复。',
+      revokedBannerLink: '打开账户设置',
+      // Soft note when the auto-fetch failed. We surface the
+      // upstream reason so the bug report has something useful in
+      // it, but the wording still tells the user they can edit the
+      // key by hand if they want to.
+      fetchFallback:
+        '无法自动加载您保存的密钥（{{reason}}）。您仍可在下方粘贴其他密钥。',
       errors: {
         unavailable: '启动器桥接不可用。',
       },
@@ -194,6 +224,7 @@ export default {
         busy: '忙碌',
         in_game: '游戏中',
         offline: '离线',
+        currentlyPlaying: '正在玩 {{game}}',
       },
       errors: {
         network: '无法连接好友服务。',
@@ -257,6 +288,20 @@ export default {
         themeLight: '浅色',
         themeLightDesc: '始终使用浅色主题。',
       },
+      advanced: {
+        title: '高级',
+        description:
+          '启动器的内部目录位置。在提交错误报告或将安装迁移到新设备时会用到。',
+        appDataLabel: '应用数据文件夹',
+        appDataDescription:
+          '启动器存储配置、调试日志以及更新元数据的位置。',
+        openFolder: '打开文件夹',
+        copyPath: '复制路径',
+        copied: '路径已复制到剪贴板。',
+        pathLoading: '正在获取路径…',
+        pathUnavailable:
+          '无法找到应用数据文件夹。请重启启动器；如果问题仍然存在，请重新安装。',
+      },
     },
     appSidebar: {
       play: '开始游戏',
@@ -294,6 +339,10 @@ export default {
     authKey: {
       loadFailed: '无法加载已保存的密钥。',
       saveFailed: '无法保存密钥，请重试。',
+      verifyFailed: '无法验证您的密钥,请检查连接后重试。',
+      mismatch: '此密钥与您账户上的密钥不匹配。请仔细检查输入值,或重新从账户设置中复制。',
+      noKeyOnServer: '您的账户尚未拥有身份验证密钥。请注销后重新登录以自动分配,或在网站账户设置中生成一个新密钥。',
+      revoked: '您的身份验证密钥已被撤销。请先联系网站管理员恢复密钥,然后才能保存新密钥。',
       modalTitle: '身份验证密钥',
       description: '输入您的身份验证密钥以开始游戏。',
       inputLabel: '身份验证密钥',

@@ -134,8 +134,24 @@ export interface Friend {
    * (see `FriendSearchHit.relationState`).
    */
   relationship: FriendRelationship
-  /** Synthesized on the client from a server-side status field when present. */
+  /**
+   * Synthesized on the client from a server-side status field when
+   * present. The launcher's renderer treats missing / stale values
+   * as `'offline'` (see `useFriendsPresence` for the realtime
+   * patcher that drives updates after the initial fetch).
+   */
   status: FriendStatus
+  /**
+   * Free-form game label set by the friend's launcher's heartbeat.
+   * Non-null only when `status === 'in_game'`; the renderer shows
+   * "Currently playing <currentGame>" under the display name.
+   */
+  currentGame: string | null
+  /**
+   * ISO timestamp the presence row was last written. Used to render
+   * "last seen 2 minutes ago" copy when the row is stale.
+   */
+  lastSeenAt: string | null
 }
 
 export interface FriendSearchHit extends Friend {
@@ -367,6 +383,23 @@ function normalizeFriend(value: unknown, relationOverride?: FriendRelationship):
     ?? normalizeFriendRelationship(
         raw.relationship ?? raw.relationState,
       )
+  const status = normalizeFriendStatus(raw.status ?? raw.friendStatus)
+  // The api's friend-list DTO carries `friendCurrentGame` and
+  // `friendLastSeenAt`; search hits use `currentGame` / `lastSeenAt`.
+  // The renderer treats missing values as "no presence" and projects
+  // to its own `'offline'` UI state.
+  const currentGame =
+    typeof raw.currentGame === 'string'
+      ? raw.currentGame
+      : typeof raw.friendCurrentGame === 'string'
+        ? raw.friendCurrentGame
+        : null
+  const lastSeenAt =
+    typeof raw.lastSeenAt === 'string'
+      ? raw.lastSeenAt
+      : typeof raw.friendLastSeenAt === 'string'
+        ? raw.friendLastSeenAt
+        : null
   return {
     id,
     displayName,
@@ -374,7 +407,9 @@ function normalizeFriend(value: unknown, relationOverride?: FriendRelationship):
     country,
     friendsSince,
     relationship,
-    status: normalizeFriendStatus(raw.status),
+    status,
+    currentGame,
+    lastSeenAt,
   }
 }
 

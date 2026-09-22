@@ -43,6 +43,23 @@ export default {
         title: 'Salve sua chave de autenticação',
         description: 'A chave permite que o jogo identifique sua sessão. Ela fica armazenada nesta máquina e nunca é enviada a um servidor.',
         continue: 'Salvar e continuar',
+        // Banner shown when the server reports an `authkey` row but
+        // it is `status = 'revoked'`. The launcher refuses to
+        // persist a revoked key — saving it locally would let the
+        // user launch the game with a key the admin has explicitly
+        // disabled upstream. The link opens the website's account
+        // settings page so the user can request a restore from an
+        // admin.
+        revokedBanner:
+          'Sua chave de autenticação foi revogada. O launcher não pode restaurá-la — entre em contato com um administrador pelo site.',
+        revokedBannerLink: 'Abrir configurações da conta',
+        // Soft banner shown when the auto-fetch failed (network
+        // blip, server down, expired token, etc.). We surface the
+        // upstream reason so the bug report from the user has
+        // something useful in it, but the wording still tells them
+        // they can paste a key manually below.
+        fetchFallback:
+          'Não foi possível carregar sua chave salva automaticamente ({{reason}}). Cole-a abaixo para continuar.',
         howTo: {
           trigger: 'Como obter uma chave de autenticação',
           triggerAria: 'Abrir instruções para obter uma chave de autenticação',
@@ -147,6 +164,19 @@ export default {
       changeKey: 'Alterar chave de autenticação',
       addKey: 'Adicionar chave de autenticação',
       noKey: 'Nenhuma chave de autenticação definida. Adicione uma para poder jogar.',
+      // Banner above the key panel when the launcher's server-side
+      // fetch returned a `revoked` row. Mirrors the onboarding
+      // banner — the user has to walk over to the website to ask
+      // an admin to restore their key.
+      revokedBanner:
+        'Sua chave de autenticação foi revogada. Entre em contato com um administrador pelo site para restaurá-la.',
+      revokedBannerLink: 'Abrir configurações da conta',
+      // Soft note when the auto-fetch failed. We surface the
+      // upstream reason so the bug report has something useful in
+      // it, but the wording still tells the user they can edit the
+      // key by hand if they want to.
+      fetchFallback:
+        'Não foi possível carregar sua chave salva automaticamente ({{reason}}). Você ainda pode colar outra chave abaixo.',
       errors: {
         unavailable: 'A ponte do launcher está indisponível.',
       },
@@ -197,6 +227,7 @@ export default {
         busy: 'Ocupado',
         in_game: 'No jogo',
         offline: 'Offline',
+        currentlyPlaying: 'Jogando {{game}} agora',
       },
       errors: {
         network: 'Não foi possível conectar ao serviço de amigos.',
@@ -254,6 +285,20 @@ export default {
         light: 'Claro',
         lightDesc: 'Sempre usa o tema claro.',
       },
+      advanced: {
+        title: 'Avançado',
+        description:
+          'Locais internos do launcher. Útil ao enviar um relatório de bug ou mover sua instalação para outra máquina.',
+        appDataLabel: 'Pasta de dados do aplicativo',
+        appDataDescription:
+          'Onde o launcher guarda sua configuração, o log de depuração e os metadados de atualização.',
+        openFolder: 'Abrir pasta',
+        copyPath: 'Copiar caminho',
+        copied: 'Caminho copiado para a área de transferência.',
+        pathLoading: 'Obtendo caminho…',
+        pathUnavailable:
+          'Não foi possível localizar a pasta de dados do aplicativo. Reinicie o launcher; se continuar falhando, reinstale.',
+      },
     },
     home: {
       welcome: 'Bem-vindo',
@@ -285,6 +330,10 @@ export default {
     authKey: {
       loadFailed: 'Não foi possível carregar a chave salva.',
       saveFailed: 'Não foi possível salvar a chave. Tente novamente.',
+      verifyFailed: 'Não foi possível verificar sua chave. Verifique sua conexão e tente novamente.',
+      mismatch: 'Esta chave não corresponde à da sua conta. Verifique o valor ou copie novamente nas configurações da conta.',
+      noKeyOnServer: 'Sua conta ainda não possui uma chave de autenticação. Saia e entre novamente para atribuí-la automaticamente, ou gere uma nas configurações da conta no site.',
+      revoked: 'Sua chave de autenticação foi revogada. Contate um administrador no site para restaurá-la antes de salvar uma nova.',
       modalTitle: 'Chave de Autenticação',
       description: 'Insira sua chave de autenticação para jogar.',
       inputLabel: 'Chave de Autenticação',

@@ -99,6 +99,8 @@ export function useFriendsIncomingToast(enabled: boolean) {
                   friendsSince: null,
                   relationship: 'incoming',
                   status: 'offline',
+                  currentGame: null,
+                  lastSeenAt: null,
                 },
               ],
             }

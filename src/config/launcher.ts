@@ -21,6 +21,12 @@ export const LAUNCHER_CONFIG = {
   // prod). In dev, set VITE_API_URL=http://localhost:3002 in
   // `.env.local` to point the launcher at a local api checkout.
   friendsApiBaseUrl: 'https://api.zemu.uk',
+  // Public URL of the website's account settings page. Shown in
+  // the onboarding / account banners when the auth key is revoked
+  // — the user has to walk over to the website to request a
+  // restore, since the launcher deliberately can't mint a fresh
+  // key against an already-revoked identity.
+  accountSettingsUrl: 'https://zemu.uk/settings/account',
   // Public news API. The renderer fetches `/v1/news` and
   // `/v1/news/:slug` from this host. In dev, set
   // VITE_API_URL=http://localhost:3002 in `.env.local`.

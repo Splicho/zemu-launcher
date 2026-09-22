@@ -63,6 +63,8 @@ const SKELETON_RESULTS = Array.from({ length: 4 }, (_, i) => ({
   displayName: '',
   avatarUrl: null,
   status: 'offline',
+  currentGame: null,
+  lastSeenAt: null,
 }))
 
 /**

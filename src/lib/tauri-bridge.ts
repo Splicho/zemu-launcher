@@ -494,6 +494,21 @@ function setupCompatibilityBridge() {
       invoke<void>('theme_set', { theme }).catch((error) => {
         writeDebugLog('theme', 'setTheme failed', { theme, error: safeStringify(error) })
       }),
+    getAppDataDir: () =>
+      invoke<string>('launcher_get_app_data_dir').catch((error) => {
+        writeDebugLog('launcher.advanced', 'getAppDataDir failed', {
+          error: safeStringify(error),
+        })
+        // Fall through to an empty string so the UI can render the
+        // "path unavailable" branch rather than crashing the page.
+        return ''
+      }),
+    openAppDataDir: () =>
+      invoke<void>('launcher_open_app_data_dir').catch((error) => {
+        writeDebugLog('launcher.advanced', 'openAppDataDir failed', {
+          error: safeStringify(error),
+        })
+      }),
   }
 
   // Apply the persisted theme before the first paint so there is no flash.
@@ -700,6 +715,21 @@ declare global {
       setAutostartEnabled: (enabled: boolean) => Promise<void>
       getTheme: () => Promise<string>
       setTheme: (theme: string) => Promise<void>
+      /**
+       * Platform-resolved app-data directory. Resolves to
+       * `%APPDATA%\uk.zemu.launcher` on Windows,
+       * `~/Library/Application Support/uk.zemu.launcher` on macOS,
+       * and `$XDG_DATA_HOME/uk.zemu.launcher` on Linux. Shown in
+       * the Advanced settings tab so users know where to find
+       * logs / saved config / cached update metadata.
+       */
+      getAppDataDir: () => Promise<string>
+      /**
+       * Open the app-data directory in the user's OS file manager.
+       * The directory is `ensure_app_data_dir`'d first so the user
+       * never sees a missing-folder error on first launch.
+       */
+      openAppDataDir: () => Promise<void>
     }
   }
 }

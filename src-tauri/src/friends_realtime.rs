@@ -59,6 +59,14 @@ const GRAPH_CHANGED_EVENT: &str = "friends:graph-changed";
 /// request. Payload is `FriendsIncomingRequestPayload` (see below).
 const INCOMING_REQUEST_EVENT: &str = "friends:incoming-request";
 
+/// Tauri event emitted when a friend's (or the signed-in user's own)
+/// presence snapshot changes — status / currentGame / lastSeenAt.
+/// Payload is `FriendsPresenceUpdatedPayload` (see
+/// `useFriendsPresence` in the renderer). The renderer patches its
+/// cached friends in place when it receives this so the avatar-badge
+/// dot and "Currently playing" sub-line update without a refetch.
+const PRESENCE_UPDATED_EVENT: &str = "friends:presence-updated";
+
 /// Payload forwarded as the `friends:incoming-request` Tauri event.
 ///
 /// Defined inline in the `on("friends:changed", …)` handler so the types
@@ -234,6 +242,7 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
 
         let app_handle = app.clone();
         let app_handle2 = app.clone();
+        let app_handle3 = app.clone();
         let token_for_connect = token.clone();
 
         // Build and connect the socket. `rust_socketio` owns the reconnect
@@ -387,6 +396,84 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
                                 );
                             }
                         }
+                    }
+                }
+                .boxed()
+            })
+            .on("presence:updated", move |payload: Payload, _socket| {
+                let app = app_handle3.clone();
+                async move {
+                    // Normalize any payload variant to a JSON value, mirroring
+                    // the `friends:changed` handler above. Presence payloads
+                    // are tiny (a few fields) so the same Text/Binary/String
+                    // dance is fine here.
+                    let json_value = match payload {
+                        Payload::Text(vals) => vals.first().cloned().unwrap_or(serde_json::Value::Null),
+                        Payload::Binary(data) => {
+                            serde_json::from_slice(&data).unwrap_or(serde_json::Value::Null)
+                        }
+                        #[allow(deprecated)]
+                        Payload::String(s) => serde_json::Value::String(s),
+                    };
+
+                    friends_debug_log::write_with_app(
+                        &app,
+                        "rt-receive",
+                        &format!("presence:updated raw_payload={json_value}"),
+                    );
+
+                    // Extract the four fields we forward. Any field missing
+                    // from the payload is treated as an empty / null default
+                    // — a malformed server-side event must not panic the
+                    // socket task, and a partially-populated event still
+                    // gives the renderer something useful.
+                    let user_id = json_value
+                        .get("userId")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    let status = json_value
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("online")
+                        .to_string();
+                    let current_game = json_value
+                        .get("currentGame")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string);
+                    let last_seen_at = json_value
+                        .get("lastSeenAt")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+
+                    if user_id.is_empty() {
+                        warn!("realtime: presence:updated missing userId; dropping");
+                        return;
+                    }
+
+                    let payload = serde_json::json!({
+                        "userId": user_id,
+                        "status": status,
+                        "currentGame": current_game,
+                        "lastSeenAt": last_seen_at,
+                    });
+                    let log_payload = payload.clone();
+                    if let Err(e) = app.emit(PRESENCE_UPDATED_EVENT, payload) {
+                        error!(err = %e, "realtime: emit friends:presence-updated failed");
+                        friends_debug_log::write_with_app(
+                            &app,
+                            "rt-emit",
+                            &format!(
+                                "emit friends:presence-updated FAILED payload={log_payload} err={e}"
+                            ),
+                        );
+                    } else {
+                        friends_debug_log::write_with_app(
+                            &app,
+                            "rt-emit",
+                            &format!("emit friends:presence-updated ok payload={log_payload}"),
+                        );
                     }
                 }
                 .boxed()

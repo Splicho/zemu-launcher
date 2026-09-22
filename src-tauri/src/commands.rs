@@ -129,6 +129,30 @@ pub fn game_open_in_file_manager(directory: String) -> Result<(), String> {
     game::open_in_file_manager(&directory).map_err(|e| e.to_string())
 }
 
+/// Return the platform-resolved app-data directory as a string.
+/// Resolves to `%APPDATA%\uk.zemu.launcher` on Windows, the
+/// equivalent `~/Library/Application Support` path on macOS, and
+/// `$XDG_DATA_HOME` (or `~/.local/share`) on Linux. The Settings >
+/// Advanced tab shows the path so users know where to find logs,
+/// the persisted config, and cached update metadata.
+#[tauri::command]
+pub fn launcher_get_app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
+    let dir = storage::ensure_app_data_dir(&app).map_err(|e| e.to_string())?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
+/// Open the platform-resolved app-data directory in the user's OS
+/// file manager. `storage::ensure_app_data_dir` is called first so
+/// the directory exists (and contains the persisted `launcher-
+/// config.json`, the auth-key file, and the rolling debug log) —
+/// surfacing an empty folder to the user would be confusing.
+#[tauri::command]
+pub fn launcher_open_app_data_dir(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = storage::ensure_app_data_dir(&app).map_err(|e| e.to_string())?;
+    game::open_in_file_manager(dir.to_string_lossy().as_ref())
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn game_get_executable(app: tauri::AppHandle) -> Result<String, String> {
     Ok(game::get_game_executable(&app))
@@ -871,6 +895,8 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         launcher_set_realtime_url,
         launcher_set_oauth_callback_protocol,
         launcher_set_api_base_url,
+        launcher_get_app_data_dir,
+        launcher_open_app_data_dir,
         game_select_directory,
         game_is_installed,
         game_get_local_version,

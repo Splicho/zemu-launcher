@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { AuthKeyModal } from '@/components/auth-key-modal'
 import { useGameStateContext } from '@/hooks/use-game-state-context'
+import { useAuthContext } from '@/contexts/auth-context'
 import { Cancel } from '@/components/icons'
 import type { UpdateInfo, UpdateStatus } from '@/hooks/use-game-state'
 
@@ -64,6 +65,13 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     selectDirectory,
     refreshAuthKey,
   } = useGameStateContext()
+  // Read the bearer token from the auth context so the modal can
+  // validate the typed key against the canonical server value
+  // before writing to disk. A signed-out user (e.g. mid-onboarding
+  // before the OAuth round-trip) gets `null` and the modal falls
+  // back to manual entry — the wizard handles that case through
+  // its own auto-assign hook, not the modal's server check.
+  const { token: authToken } = useAuthContext()
 
   const [showAuthKeyModal, setShowAuthKeyModal] = useState(false)
 
@@ -201,6 +209,7 @@ export function GameActionButton({ className }: GameActionButtonProps) {
       <AuthKeyModal
         open={showAuthKeyModal}
         onOpenChange={setShowAuthKeyModal}
+        token={authToken?.token ?? null}
         onSaved={() => {
           // Re-read the auth key from disk so the state machine
           // drops the AUTH_KEY_REQUIRED gate.

@@ -354,3 +354,102 @@ export async function introspectToken(
     return { valid: false, reason: 'malformed' }
   }
 }
+
+/**
+ * GET /api/launcher/auth/my-key
+ *
+ * Reads the launcher key already assigned to the signed-in user.
+ * The auth app proxies this through to the website's
+ * `authkey` table on the user's behalf and returns
+ * `{ key: string | null, status: 'active' | 'revoked' | null }`.
+ *
+ * `key === null` means the user hasn't been assigned a key yet
+ * (fresh sign-up that hasn't crossed the auto-assign path). The
+ * launcher treats that as "fall back to manual entry" rather than
+ * an error — it's a perfectly valid state, not a failure.
+ *
+ * `status === 'revoked'` means an admin revoked the key upstream.
+ * The launcher MUST NOT save a revoked key locally — it would let
+ * the user bypass the revocation. The launcher's onboarding /
+ * account surfaces should show a banner explaining what happened
+ * and pointing the user at the website account settings page.
+ *
+ * Returns `{ reason: <string> }` (with no `key` / `status`) on
+ * transport failures so the caller can decide whether to retry or
+ * fall back to manual entry. The reason vocabulary mirrors
+ * `introspectToken` so error handling stays uniform across the
+ * auth module:
+ *
+ *   - `unreachable`       — fetch threw (DNS / connection refused / offline)
+ *   - `malformed`         — non-JSON body from upstream
+ *   - `http_4xx` / `http_5xx` — non-2xx HTTP status
+ *   - `expired_token`     — server says the bearer has expired; the
+ *                            launcher should re-auth (rare: tokens
+ *                            don't carry `exp` today).
+ *   - `invalid_token`     — server rejected the bearer; introspect
+ *                            will also reject it on next call.
+ *   - `missing_authorization` — defensive; should not happen since
+ *                            we always send the header.
+ */
+/**
+ * `ok` discriminator on the success arm lets callers narrow with a
+ * single `if (result.ok)` check instead of the `'reason' in result`
+ * pattern that wouldn't reliably discriminate an optional-vs-required
+ * `reason` property. The failure arm doesn't need a tag — `ok:
+ * false` plus the `reason` string is enough to read it as "this
+ * didn't work, here's why".
+ */
+export interface FetchMyAuthKeySuccess {
+  ok: true
+  key: string | null
+  status: 'active' | 'revoked' | null
+}
+
+export type FetchMyAuthKeyResult =
+  | FetchMyAuthKeySuccess
+  | { ok: false; reason: string }
+
+export async function fetchMyAuthKey(
+  token: string,
+): Promise<FetchMyAuthKeyResult> {
+  const base = await getApiBaseUrl()
+  let response: Response
+  try {
+    response = await fetch(`${base}/api/launcher/auth/my-key`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  } catch (err) {
+    console.warn('[auth] fetchMyAuthKey network error', err)
+    return { ok: false, reason: 'unreachable' }
+  }
+  if (!response.ok) {
+    // Map the most common 4xx / 5xx shapes onto the introspect
+    // reason vocabulary. Anything we don't recognise becomes
+    // `http_<status>` so the caller can surface a useful fallback
+    // ("server unreachable, please paste your key").
+    if (response.status === 401) {
+      try {
+        const payload = (await response.json()) as { error?: string }
+        if (payload.error === 'expired_token') {
+          return { ok: false, reason: 'expired_token' }
+        }
+        if (payload.error === 'invalid_token') {
+          return { ok: false, reason: 'invalid_token' }
+        }
+        if (payload.error === 'missing_authorization') {
+          return { ok: false, reason: 'missing_authorization' }
+        }
+      } catch {
+        // fall through to http_<status>
+      }
+    }
+    return { ok: false, reason: `http_${response.status}` }
+  }
+  try {
+    const data = (await response.json()) as Omit<FetchMyAuthKeySuccess, 'ok'>
+    return { ok: true, key: data.key, status: data.status }
+  } catch (err) {
+    console.warn('[auth] fetchMyAuthKey returned non-JSON body', err)
+    return { ok: false, reason: 'malformed' }
+  }
+}

@@ -9,6 +9,7 @@ interface PersonLike {
   displayName?: string | null
   avatarUrl?: string | null
   status: string
+  currentGame?: string | null
 }
 
 interface PeopleSectionProps<T extends PersonLike> {

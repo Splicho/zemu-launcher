@@ -12,6 +12,7 @@ import { PlayPage } from '@/pages/play'
 import { StreamsPage } from '@/pages/streams'
 import { GeneralPage } from '@/pages/settings'
 import { AppearancePage } from '@/pages/appearance'
+import { AdvancedPage } from '@/pages/advanced'
 import { AccountPage } from '@/pages/account'
 import { AuthProvider, useAuthContext } from '@/contexts/auth-context'
 import { useHash } from '@/hooks/use-hash'
@@ -21,7 +22,9 @@ import { GameStateProvider } from '@/contexts/game-state-context'
 import { Toaster } from '@/components/ui/sonner'
 import { useDownloadSpeedToast } from '@/hooks/use-download-speed-toast'
 import { useFriendsIncomingToast } from '@/hooks/use-friends-incoming-toast'
+import { useFriendsPresence } from '@/hooks/use-friends-presence'
 import { useFriendsRealtimeSync } from '@/hooks/use-friends'
+import { usePresenceHeartbeat } from '@/hooks/use-presence-heartbeat'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
@@ -38,6 +41,7 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
   if (hash === '/streams') return { page: 'streams' }
   if (hash === '/settings') return { page: 'settings' }
   if (hash === '/settings/appearance') return { page: 'appearance' }
+  if (hash === '/settings/advanced') return { page: 'advanced' }
   if (hash === '/account') return { page: 'account' }
 
   return { page: 'home' }
@@ -69,6 +73,31 @@ function FriendsRealtimeSyncHost() {
   return null
 }
 
+/**
+ * Mounted at the top level so the avatar-badge dot and
+ * "Currently playing" sub-line stay current even when the Friends
+ * panel is closed. Patches the cached graph in place when a
+ * `friends:presence-updated` Tauri event arrives, so the sidebar /
+ * panel render the new status without a refetch.
+ */
+function FriendsPresenceHost() {
+  const { status } = useAuthContext()
+  useFriendsPresence(status === 'authed')
+  return null
+}
+
+/**
+ * Mounted at the top level so the user's own heartbeat keeps
+ * flowing even when no friends-related UI is mounted. Drives
+ * `POST /v1/presence/heartbeat` every 30s with a status derived
+ * from `gameLaunchState.isRunning`.
+ */
+function PresenceHeartbeatHost() {
+  const { status } = useAuthContext()
+  usePresenceHeartbeat(status === 'authed')
+  return null
+}
+
 export default function MainApp() {
   return (
     <AuthProvider>
@@ -78,6 +107,8 @@ export default function MainApp() {
           <DownloadSpeedToast />
           <FriendsIncomingToastHost />
           <FriendsRealtimeSyncHost />
+          <FriendsPresenceHost />
+          <PresenceHeartbeatHost />
           <Toaster />
         </GameStateProvider>
       </UpdateProvider>
@@ -109,7 +140,7 @@ function AuthedApp() {
   }, [])
 
   const prevPageRef = useRef(route.page)
-  const isSettingsPage = route.page === 'settings' || route.page === 'appearance'
+  const isSettingsPage = route.page === 'settings' || route.page === 'appearance' || route.page === 'advanced'
   const isAccountPage = route.page === 'account'
   const [sidebarType, setSidebarType] = useState<SidebarType>(
     isSettingsPage ? 'settings' : isAccountPage ? 'account' : 'app',
@@ -121,7 +152,7 @@ function AuthedApp() {
     if (next === prev) return
     prevPageRef.current = next
     const nextType: SidebarType =
-      next === 'settings' || next === 'appearance'
+      next === 'settings' || next === 'appearance' || next === 'advanced'
         ? 'settings'
         : next === 'account'
           ? 'account'
@@ -231,6 +262,7 @@ function AuthedApp() {
       <OnboardingPage
         initialChecks={initialChecks}
         onRefreshGate={refreshGate}
+        bearerToken={token?.token ?? null}
       />
     )
   }
@@ -248,6 +280,7 @@ function AuthedApp() {
         {route.page === 'streams' && <StreamsPage />}
         {route.page === 'settings' && <GeneralPage />}
         {route.page === 'appearance' && <AppearancePage />}
+        {route.page === 'advanced' && <AdvancedPage />}
         {route.page === 'account' && <AccountPage />}
         {route.page === 'home' && <HomePage />}
       </MainLayout>

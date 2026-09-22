@@ -43,6 +43,23 @@ export default {
         title: 'Save your auth key',
         description: 'The key lets the game identify your session. It is stored on this machine and never sent to a server.',
         continue: 'Save and continue',
+        // Banner shown when the server reports an `authkey` row but
+        // it is `status = 'revoked'`. The launcher refuses to
+        // persist a revoked key — saving it locally would let the
+        // user launch the game with a key the admin has explicitly
+        // disabled upstream. The link opens the website's account
+        // settings page so the user can request a restore from an
+        // admin.
+        revokedBanner:
+          'Your auth key has been revoked. The launcher cannot restore it — please contact an admin via the website.',
+        revokedBannerLink: 'Open account settings',
+        // Soft banner shown when the auto-fetch failed (network
+        // blip, server down, expired token, etc.). We surface the
+        // upstream reason so the bug report from the user has
+        // something useful in it, but the wording still tells them
+        // they can paste a key manually below.
+        fetchFallback:
+          'We could not load your saved key automatically ({{reason}}). Paste it below to continue.',
         howTo: {
           trigger: 'How to get an auth key',
           triggerAria: 'Open instructions for getting an auth key',
@@ -147,6 +164,19 @@ export default {
       changeKey: 'Change auth key',
       addKey: 'Add auth key',
       noKey: 'No auth key set yet. Add one to enable playing.',
+      // Banner above the key panel when the launcher's server-side
+      // fetch returned a `revoked` row. Mirrors the onboarding
+      // banner — the user has to walk over to the website to ask
+      // an admin to restore their key.
+      revokedBanner:
+        'Your auth key has been revoked. Contact an admin via the website to restore it.',
+      revokedBannerLink: 'Open account settings',
+      // Soft note when the auto-fetch failed. We surface the
+      // upstream reason so the bug report has something useful in
+      // it, but the wording still tells the user they can edit the
+      // key by hand if they want to.
+      fetchFallback:
+        'Could not load your saved key automatically ({{reason}}). You can still paste a different key below.',
       errors: {
         unavailable: 'Launcher bridge is unavailable.',
       },
@@ -206,6 +236,20 @@ export default {
         themeLight: 'Light',
         themeLightDesc: 'Always use a light theme.',
       },
+      advanced: {
+        title: 'Advanced',
+        description:
+          'Internal locations for the launcher. Useful when filing a bug report or moving your install to a new machine.',
+        appDataLabel: 'App data folder',
+        appDataDescription:
+          'Where the launcher stores its config, the rolling debug log, and cached update metadata.',
+        openFolder: 'Open folder',
+        copyPath: 'Copy path',
+        copied: 'Path copied to clipboard.',
+        pathLoading: 'Resolving path…',
+        pathUnavailable:
+          'The app data folder could not be located. Restart the launcher; if this keeps failing, reinstall.',
+      },
     },
     home: {
       welcome: 'Welcome',
@@ -245,6 +289,11 @@ export default {
         busy: 'Busy',
         in_game: 'In game',
         offline: 'Offline',
+        // Shown under a friend's display name when their launcher's
+        // heartbeat reports `status === 'in_game'`. `{{game}}` is the
+        // `currentGame` value the launcher's heartbeat sent (today
+        // hardcoded to `'ZEmu'`).
+        currentlyPlaying: 'Currently playing {{game}}',
       },
       errors: {
         network: 'Could not reach the friends service.',
@@ -302,6 +351,28 @@ export default {
     authKey: {
       loadFailed: "Could not load the saved key.",
       saveFailed: "Could not save the key. Please try again.",
+      // Surfaces when the modal's Save handler can't reach the auth
+      // app's my-key endpoint (network down, token expired, 5xx).
+      // We deliberately fail closed — a successful local save would
+      // undermine the whole point of the validation. The user can
+      // retry once the connection is back.
+      verifyFailed: "Could not verify your key. Check your connection and try again.",
+      // The typed value doesn't match the canonical key on file
+      // for the signed-in user. Most often a typo, paste mishap, or
+      // a key the user grabbed from somewhere other than their
+      // account settings.
+      mismatch: "This key doesn't match the one on your account. Double-check the value, or copy it again from your account settings.",
+      // The user has no authkey row yet (fresh sign-up that
+      // crossed the auto-assign path with a transient failure).
+      // Surfaced as a dedicated message so the user knows the
+      // resolution path is "wait for the auto-assign to land" or
+      // "trigger a fresh generate from the website", not "type
+      // the key again".
+      noKeyOnServer: "Your account doesn't have an auth key yet. Sign out and back in to auto-assign one, or generate one from the website account settings.",
+      // The user's authkey row exists but is in `status='revoked'`.
+      // The same banner the Account page renders, surfaced inline
+      // here so the user doesn't think they just mistyped.
+      revoked: "Your auth key has been revoked. Contact an admin on the website to have it restored before you can save a new one.",
       modalTitle: 'Auth Key',
       description: 'Enter your auth key to play.',
       inputLabel: 'Auth Key',

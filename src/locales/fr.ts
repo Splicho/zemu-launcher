@@ -47,6 +47,23 @@ export default {
         title: 'Enregistrez votre clé d’authentification',
         description: 'La clé permet au jeu d’identifier votre session. Elle est stockée sur cette machine et n’est jamais envoyée à un serveur.',
         continue: 'Enregistrer et continuer',
+        // Banner shown when the server reports an `authkey` row but
+        // it is `status = 'revoked'`. The launcher refuses to
+        // persist a revoked key — saving it locally would let the
+        // user launch the game with a key the admin has explicitly
+        // disabled upstream. The link opens the website's account
+        // settings page so the user can request a restore from an
+        // admin.
+        revokedBanner:
+          'Votre clé d’authentification a été révoquée. Le lanceur ne peut pas la restaurer — veuillez contacter un administrateur via le site web.',
+        revokedBannerLink: 'Ouvrir les paramètres du compte',
+        // Soft banner shown when the auto-fetch failed (network
+        // blip, server down, expired token, etc.). We surface the
+        // upstream reason so the bug report from the user has
+        // something useful in it, but the wording still tells them
+        // they can paste a key manually below.
+        fetchFallback:
+          'Impossible de charger votre clé enregistrée automatiquement ({{reason}}). Collez-la ci-dessous pour continuer.',
         howTo: {
           trigger: 'Comment obtenir une clé d’authentification',
           triggerAria: 'Ouvrir les instructions pour obtenir une clé d’authentification',
@@ -151,6 +168,19 @@ export default {
       changeKey: "Modifier la clé d'authentification",
       addKey: "Ajouter une clé d'authentification",
       noKey: "Aucune clé d'authentification définie. Ajoutez-en une pour pouvoir jouer.",
+      // Banner above the key panel when the launcher's server-side
+      // fetch returned a `revoked` row. Mirrors the onboarding
+      // banner — the user has to walk over to the website to ask
+      // an admin to restore their key.
+      revokedBanner:
+        "Votre clé d'authentification a été révoquée. Contactez un administrateur via le site web pour la restaurer.",
+      revokedBannerLink: "Ouvrir les paramètres du compte",
+      // Soft note when the auto-fetch failed. We surface the
+      // upstream reason so the bug report has something useful in
+      // it, but the wording still tells the user they can edit the
+      // key by hand if they want to.
+      fetchFallback:
+        "Impossible de charger votre clé enregistrée automatiquement ({{reason}}). Vous pouvez toujours coller une autre clé ci-dessous.",
       errors: {
         unavailable: "La passerelle du lanceur est indisponible.",
       },
@@ -201,6 +231,7 @@ export default {
         busy: 'Occupé',
         in_game: 'En jeu',
         offline: 'Hors ligne',
+        currentlyPlaying: 'Joue actuellement à {{game}}',
       },
       errors: {
         network: 'Impossible de rejoindre le service d’amis.',
@@ -258,6 +289,20 @@ export default {
         themeLight: "Clair",
         themeLightDesc: "Toujours utiliser un thème clair.",
       },
+      advanced: {
+        title: "Avancé",
+        description:
+          "Emplacements internes du lanceur. Utile pour signaler un bug ou déplacer votre installation sur une autre machine.",
+        appDataLabel: "Dossier de données de l'application",
+        appDataDescription:
+          "Où le lanceur stocke sa configuration, le journal de débogage et les métadonnées des mises à jour.",
+        openFolder: "Ouvrir le dossier",
+        copyPath: "Copier le chemin",
+        copied: "Chemin copié dans le presse-papiers.",
+        pathLoading: "Résolution du chemin…",
+        pathUnavailable:
+          "Le dossier de données de l'application est introuvable. Redémarrez le lanceur ; si le problème persiste, réinstallez.",
+      },
     },
     appSidebar: {
       play: "Jouer",
@@ -295,6 +340,10 @@ export default {
     authKey: {
       loadFailed: "Impossible de charger la clé enregistrée.",
       saveFailed: "Impossible d’enregistrer la clé. Veuillez réessayer.",
+      verifyFailed: "Impossible de vérifier votre clé. Vérifiez votre connexion et réessayez.",
+      mismatch: "Cette clé ne correspond pas à celle de votre compte. Vérifiez la valeur ou recopiez-la depuis les paramètres du compte.",
+      noKeyOnServer: "Votre compte n’a pas encore de clé d’authentification. Déconnectez-vous puis reconnectez-vous pour en attribuer une automatiquement, ou générez-en une depuis les paramètres du compte sur le site.",
+      revoked: "Votre clé d’authentification a été révoquée. Contactez un administrateur sur le site pour la restaurer avant de pouvoir en enregistrer une nouvelle.",
       modalTitle: "Clé d'authentification",
       description: "Entrez votre clé d'authentification pour jouer.",
       inputLabel: "Clé d'authentification",

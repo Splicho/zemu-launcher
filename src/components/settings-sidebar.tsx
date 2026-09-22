@@ -17,6 +17,7 @@ import {
 const SETTINGS_NAV = [
   { href: '#/settings', labelKey: 'settings.general.title' },
   { href: '#/settings/appearance', labelKey: 'settings.appearance.title' },
+  { href: '#/settings/advanced', labelKey: 'settings.advanced.title' },
 ] as const
 
 export function SettingsSidebar() {

@@ -1,64 +1,167 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Copy, Eye, EyeOff, KeyRound, PencilLine } from 'lucide-react'
+import { AlertTriangle, Copy, Eye, EyeOff, KeyRound, PencilLine } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { AuthKeyModal } from '@/components/auth-key-modal'
+import { fetchMyAuthKey } from '@/lib/auth'
+import { useAuthContext } from '@/contexts/auth-context'
+import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 /**
  * Account page — entry point reachable from the avatar dropdown
- * (`Account → #/account`). Currently exposes one panel: the user's
- * saved auth key, with reveal and copy affordances, plus a "Change"
- * shortcut into the existing `AuthKeyModal` for editing/clearing.
+ * (`Account → #/account`). Exposes one panel: the user's auth key,
+ * with reveal and copy affordances, plus a "Change" shortcut into
+ * the existing `AuthKeyModal` for editing/clearing.
  *
- * The key is fetched lazily on mount via `launcherAPI.getAuthKey()`
- * and shown masked by default (`••••••••`). Toggling reveal swaps
- * between the masked placeholder and the raw key in a `font-mono`
- * span. The copy button writes the raw key to the clipboard via
- * `navigator.clipboard.writeText` and surfaces a `toast` so the user
- * knows it succeeded — silently succeeding is bad UX because the
- * button has no other state to confirm the action.
+ * Hydration order on mount:
+ *
+ *   1. Read the on-disk key (`launcherAPI.getAuthKey()`). A user
+ *      who already has a saved key sees it instantly without
+ *      waiting on the network.
+ *   2. If signed in, also ask the auth app for the canonical key
+ *      (`fetchMyAuthKey`). When the server returns an active key
+ *      and it differs from disk, we re-save it — this covers the
+ *      case where the user previously pasted a stale key, or where
+ *      an admin re-minted their key upstream.
+ *   3. If the server says the key is `revoked`, we deliberately
+ *      blank the on-disk value and surface a banner pointing the
+ *      user at the website account settings page so they can
+ *      request a restore. Persisting a revoked key locally would
+ *      let the user launch the game with a key the admin has
+ *      explicitly disabled upstream.
+ *   4. Transport failures (`unreachable`, `expired_token`, …) show
+ *      a soft note and leave whatever disk value is in place.
+ *
+ * The key is shown masked by default (`••••••••`). Toggling reveal
+ * swaps between the masked placeholder and the raw key in a
+ * `font-mono` span. The copy button writes the raw key to the
+ * clipboard via `navigator.clipboard.writeText` and surfaces a
+ * `toast` so the user knows it succeeded — silently succeeding is
+ * bad UX because the button has no other state to confirm the
+ * action.
  *
  * The masking helper intentionally mirrors the one in
  * `AuthKeyModal` (first 4 / last 4) so a key the user has already
  * seen once is recognizable in either surface.
  */
+/**
+ * `banner` variants the key panel can render above the key. Same
+ * shape as the onboarding Step 1 banner so the JSX stays flat:
+ * `revoked` shows the destructive-style alert, `fetch-failed`
+ * shows the muted "we tried, here's why" line, `null` means
+ * there's nothing to surface (either we haven't tried yet, the
+ * fetch succeeded and we're showing the key, or the fetch
+ * returned `key === null` and the panel already says "no key set").
+ */
+type AccountBanner =
+  | { kind: 'revoked' }
+  | { kind: 'fetch-failed'; reason: string }
+  | null
+
 export function AccountPage() {
   const { t } = useTranslation()
+  const { token } = useAuthContext()
   const [authKey, setAuthKey] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isRevealed, setIsRevealed] = useState(false)
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false)
+  const [banner, setBanner] = useState<AccountBanner>(null)
 
   useEffect(() => {
     let cancelled = false
     setIsLoading(true)
     setLoadError(null)
+    setBanner(null)
     if (!window.launcherAPI) {
       setLoadError(t('account.errors.unavailable'))
       setIsLoading(false)
       return
     }
-    void window.launcherAPI
-      .getAuthKey()
-      .then((key) => {
-        if (!cancelled) setAuthKey(key ?? null)
-      })
-      .catch((error: unknown) => {
+
+    async function hydrate() {
+      // 1. Disk first — same as before, so a returning user with a
+      //    locally-saved key sees it instantly without waiting on
+      //    the network round-trip.
+      let onDisk: string | null = null
+      try {
+        onDisk = (await window.launcherAPI?.getAuthKey?.()) ?? null
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setLoadError(
+            error instanceof Error ? error.message : String(error),
+          )
+        }
+      }
+      if (cancelled) return
+      const existing = typeof onDisk === 'string' ? onDisk : null
+      if (existing && existing.length > 0) {
+        setAuthKey(existing)
+      }
+
+      // 2. If signed in, ask the server for the canonical key.
+      //    This is the path that lets the user see the *right*
+      //    key without ever having to type it. We don't block on
+      //    this — disk value (if any) is already shown — so a slow
+      //    network doesn't leave the page blank.
+      if (token?.token) {
+        const result = await fetchMyAuthKey(token.token)
         if (cancelled) return
-        setLoadError(error instanceof Error ? error.message : String(error))
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false)
-      })
+
+        if (result.ok && result.key && result.status === 'active') {
+          // Save server value to disk if it differs — covers the
+          // case where the user previously pasted a key that's now
+          // been re-minted upstream. Writing the same value is
+          // cheap and idempotent, so we don't bother diffing.
+          if (result.key !== existing) {
+            try {
+              await window.launcherAPI?.setAuthKey?.(result.key)
+            } catch {
+              // Disk write failed but we still show the key — the
+              // user can copy it. Persisting on next visit will
+              // retry naturally.
+            }
+          }
+          setAuthKey(result.key)
+          setBanner(null)
+        } else if (result.ok && result.status === 'revoked') {
+          // Refuse to persist a revoked key locally. If we already
+          // had a key on disk from a previous session, blank it so
+          // the play page stops trusting it — otherwise the user
+          // could launch the game with a key the admin explicitly
+          // disabled.
+          if (existing && existing.length > 0) {
+            try {
+              await window.launcherAPI?.setAuthKey?.('')
+            } catch {
+              // best-effort
+            }
+          }
+          setAuthKey(null)
+          setBanner({ kind: 'revoked' })
+        } else if (!result.ok) {
+          // Network blip / server unreachable. Disk value (if any)
+          // stays on screen; surface a soft note explaining why
+          // we're not updating it from the server.
+          setBanner({ kind: 'fetch-failed', reason: result.reason })
+        }
+        // `key === null && status === null` is the "no key on
+        // server" case — nothing to do, the panel already shows
+        // "no key set" via the `hasKey` check.
+      }
+
+      if (!cancelled) setIsLoading(false)
+    }
+
+    void hydrate()
     return () => {
       cancelled = true
     }
-  }, [t])
+  }, [t, token?.token])
 
   const handleCopy = useCallback(async () => {
     if (!authKey) return
@@ -77,8 +180,31 @@ export function AccountPage() {
     // reflects the new value the user just typed.
     void window.launcherAPI?.getAuthKey().then((key) => {
       setAuthKey(key ?? null)
+      // Re-fetch from the server so the panel reflects the
+      // canonical value (the user might have pasted a typo, or
+      // an admin might have revoked the key in the time since
+      // we last polled). We do this best-effort — a network
+      // failure here just leaves the panel showing whatever the
+      // user typed, which is what they'd expect from a "Save"
+      // button anyway.
+      if (token?.token) {
+        void fetchMyAuthKey(token.token).then((result) => {
+          if (!result.ok) {
+            setBanner({ kind: 'fetch-failed', reason: result.reason })
+            return
+          }
+          if (result.status === 'revoked') {
+            setBanner({ kind: 'revoked' })
+            return
+          }
+          setBanner(null)
+          if (result.key && result.status === 'active') {
+            setAuthKey(result.key)
+          }
+        })
+      }
     })
-  }, [])
+  }, [token?.token])
 
   const hasKey = authKey !== null && authKey.length > 0
 
@@ -95,6 +221,39 @@ export function AccountPage() {
 
       <section className="flex flex-col gap-4">
         <div className="rounded-lg border border-border bg-card p-5">
+          {banner?.kind === 'revoked' ? (
+            <div
+              role="alert"
+              className="mb-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+            >
+              <AlertTriangle
+                size={16}
+                className="mt-0.5 shrink-0"
+                aria-hidden="true"
+              />
+              <span>
+                {t('account.revokedBanner')}{' '}
+                <a
+                  href={LAUNCHER_CONFIG.accountSettingsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium underline underline-offset-2 hover:text-destructive/80"
+                >
+                  {t('account.revokedBannerLink')}
+                </a>
+              </span>
+            </div>
+          ) : null}
+
+          {banner?.kind === 'fetch-failed' ? (
+            <p
+              role="status"
+              className="mb-4 rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground"
+            >
+              {t('account.fetchFallback', { reason: banner.reason })}
+            </p>
+          ) : null}
+
           <div className="flex items-start justify-between gap-6">
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2">
@@ -189,6 +348,11 @@ export function AccountPage() {
       <AuthKeyModal
         open={isChangeModalOpen}
         onOpenChange={setIsChangeModalOpen}
+        // Pass the bearer token so the modal can validate the
+        // typed key against the canonical server value before
+        // writing to disk. See the AuthKeyModal JSDoc for the
+        // threat model + failure-posture rationale.
+        token={token?.token ?? null}
         onSaved={handleSaved}
       />
     </div>

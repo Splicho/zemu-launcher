@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Check, CheckCircle2, Download, Folder, HelpCircle, LogOut, RotateCw, X } from 'lucide-react'
+import { AlertTriangle, Check, CheckCircle2, Download, Folder, HelpCircle, LogOut, RotateCw, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +14,7 @@ import { SteamInstructionsModal } from '@/components/steam-instructions-modal'
 import { QrSteamGate, type QrGateState } from '@/components/qr-steam-gate'
 import { TitleBar } from '@/components/title-bar'
 import { markSteamInstructionsSeen } from '@/lib/steam-instructions'
+import { fetchMyAuthKey } from '@/lib/auth'
 
 /**
  * Discord server invite URL. Mirrors the value used by the in-app
@@ -24,6 +25,7 @@ import { markOnboardingCompleted } from '@/lib/onboarding'
 import type { SetupChecks } from '@/lib/setup-checks'
 import type { DepotProgress } from '@/lib/tauri-bridge'
 import { useGameStateContext } from '@/hooks/use-game-state-context'
+import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 /**
  * Four-step first-run wizard.
@@ -71,9 +73,16 @@ interface OnboardingPageProps {
    * stale `incomplete` result pushed the route back to `#/onboarding`.
    */
   onRefreshGate?: () => Promise<void>
+  /**
+   * The launcher's bearer JWT, when the user is signed in. Used by
+   * Step 1 to auto-fetch the auth key from the server so the user
+   * doesn't have to paste it manually. `null` when the user is
+   * signed out — Step 1 then falls back to the manual entry flow.
+   */
+  bearerToken?: string | null
 }
 
-export function OnboardingPage({ initialChecks, onFinish, onRefreshGate }: OnboardingPageProps) {
+export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerToken }: OnboardingPageProps) {
   const { t } = useTranslation()
   const totalSteps = 4
 
@@ -203,6 +212,7 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate }: Onboa
                     authKey={authKey}
                     setAuthKey={setAuthKey}
                     onContinue={advance}
+                    bearerToken={bearerToken ?? null}
                     onAfterSave={() => {
                       // Push the just-saved key into the play-page
                       // state store immediately so a returning
@@ -371,28 +381,121 @@ interface AccessKeyStepProps {
    * concern at the wizard's tail.
    */
   onAfterSave?: () => void
+  /**
+   * The signed-in user's bearer JWT, when available. The step
+   * calls `fetchMyAuthKey` once on mount — if the server returns
+   * an active key, it's saved locally and the wizard advances
+   * without the user ever seeing the paste field. A `revoked`
+   * key surfaces a banner explaining the situation; `null` /
+   * transport error falls back to manual entry.
+   */
+  bearerToken: string | null
   t: (key: string, params?: Record<string, unknown>) => string
 }
 
-function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, t }: AccessKeyStepProps) {
+/**
+ * `banner` variants the Step 1 card can render above the input.
+ * Kept as a discriminated string so the JSX stays flat — we only
+ * have three shapes (revoked, fetch-failed, none) and a banner
+ * stacks onto a single component rather than splitting into
+ * parallel conditional trees.
+ */
+type Step1Banner =
+  | { kind: 'revoked' }
+  | { kind: 'fetch-failed'; reason: string }
+  | null
+
+function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerToken, t }: AccessKeyStepProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
+  // `banner` covers the cases where the server *answered* but the
+  // answer doesn't let us auto-save: a `revoked` row (we refuse to
+  // persist a revoked key), or a hard transport failure (we let
+  // the user try the manual entry below). Plain null means the
+  // server hasn't been consulted yet, or that we successfully
+  // advanced past this step.
+  const [banner, setBanner] = useState<Step1Banner>(null)
 
   useEffect(() => {
     let cancelled = false
-    setIsLoading(true)
-    setError(null)
-    void window.launcherAPI?.getAuthKey?.().then((key) => {
+
+    async function hydrate() {
+      // 1. Always seed from local disk first — a returning user
+      //    who has already saved a key shouldn't re-download it
+      //    (and skipping this races with the network round-trip
+      //    below, briefly showing an empty input).
+      const onDisk = await window.launcherAPI?.getAuthKey?.()
       if (cancelled) return
-      setAuthKey(key ?? '')
+      const existing = typeof onDisk === 'string' ? onDisk : ''
+      if (existing.trim().length > 0) {
+        setAuthKey(existing)
+        setIsLoading(false)
+        return
+      }
+
+      // 2. No on-disk key. If the user is signed in, ask the
+      //    server for theirs. We don't ping the server for
+      //    unauthenticated users (e.g. first-run before sign-in)
+      //    — there's no row to fetch and the request would 401.
+      if (!bearerToken) {
+        setIsLoading(false)
+        return
+      }
+
+      const result = await fetchMyAuthKey(bearerToken)
+      if (cancelled) return
+
+      // 2a. Active key returned: save it locally and skip past
+      //     this step entirely. The user never has to type a
+      //     key. `onAfterSave` mirrors the manual-save path so
+      //     the play-page store picks up the change before the
+      //     wizard advances.
+      if (result.ok && result.key && result.status === 'active') {
+        try {
+          await window.launcherAPI?.setAuthKey?.(result.key)
+          if (cancelled) return
+          setAuthKey(result.key)
+          onAfterSave?.()
+          onContinue()
+          return
+        } catch {
+          // Fall through to manual entry if the disk write
+          // fails — `setAuthKey` only resolves once the file
+          // is on disk, so a throw here is a real I/O error.
+          setBanner({ kind: 'fetch-failed', reason: 'save_failed' })
+          setIsLoading(false)
+          return
+        }
+      }
+
+      // 2b. Revoked key: refuse to save and surface a banner
+      //     pointing the user at the website account settings
+      //     page so they can request a restore. We deliberately
+      //     don't expose the raw key value here — the user has
+      //     nothing to gain from seeing a string they can't use.
+      if (result.ok && result.key === null && result.status === 'revoked') {
+        setBanner({ kind: 'revoked' })
+        setIsLoading(false)
+        return
+      }
+
+      // 2c. No key on the server (status === null and key === null)
+      //     or transport failure: fall through to manual entry.
+      //     The latter surfaces a softer banner so the user knows
+      //     why the auto-fetch didn't fire.
+      if (!result.ok) {
+        setBanner({ kind: 'fetch-failed', reason: result.reason })
+      }
       setIsLoading(false)
-    })
+    }
+
+    void hydrate()
     return () => {
       cancelled = true
     }
-  }, [setAuthKey])
+  }, [setAuthKey, onContinue, onAfterSave, bearerToken])
 
   const handleSave = async () => {
     if (isSaving || !authKey.trim()) return
@@ -417,6 +520,41 @@ function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, t }: Acce
   return (
     <div>
       <div className="space-y-4">
+        {banner?.kind === 'revoked' ? (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+          >
+            <AlertTriangle
+              size={16}
+              className="mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
+            <span>
+              {t('onboarding.step1.revokedBanner')}{' '}
+              <a
+                href={LAUNCHER_CONFIG.accountSettingsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium underline underline-offset-2 hover:text-destructive/80"
+              >
+                {t('onboarding.step1.revokedBannerLink')}
+              </a>
+            </span>
+          </div>
+        ) : null}
+
+        {banner?.kind === 'fetch-failed' ? (
+          <p
+            role="status"
+            className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground"
+          >
+            {t('onboarding.step1.fetchFallback', {
+              reason: banner.reason,
+            })}
+          </p>
+        ) : null}
+
         <div className="space-y-2">
           <Label htmlFor="onboarding-auth-key">{t('authKey.inputLabel')}</Label>
           <Input
