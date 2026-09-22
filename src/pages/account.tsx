@@ -175,6 +175,16 @@ export function AccountPage() {
     }
   }, [authKey, t])
 
+  const hasKey = authKey !== null && authKey.length > 0
+
+  // Stable primitive so React Compiler and the manual dep array
+  // agree on a single value to compare. Pulled out of `token`
+  // because `useCallback([token?.token])` and the compiler's inferred
+  // `[token]` deps don't match (compiler sees the object ref, manual
+  // deps see the inner string) and that mismatch trips
+  // `react-hooks/preserve-manual-memoization`.
+  const bearerToken = token?.token ?? null
+
   const handleSaved = useCallback(() => {
     // Refresh the displayed key from disk so the reveal panel
     // reflects the new value the user just typed.
@@ -187,8 +197,8 @@ export function AccountPage() {
       // failure here just leaves the panel showing whatever the
       // user typed, which is what they'd expect from a "Save"
       // button anyway.
-      if (token?.token) {
-        void fetchMyAuthKey(token.token).then((result) => {
+      if (bearerToken) {
+        void fetchMyAuthKey(bearerToken).then((result) => {
           if (!result.ok) {
             setBanner({ kind: 'fetch-failed', reason: result.reason })
             return
@@ -204,9 +214,7 @@ export function AccountPage() {
         })
       }
     })
-  }, [token?.token])
-
-  const hasKey = authKey !== null && authKey.length > 0
+  }, [bearerToken])
 
   return (
     <div className="flex flex-col gap-6 py-6">

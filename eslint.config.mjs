@@ -121,6 +121,12 @@ export default [
         MediaQueryListEvent: 'readonly',
         Node: 'readonly',
         HTMLElementTagNameMap: 'readonly',
+        CustomEvent: 'readonly',
+        // Fetch API constructors used in client wrappers; TS knows
+        // them via `lib: ["DOM"]`, but `no-undef` runs against this
+        // globals table and needs them declared.
+        RequestInit: 'readonly',
+        Headers: 'readonly',
       },
     },
     settings: { react: { version: '18.2' } },

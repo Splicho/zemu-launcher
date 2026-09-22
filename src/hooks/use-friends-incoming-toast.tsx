@@ -56,6 +56,12 @@ export function useFriendsIncomingToast(enabled: boolean) {
       return
     }
 
+    // Snapshot the ref at effect-time so the cleanup callback can
+    // safely `.clear()` the same set instance even if React swaps
+    // the ref between the body and the cleanup (Strict Mode double-
+    // mount, concurrent re-mount during a fast re-render).
+    const seenIdsRef = seenIds.current
+
     const unlistenP = listen<FriendsIncomingRequestPayload>(
       'friends:incoming-request',
       (event) => {
@@ -63,12 +69,12 @@ export function useFriendsIncomingToast(enabled: boolean) {
         const userId = fromUser.id
 
         // De-duplicate.
-        if (seenIds.current.has(userId)) return
-        seenIds.current.add(userId)
-        if (seenIds.current.size > DEDUP_CAP) {
+        if (seenIdsRef.has(userId)) return
+        seenIdsRef.add(userId)
+        if (seenIdsRef.size > DEDUP_CAP) {
           // Evict the oldest entry when the set grows past the cap.
-          const first = seenIds.current.values().next().value
-          if (first !== undefined) seenIds.current.delete(first)
+          const first = seenIdsRef.values().next().value
+          if (first !== undefined) seenIdsRef.delete(first)
         }
 
         // Optimistically bump the incoming-request count on the
@@ -148,7 +154,7 @@ export function useFriendsIncomingToast(enabled: boolean) {
 
     return () => {
       void unlistenP.then((fn) => fn())
-      seenIds.current.clear()
+      seenIdsRef.clear()
     }
   }, [enabled, accept, decline, qc])
 }

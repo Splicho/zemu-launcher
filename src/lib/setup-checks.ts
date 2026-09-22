@@ -105,9 +105,13 @@ async function safeDetectBaseGameInstalled(directory: string): Promise<boolean> 
     // up, the call will throw and we'll fall through to the exe-only
     // check — keeping the wizard functional with or without the new
     // Rust side in place.
-    const invokeFn = (window as any).__TAURI_INTERNALS__?.invoke
+    const tauriInternals = window as unknown as {
+      __TAURI_INTERNALS__?: { invoke?: (cmd: string, args: unknown) => Promise<unknown> }
+    }
+    const invokeFn = tauriInternals.__TAURI_INTERNALS__?.invoke
     if (!invokeFn) return false
-    return (await invokeFn('game_detect_base_game_installed', { directory })) === true
+    const result = await invokeFn('game_detect_base_game_installed', { directory })
+    return result === true
   } catch {
     return false
   }
@@ -115,9 +119,13 @@ async function safeDetectBaseGameInstalled(directory: string): Promise<boolean> 
 
 async function safeFileExists(directory: string, name: string): Promise<boolean> {
   try {
-    const invokeFn = (window as any).__TAURI_INTERNALS__?.invoke
+    const tauriInternals = window as unknown as {
+      __TAURI_INTERNALS__?: { invoke?: (cmd: string, args: unknown) => Promise<unknown> }
+    }
+    const invokeFn = tauriInternals.__TAURI_INTERNALS__?.invoke
     if (!invokeFn) return false
-    return (await invokeFn('game_path_exists', { path: `${directory}/${name}` })) === true
+    const result = await invokeFn('game_path_exists', { path: `${directory}/${name}` })
+    return result === true
   } catch {
     return false
   }

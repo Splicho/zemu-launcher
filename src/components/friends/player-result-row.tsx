@@ -9,14 +9,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import type { FriendStatus } from '@/lib/friends'
-
-export const STATUS_DOT_CLASS: Record<FriendStatus, string> = {
-  online: 'bg-emerald-500',
-  in_game: 'bg-amber-500',
-  busy: 'bg-rose-500',
-  away: 'bg-yellow-400',
-  offline: 'bg-zinc-500',
-}
+import { STATUS_DOT_CLASS } from '@/components/friends/status-dot-class'
 
 /** Narrow interface — only the fields `PlayerResultRow` actually needs. */
 interface PersonLike {

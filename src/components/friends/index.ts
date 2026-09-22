@@ -25,7 +25,8 @@ export {
 } from '@/components/friends/friend-actions'
 export type { FriendAction } from '@/components/friends/friend-actions'
 
-export { PlayerResultRow, STATUS_DOT_CLASS } from '@/components/friends/player-result-row'
+export { PlayerResultRow } from '@/components/friends/player-result-row'
+export { STATUS_DOT_CLASS } from '@/components/friends/status-dot-class'
 
 export { PeopleSection } from '@/components/friends/people-section'
 
