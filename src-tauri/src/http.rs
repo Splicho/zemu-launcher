@@ -39,7 +39,7 @@ pub async fn request(
     request_with_client(&client, url, method, headers, body).await
 }
 
-fn parse_url(raw: &str) -> Result<Url> {
+pub(crate) fn parse_url(raw: &str) -> Result<Url> {
     let url = Url::parse(raw)?;
     if !matches!(url.scheme(), "http" | "https")
         || !url.username().is_empty()

@@ -1,48 +1,58 @@
 /**
  * Persistence for the "user has completed first-run onboarding" state.
  *
- * The first-run wizard collects three things in order:
- *   1. Auth key (saved locally, no server validation).
- *   2. Game install folder (chosen by the user).
- *   3. Base game (auto-downloaded via SteamCMD, or manually via the
- *      Steam depot console).
+ * The flag lives in `LauncherConfig.onboarding_completed` on the Rust
+ * side (`src-tauri/src/storage.rs`). We moved it out of localStorage so
+ * the gate (`useOnboardingGate`) survives browser-data wipes, private
+ * windows, and sandboxed contexts — the previous localStorage flag
+ * would silently disappear on the user and then re-push them through
+ * the wizard on the next launch even though their install was intact.
  *
- * After the wizard finishes we flip this flag to `'1'` so subsequent
- * launches route straight to `/` instead of `/onboarding`. The flag is
- * intentionally best-effort: `localStorage` can throw in private-mode
- * or sandboxed contexts, so every helper is wrapped in try/catch and
- * returns a safe default. Losing the flag just means the user will
- * see the wizard again on next launch — not a destructive outcome.
+ * Two consumers:
  *
- * The wizard's `setupChecks` (auth key + folder + base-game presence on
- * disk) is the authoritative gate; this flag is just a hint to skip the
- * wizard for users who have already finished it.
+ *   - `useOnboardingGate` calls `hasCompletedOnboarding()` once on
+ *     mount to gate the wizard redirect.
+ *   - `OnboardingPage`'s `finish` callback (and the install-check
+ *     pre-screen's "Yes" branch) call `markOnboardingCompleted()`
+ *     before flipping the hash, so the gate's next evaluation
+ *     publishes `{ kind: 'complete' }` and the user lands on `/`.
+ *
+ * The flag is a hint, not a source of truth. The gate's Path 1
+ * (`hasKey && hasFolder && hasBaseGame` all on disk) returns
+ * `complete` regardless of the flag, so a wiped flag with a real
+ * install still lets the user past `#/`. The Rust call is awaited
+ * in dev mode it no-ops gracefully (`launcherAPI` is undefined in
+ * plain Vite dev), so a missing Tauri runtime falls back to
+ * "not completed" and the user sees the install-check screen like
+ * a fresh install.
  */
 
-const STORAGE_KEY = 'zemu-launcher.onboarding-completed'
-
-export const ONBOARDING_STORAGE_KEY = STORAGE_KEY
-
-export function hasCompletedOnboarding(): boolean {
+export async function hasCompletedOnboarding(): Promise<boolean> {
   try {
-    return localStorage.getItem(STORAGE_KEY) === '1'
+    const value = await window.launcherAPI?.getOnboardingCompleted?.()
+    return value === true
   } catch {
+    /* Tauri raised — treat as "not completed" so the gate pushes the
+       user through the install-check rather than silently skipping
+       it (which would strand them on `/` with no install). */
     return false
   }
 }
 
-export function markOnboardingCompleted(): void {
+export async function markOnboardingCompleted(): Promise<void> {
   try {
-    localStorage.setItem(STORAGE_KEY, '1')
+    await window.launcherAPI?.setOnboardingCompleted?.(true)
   } catch {
-    /* best-effort — losing the flag just shows the wizard again next launch */
+    /* Best-effort — losing the flag means the gate falls through to
+       on-disk checks on next mount, which still resolves to
+       `complete` when the install is intact. */
   }
 }
 
-export function clearOnboardingCompleted(): void {
+export async function clearOnboardingCompleted(): Promise<void> {
   try {
-    localStorage.removeItem(STORAGE_KEY)
+    await window.launcherAPI?.setOnboardingCompleted?.(false)
   } catch {
-    /* best-effort */
+    /* best-effort — same rationale as the setter */
   }
 }

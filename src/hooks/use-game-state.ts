@@ -263,7 +263,7 @@ export function useGameState() {
       // ("Install") with `hasUpdate: true` — flashing the wrong label
       // for a frame, or sticking there if the second read is slow.
       const [info, installed] = await Promise.all([
-        window.gameAPI.checkUpdate(LAUNCHER_CONFIG.updateSkipFiles),
+        window.gameAPI.checkUpdate([...LAUNCHER_CONFIG.updateSkipFiles]),
         window.gameAPI.isInstalled(),
       ])
 

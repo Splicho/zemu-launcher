@@ -190,6 +190,17 @@ pub struct LauncherConfig {
     pub locale: Option<String>,
     #[serde(default)]
     pub wine: WineConfig,
+    /// Set to `true` once the user finishes the first-run wizard
+    /// (or clicks "Yes, I already have it" on the install-check
+    /// pre-screen). Persisted in `launcher-config.json` so it
+    /// survives browser-data clears and private-mode sessions —
+    /// the previous localStorage flag could be silently wiped and
+    /// the user would get re-pushed through the wizard on the next
+    /// launch. `false` (the `Default` value) means the gate still
+    /// needs to confirm a valid install on disk before letting the
+    /// user past `#/`.
+    #[serde(default)]
+    pub onboarding_completed: bool,
 }
 
 impl Default for LauncherConfig {
@@ -208,6 +219,7 @@ impl Default for LauncherConfig {
             auth_key: None,
             locale: default_locale(),
             wine: WineConfig::default(),
+            onboarding_completed: false,
         }
     }
 }

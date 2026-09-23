@@ -97,6 +97,26 @@ pub fn save_auth_store(app: &AppHandle, store: &AuthStore) -> Result<()> {
     write_json(&path, store)
 }
 
+/// Read the first-run onboarding completed flag from the persisted
+/// `LauncherConfig`. Default `false` on first run or when the
+/// file has not been written yet — that's also the right answer
+/// for the gate (`useOnboardingGate` falls through to the on-disk
+/// checks before trusting the flag).
+pub fn has_completed_onboarding(app: &AppHandle) -> Result<bool> {
+    let config = load_launcher_config(app)?;
+    Ok(config.onboarding_completed)
+}
+
+/// Persist the first-run onboarding completed flag. Mirrors the
+/// simple setter pattern used by `launcher_set_locale` —
+/// load → mutate → save — so a concurrent write from another
+/// command still resolves to the latest file contents on reload.
+pub fn mark_onboarding_completed(app: &AppHandle, completed: bool) -> Result<()> {
+    let mut config = load_launcher_config(app)?;
+    config.onboarding_completed = completed;
+    save_launcher_config(app, &config)
+}
+
 pub fn detect_oauth_callback_protocol(app: &AppHandle) -> Result<Option<String>> {
     let launcher_config = load_launcher_config(app)?;
     if let Some(protocol) = launcher_config.oauth_callback_protocol {

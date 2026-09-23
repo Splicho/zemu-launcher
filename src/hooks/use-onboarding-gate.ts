@@ -6,7 +6,8 @@ import { decideOnboardingGate } from '@/lib/onboarding-gate'
 
 /**
  * Single source of truth for "should the user be in /onboarding right
- * now?". The wizard consumes this via the `AuthedApp` redirect effect.
+ * now?". The wizard and the install-check pre-screen both consume this
+ * via the `AuthedApp` redirect effect.
  *
  * State machine:
  *
@@ -17,38 +18,43 @@ import { decideOnboardingGate } from '@/lib/onboarding-gate'
  *                      (key + folder + base game) OR has previously
  *                      finished the wizard (flag + key + folder).
  *                      Either way, send them to `/`.
- *   - `incomplete`   — at least one input is missing. `inputs` carries
+    20| *   - `incomplete`   — at least one input is missing. `inputs` carries
  *                      what we already know so the wizard can pre-fill
  *                      and skip steps the user has already done.
  *
  * The decision rules live in `decideOnboardingGate` and are
  * unit‑tested in `scripts/onboarding-gate.test.cjs`. The hook itself
- * is a thin wrapper that resolves the flag and inputs, calls the
- * pure decision, and exposes a `refresh()` for the wizard to invoke
- * after flipping the flag.
+ * is a thin wrapper that resolves the flag (now an async IPC read
+ * against `LauncherConfig.onboarding_completed` on the Rust side —
+ * see `src/lib/onboarding.ts` for the rationale) and inputs, calls
+ * the pure decision, and exposes a `refresh()` for the wizard /
+ * install-check to invoke after flipping the flag.
  *
  * Returning users who wiped their localStorage but still have a valid
- * install on disk fall through to `complete` via the on-disk checks —
- * this is the "edge case" the plan flagged: don't force a returning
- * user through the wizard again just because their browser state
- * cleared.
+ * install on disk fall through to `complete` via the on-disk checks.
+ * Before the flag moved to Rust, a wiped localStorage flag used to
+ * send these users through the wizard again; that's now solved at the
+ * source by persisting the flag in `launcher-config.json` where it
+ * survives browser-data clears.
  *
  * ## Refresh contract
  *
- * The wizard's `Finish` button flips the localStorage flag. Without a
- * re-evaluation the redirect effect still sees `incomplete` and pushes
- * the user back into the wizard. `refresh()` re-runs the gate logic on
- * demand. It is exported via the hook's return value so the wizard can
- * call it from its `finish` callback after `markOnboardingCompleted()`
- * and before the hash flip.
+ * The wizard's `Finish` button (and the install-check's "Yes, I do"
+ * button) flip the persisted flag. Without a re-evaluation the
+ * redirect effect still sees `incomplete` and pushes the user back
+ * into the install-check. `refresh()` re-runs the gate logic on
+ * demand. It is exported via the hook's return value so the wizard
+ * can call it from its `finish` callback after
+ * `markOnboardingCompleted()` resolves and before the hash flip.
  *
- * Trusting the flag: if the user just clicked Finish they have already
- * walked through the four-item checklist in `FinishStep` (key + folder
- * + base game + patch). We don't revalidate every check on disk before
- * letting them out — that would re-block them if, say, the keyring's
- * `getAuthKey` returned a transient error. The `Finish` click is the
- * strongest signal we have; disk re-validation only gates the
- * "returning user who never set the flag" path.
+ * Trusting the flag: if the user just clicked Finish they have
+ * already walked through the four-item checklist in `FinishStep`
+ * (key + folder + base game + patch). We don't revalidate every
+ * check on disk before letting them out — that would re-block them
+ * if, say, the keyring's `getAuthKey` returned a transient error.
+ * The `Finish` click is the strongest signal we have; disk
+ * re-validation only gates the "returning user who never set the
+ * flag" path.
  */
 
 export type GateState =
@@ -67,8 +73,15 @@ export function useOnboardingGate(): {
   const [refreshTick, setRefreshTick] = useState(0)
 
   const evaluate = useCallback(async () => {
-    const flag = hasCompletedOnboarding()
-    const inputs = await getSetupChecks()
+    // `hasCompletedOnboarding` is now an async IPC call to the Rust
+    // side (`launcher_get_onboarding_completed`). It resolves to
+    // `false` on a missing Tauri runtime, which is the right answer
+    // for dev mode — the install-check / wizard mounts in that case,
+    // matching the pre-existing behavior.
+    const [flag, inputs] = await Promise.all([
+      hasCompletedOnboarding(),
+      getSetupChecks(),
+    ])
     setState(decideOnboardingGate(flag, inputs))
   }, [])
 
@@ -76,8 +89,10 @@ export function useOnboardingGate(): {
     let cancelled = false
 
     const run = async () => {
-      const flag = hasCompletedOnboarding()
-      const inputs = await getSetupChecks()
+      const [flag, inputs] = await Promise.all([
+        hasCompletedOnboarding(),
+        getSetupChecks(),
+      ])
       if (cancelled) return
       setState(decideOnboardingGate(flag, inputs))
     }

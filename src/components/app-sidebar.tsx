@@ -50,7 +50,7 @@ import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { CircularProgress } from '@/components/circular-progress'
 import { Badge } from '@/components/ui/badge'
 import { LiveIndicator } from '@/components/live-indicator'
-import { useIncomingRequestsCount } from '@/hooks/use-friends'
+import { useIncomingRequestsCount, useZemuAuthKeyReady } from '@/hooks/use-friends'
 import { useAuthContext } from '@/contexts/auth-context'
 import type { PropertiesSectionId } from '@/components/properties-sidebar'
 import type { OpenProperties } from '@/contexts/open-properties-context'
@@ -120,7 +120,10 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
     useGameStateContext()
   const { status } = useAuthContext()
   const isAuthenticated = status === 'authed'
-  const incomingCount = useIncomingRequestsCount({ enabled: isAuthenticated })
+  const authKeyReady = useZemuAuthKeyReady(isAuthenticated)
+  const incomingCount = useIncomingRequestsCount({
+    enabled: isAuthenticated && authKeyReady,
+  })
   const hash = useHashRoute()
 
   // Stable callback the rest of the app uses (via

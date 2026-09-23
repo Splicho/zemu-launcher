@@ -14,6 +14,7 @@ mod http;
 mod launch_args;
 mod models;
 mod oauth_server;
+mod public_api;
 mod state;
 mod steam;
 mod storage;

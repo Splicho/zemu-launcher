@@ -8,10 +8,8 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { SteamInstructionsModal } from '@/components/steam-instructions-modal'
 import { QrSteamGate, type QrGateState } from '@/components/qr-steam-gate'
 import { TitleBar } from '@/components/title-bar'
-import { markSteamInstructionsSeen } from '@/lib/steam-instructions'
 import { fetchMyAuthKey } from '@/lib/auth'
 import { markOnboardingCompleted } from '@/lib/onboarding'
 import type { SetupChecks } from '@/lib/setup-checks'
@@ -20,12 +18,22 @@ import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 /**
- * Four-step first-run wizard.
+ * Three-step first-run wizard.
  *
  *   Step 1 — save the auth key (mandatory)
  *   Step 2 — pick an install folder
- *   Step 3 — get the base game (SteamCMD auto-download or manual)
- *   Step 4 — confirm and finish
+ *   Step 3 — get the base game via the SteamCMD auto-download (QR
+ *            scan or pre-existing keychain token)
+ *
+ * The previous 4-step flow had a manual fallback at the bottom of
+ * Step 3 that opened the Steam-instructions modal. That branch was
+ * removed because the launcher no longer ships the Steam SDK on
+ * every platform — every supported build can drive the QR flow
+ * (or fall back to the failed/error state with a retry/back path).
+ * Users who want the manual depot-command instructions can still
+ * reach them via the sidebar's right-click "Install PS3 Manually"
+ * entry or the read-only "Installation Guide" pane inside the
+ * Properties dialog.
  *
  * Layout follows the same pattern as the threadlab onboarding:
  *   - Top-left logo
@@ -39,8 +47,9 @@ import { LAUNCHER_CONFIG } from '@/config/launcher'
  * AuthedApp renders this in place of `<MainLayout>` when the hash is
  * `#/onboarding`.
  *
- * On Finish we set `zemu-launcher.onboarding-completed = '1'` and
- * navigate to `#/`. Returning users with on-disk installs skip
+ * On Finish we set `LauncherConfig.onboarding_completed = true` on
+ * the Rust side (see `src-tauri/src/storage.rs::mark_onboarding_completed`)
+ * and navigate to `#/`. Returning users with on-disk installs skip
  * straight to `/` via the gate hook (no manual rerun needed).
  */
 
@@ -149,13 +158,13 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerT
   const { refreshFromDisk } = useGameStateContext()
 
   const finish = useCallback(() => {
-    markOnboardingCompleted()
-    // Re-run the gate *before* the hash flip. Without this, the
-    // redirect effect in `AuthedApp` sees the stale `incomplete`
-    // state it captured at mount and pushes the user straight back
-    // into `#/onboarding`. Once `onRefreshGate()` resolves the gate
-    // will publish `{ kind: 'complete' }` and the redirect effect's
-    // next run is a no-op.
+    // `markOnboardingCompleted` is now async (it writes the flag
+    // to the Rust-side `LauncherConfig` via IPC, replacing the
+    // old localStorage path). We await it inside the same `Promise.all`
+    // as `onRefreshGate` so the gate's re-read sees the freshly-
+    // committed `true` before the redirect effect evaluates — same
+    // contract the old code aimed for, just preserved across the
+    // IPC hop.
     //
     // We also push the wizard's writes into the play-page state
     // store before the route flip. Without `refreshFromDisk`, the
@@ -169,7 +178,11 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerT
     // auth-key gate cleared). Forcing a full disk refresh here
     // makes the play page see the same world the wizard just
     // left.
-    void Promise.all([onRefreshGate?.(), refreshFromDisk()]).then(() => {
+    void Promise.all([
+      markOnboardingCompleted(),
+      onRefreshGate?.(),
+      refreshFromDisk(),
+    ]).then(() => {
       onFinish?.()
       if (typeof window !== 'undefined') {
         window.location.hash = '#/'
@@ -284,18 +297,6 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerT
                       // as the Step 1 / Step 2 refreshes — the
                       // wizard writes directly to disk and the
                       // store needs a hint to re-read.
-                      void refreshFromDisk()
-                      advance()
-                    }}
-                    onSkip={() => {
-                      setHasBaseGame(true)
-                      setHasMarker(false)
-                      // Manual path: the user said they'll drop
-                      // the PS3 folder in themselves. The
-                      // directory was set in Step 2, but `version.json`
-                      // isn't there yet, so `isInstalled` will
-                      // stay false — the play page should still
-                      // see the directory though.
                       void refreshFromDisk()
                       advance()
                     }}
@@ -669,17 +670,10 @@ interface BaseGameStepProps {
   onBack: () => void
   /** Auto-download succeeded — we have a Zemu-managed base game. */
   onContinue: () => void
-  /** User chose manual and acknowledged the Steam instructions modal. */
-  onSkip: () => void
   t: (key: string, params?: Record<string, unknown>) => string
 }
 
-function BaseGameStep({ folder, onBack, onContinue, onSkip, t }: BaseGameStepProps) {
-  // Whether the pure-Rust orchestrator is reachable. (Always true
-  // on this build; kept as a state probe for parity with the
-  // historical Node-bridge availability check.)
-  const [bridgeAvailable, setBridgeAvailable] = useState<boolean | null>(null)
-
+function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
   // True once `loginStatus` returns `authed: true`. Kept separate
   // from `pipelineState` so we can render the "Signed in as X"
   // card with a "Start download" CTA without also advancing the
@@ -719,27 +713,19 @@ function BaseGameStep({ folder, onBack, onContinue, onSkip, t }: BaseGameStepPro
   // Depot download progress. Populated by `depot-progress` events
   // from the same pipeline.
   const [depotProgress, setDepotProgress] = useState<DepotProgress | null>(null)
-  const [showSteamModal, setShowSteamModal] = useState(false)
 
-  // Probe bridge availability + initial auth status on mount.
+  // Probe initial auth status on mount.
   useEffect(() => {
     let cancelled = false
-    void window.steamApi?.isAvailable?.().then((value) => {
-      if (!cancelled) setBridgeAvailable(value === true)
-    })
     void window.steamApi?.loginStatus?.().then((status) => {
       if (cancelled) return
       setAccountName(status.accountName ?? null)
       // Pre-existing token → leave the gate in `'idle'` and let the
       // parent render the authed-but-not-yet-downloading action
-      // card. Flipping `pipelineState` to `'done'` here was the bug
-      // that made the body collapse to just heading + Back +
-      // Manual-open for returning users: `QrSteamGate` skipped
-      // itself (`qrGateState !== 'done'`), the floating body button
-      // never rendered (its condition `qrGateState === 'done' &&
-      // isIdle` is logically impossible — `'done'` and `'idle'` are
-      // mutually exclusive), and the bottom-bar CTA also dropped
-      // into the manual-open outline branch.
+      // card. The previous "manual-open fallback" branch that also
+      // lived on this `loginStatus` resolution was removed along
+      // with the rest of the Steam-instructions modal entry point;
+      // see the file-level doc comment for rationale.
       //
       // We mark the auth flow as "initiated" *only* when the saved
       // token belongs to the user who is currently sitting in the
@@ -879,45 +865,13 @@ function BaseGameStep({ folder, onBack, onContinue, onSkip, t }: BaseGameStepPro
     }
   }, [folder, onContinue])
 
-  const handleManualAcknowledge = useCallback(async () => {
-    markSteamInstructionsSeen()
-    setShowSteamModal(false)
-    onSkip()
-  }, [onSkip])
-
-  // While the orchestrator is unreachable (e.g. dev build with a
-  // stripped feature), fall through to the manual instructions modal.
-  if (bridgeAvailable === false) {
-    return (
-      <div>
-        <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-          {t('onboarding.step3.qrGate.bridgeMissing')}
-        </div>
-        <div className="mt-6 flex justify-between">
-          <Button variant="ghost" onClick={onBack}>
-            {t('common.back')}
-          </Button>
-          <Button
-            variant="gradient"
-            onClick={() => setShowSteamModal(true)}
-          >
-            {t('onboarding.step3.manual.open')}
-          </Button>
-        </div>
-        <SteamInstructionsModal
-          open={showSteamModal}
-          onOpenChange={setShowSteamModal}
-          onAcknowledge={handleManualAcknowledge}
-        />
-      </div>
-    )
-  }
-
   // Convenience flags. Plain equality only — no derived state that
-  // could collide with itself across renders.
+  // could collide with itself across renders. (`isIdle` was
+  // previously derived here too — it gated the "open manual
+  // instructions" button that was removed along with the rest of
+  // the manual fallback.)
   const isDownloading = pipelineState === 'downloading'
   const isFailed = pipelineState === 'failed'
-  const isIdle = pipelineState === 'idle'
 
   // Three mutually-exclusive body states. Used as a single switch
   // so the JSX tree is impossible to render-empty by accident.
@@ -1047,32 +1001,19 @@ function BaseGameStep({ folder, onBack, onContinue, onSkip, t }: BaseGameStepPro
         <Button variant="ghost" onClick={onBack} disabled={isDownloading}>
           {t('common.back')}
         </Button>
-        <div className="flex gap-2">
-          {authedIdle ? (
-            <Button
-              variant="outline"
-              onClick={() => setShowSteamModal(true)}
-              disabled={false}
-            >
-              {t('onboarding.step3.manual.open')}
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              onClick={() => setShowSteamModal(true)}
-              disabled={!isIdle && !isFailed}
-            >
-              {t('onboarding.step3.manual.open')}
-            </Button>
-          )}
-        </div>
+        {/*
+          The bottom-bar previously rendered a secondary "Open
+          instructions" button that surfaced the Steam-instructions
+          modal as a manual fallback. That branch was removed
+          because every supported build now drives the QR flow, so
+          the only way out of Step 3 is Back / retry / let the
+          download finish. Users who want the manual depot-command
+          instructions can still reach them via the sidebar's
+          right-click "Install PS3 Manually" entry or the
+          read-only "Installation Guide" pane in the Properties
+          dialog.
+        */}
       </div>
-
-      <SteamInstructionsModal
-        open={showSteamModal}
-        onOpenChange={setShowSteamModal}
-        onAcknowledge={handleManualAcknowledge}
-      />
     </div>
   )
 }

@@ -1,158 +1,232 @@
 const assert = require('node:assert/strict')
+// Values that cross the `runInNewContext` boundary carry the VM
+// realm's prototypes, so strict deep equality rejects them on
+// identity alone. `structural` compares shape and primitives only.
+const structural = require('node:assert').deepEqual
 const { readFileSync } = require('node:fs')
 const { test } = require('node:test')
 const { runInNewContext } = require('node:vm')
 const ts = require('typescript')
 
-const source = readFileSync(require.resolve('../src/lib/friends.ts'), 'utf8')
-const { outputText } = ts.transpileModule(source.replaceAll('import.meta.env', 'testEnv'), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
-})
+// This suite pins the transport contract of the game API client:
+// on desktop every request leaves through the Rust `http_fetch`
+// command, never the WebView's `fetch`. Going through the WebView
+// is what the CORS fix removed, and it fails silently (the request
+// is rejected by the browser, not the server), so it needs a test
+// that fails loudly instead.
+//
+// Wire-shape coverage for the friends graph itself lives with the
+// game server contract, not here — `gameFetch` is deliberately
+// shape-agnostic and forwards whatever JSON it is handed.
 
-function setup(desktop, { respond, failure, token = 'test-token', env = {} } = {}) {
+function transpile(path) {
+  const source = readFileSync(require.resolve(path), 'utf8')
+  return ts.transpileModule(source.replaceAll('import.meta.env', 'testEnv'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText
+}
+
+const gameApiSource = transpile('../src/lib/zemu-game-api.ts')
+
+function setup(desktop, { respond, failure, authKey = 'test-auth-key' } = {}) {
   const calls = []
   const exports = {}
   async function request(call) {
     calls.push(call)
     if (failure) throw failure
     if (respond) return respond(call)
-    if (call.method !== 'GET') return { status: 204, body: '' }
-    if (call.url.includes('search-users')) return {
-      status: 200, body: JSON.stringify({ users: [{ id: 'player', displayName: 'Player', relationState: 'none' }] }),
-    }
-    return { status: 200, body: JSON.stringify({ friends: [{ id: 'friend', displayName: 'Friend' }], requests: [] }) }
+    return { status: 200, body: JSON.stringify({ friends: [] }), headers: [] }
   }
   const context = {
-    exports, Headers, Request, Response, Uint8Array, performance,
+    exports, Headers, Request, Response, Uint8Array, performance, TypeError,
     console: { log() {}, warn() {}, error() {} },
-    testEnv: { DEV: false, ...env },
+    testEnv: { DEV: false },
+    window: {
+      launcherAPI: {
+        getAuthKey: async () => authKey,
+      },
+    },
     require(name) {
       if (name === '@/lib/http-fetch') {
-        const source = readFileSync(require.resolve('../src/lib/http-fetch.ts'), 'utf8')
-        const { outputText } = ts.transpileModule(source, {
-          compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
-        })
         const exports = {}
-        runInNewContext(outputText, { ...context, exports })
+        runInNewContext(transpile('../src/lib/http-fetch.ts'), { ...context, exports })
         return exports
       }
-      if (name === '@/lib/auth') return { readPersistedToken: () => token ? { token } : null }
-      if (name === '@/config/launcher') return { LAUNCHER_CONFIG: { friendsApiBaseUrl: 'https://api.zemu.uk' } }
       if (name === '@tauri-apps/api/core') return {
         isTauri: () => desktop,
         async invoke(command, args) {
           if (command === 'friends_debug_log_write') {
-            assert.ok(!args.message.includes('test-token'))
+            // The bearer must never reach the on-disk debug log.
+            assert.ok(!args.message.includes('test-auth-key'))
             return
           }
           assert.equal(command, 'http_fetch')
           const headers = new Headers(args.headers)
           const auth = headers.get('Authorization')
-          const response = await request({ transport: 'ipc', ...args,
+          const response = await request({
+            transport: 'ipc',
+            url: args.url,
+            method: args.method,
+            ifNoneMatch: headers.get('If-None-Match'),
+            contentType: headers.get('Content-Type'),
             bearer: auth ? auth.slice('Bearer '.length) : null,
             body: args.body === null ? null : Buffer.from(args.body).toString(),
           })
-          return { ...response, statusText: '', headers: [], url: args.url,
-            body: Array.from(Buffer.from(response.body)) }
-
+          return {
+            status: response.status,
+            statusText: '',
+            headers: response.headers ?? [],
+            url: args.url,
+            body: Array.from(Buffer.from(response.body ?? '')),
+          }
         },
       }
       throw new Error(`Unexpected import: ${name}`)
     },
     async fetch(url, init) {
       assert.equal(desktop, false, 'Desktop must never fall back to WebView fetch')
+      const headers = new Headers(init.headers)
+      const auth = headers.get('Authorization')
       assert.equal(init.credentials, 'omit')
-      assert.equal(init.headers.get('Accept'), 'application/json')
-      const auth = init.headers.get('Authorization')
       const response = await request({
-        transport: 'fetch', url, method: init.method ?? 'GET',
-        bearer: auth ? auth.slice('Bearer '.length) : null, body: init.body ?? null,
+        transport: 'fetch',
+        url,
+        method: init.method ?? 'GET',
+        ifNoneMatch: headers.get('If-None-Match'),
+        contentType: headers.get('Content-Type'),
+        bearer: auth ? auth.slice('Bearer '.length) : null,
+        body: init.body ?? null,
       })
-      return new Response(response.status === 204 ? null : response.body, { status: response.status })
+      // 204 / 205 / 304 are null-body statuses: the Response
+      // constructor rejects any body for them, empty string included.
+      const nullBody = [204, 205, 304].includes(response.status)
+      return new Response(nullBody ? null : response.body, {
+        status: response.status,
+        headers: response.headers ?? [],
+      })
     },
   }
-  runInNewContext(outputText, context)
-  return { dispatch: exports.dispatchFriends, calls }
+  context.globalThis = context
+  runInNewContext(gameApiSource, context)
+  return { api: exports, calls }
 }
 
-const actions = ['list', 'profile', 'search', 'request', 'accept', 'decline', 'cancel', 'remove']
+const BASE = 'http://217.160.250.198:8126'
+
 for (const desktop of [true, false]) {
   const platform = desktop ? 'desktop' : 'browser'
+  const transport = desktop ? 'ipc' : 'fetch'
 
-  test(`${platform}: list and profile load the three authenticated lists`, async () => {
-    for (const action of ['list', 'profile']) {
-      const h = setup(desktop)
-      const result = await h.dispatch(action)
-      assert.equal(result.ok, true)
-      assert.equal(result.friends[0].relationship, 'friend')
-      assert.deepEqual(h.calls.map(c => new URL(c.url).pathname), [
-        '/v1/friends', '/v1/friends/requests/incoming', '/v1/friends/requests/outgoing',
-      ])
-      assert.ok(h.calls.every(c => c.method === 'GET' && c.bearer === 'test-token'))
-      assert.ok(h.calls.every(c => c.transport === (desktop ? 'ipc' : 'fetch')))
-    }
-  })
-
-  test(`${platform}: search preserves encoded queries and result normalization`, async () => {
+  test(`${platform}: requests carry the launcher bearer to the game server`, async () => {
     const h = setup(desktop)
-    const result = await h.dispatch('search', { query: 'été / &' })
-    assert.equal(result.ok, true)
-    assert.equal(result.results[0].id, 'player')
-    assert.equal(h.calls[0].url, 'https://api.zemu.uk/v1/friends/search-users?q=%C3%A9t%C3%A9%20%2F%20%26&limit=10')
+    await h.api.gameFetch('/api/friends')
+    assert.deepEqual(h.calls, [{
+      transport,
+      url: `${BASE}/api/friends`,
+      method: 'GET',
+      ifNoneMatch: null,
+      contentType: null,
+      bearer: 'test-auth-key',
+      body: null,
+    }])
   })
 
-  test(`${platform}: mutations preserve verbs, encoded IDs, DELETE JSON, and empty success bodies`, async () => {
-    for (const [action, method, suffix, body] of [
-      ['request', 'POST', '', null], ['accept', 'POST', '/accept', null],
-      ['decline', 'POST', '/decline', null], ['cancel', 'DELETE', '', null],
-      ['remove', 'DELETE', '', '{"kind":"friend"}'],
-    ]) {
-      const h = setup(desktop)
-      const result = await h.dispatch(action, { targetId: 'player / é' })
-      assert.equal(result.ok, true)
-      assert.equal(h.calls.length, 2)
-      assert.equal(h.calls[0].url, `https://api.zemu.uk/v1/friends/requests/player%20%2F%20%C3%A9${suffix}`)
-      assert.equal(h.calls[0].method, method)
-      assert.equal(h.calls[0].body, body)
-      assert.equal(h.calls[0].bearer, 'test-token')
-      assert.equal(h.calls[1].method, 'GET')
-    }
+  test(`${platform}: a missing auth key sends no Authorization header`, async () => {
+    const h = setup(desktop, { authKey: null })
+    await h.api.gameFetch('/api/friends')
+    assert.equal(h.calls[0].bearer, null)
   })
 
-  test(`${platform}: every action preserves 401 instead of reporting a successful mutation`, async () => {
-    for (const action of actions) {
-      const h = setup(desktop, { respond: () => ({ status: 401, body: '{"error":"expired"}' }) })
-      const result = await h.dispatch(action, { targetId: 'player', query: 'player' })
-      assert.equal(result.ok, false)
-      assert.equal(result.reason, 'unauthenticated')
-      if (!['list', 'profile'].includes(action)) assert.equal(h.calls.length, 1)
-    }
+  test(`${platform}: an explicit null bearer suppresses the header on public endpoints`, async () => {
+    const h = setup(desktop)
+    await h.api.gameFetch('/avatar/player', { bearer: null })
+    assert.equal(h.calls[0].bearer, null)
   })
 
-  test(`${platform}: HTTP and transport failures remain distinguishable and never retry mutations`, async () => {
-    for (const [options, reason] of [
-      [{ respond: () => ({ status: 409, body: '{"error":"already_pending"}' }) }, 'already_pending'],
-      [{ respond: () => ({ status: 403, body: '{"message":"forbidden"}' }) }, 'forbidden'],
-      [{ respond: () => ({ status: 503, body: '<html>Unavailable</html>' }) }, 'HTTP 503'],
-      [{ failure: 'Friends API request failed: timed out' }, 'network_error'],
-      [{ failure: new TypeError('Load failed') }, 'network_error'],
-    ]) {
-      const h = setup(desktop, options)
-      const result = await h.dispatch('request', { targetId: 'player' })
-      assert.equal(result.ok, false)
-      assert.equal(result.reason, reason)
-      assert.equal(h.calls.length, 1)
-    }
+  test(`${platform}: bodies imply POST and survive the transport verbatim`, async () => {
+    const h = setup(desktop, { respond: () => ({ status: 200, body: '{"ok":true}' }) })
+    await h.api.gameFetch('/api/friends/request', {
+      body: JSON.stringify({ name: 'péché/1' }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+    assert.equal(h.calls[0].method, 'POST')
+    assert.equal(h.calls[0].contentType, 'application/json')
+    assert.equal(h.calls[0].body, '{"name":"péché/1"}')
+  })
+
+  test(`${platform}: explicit verbs are preserved and never coerced to POST`, async () => {
+    const h = setup(desktop, { respond: () => ({ status: 204, body: '' }) })
+    await h.api.gameFetch('/avatar', { method: 'DELETE' })
+    assert.equal(h.calls[0].method, 'DELETE')
+  })
+
+  test(`${platform}: encoded path segments reach the server unchanged`, async () => {
+    const h = setup(desktop)
+    const path = `/api/friends/search?q=${encodeURIComponent('a b&c=d')}`
+    await h.api.gameFetch(path)
+    assert.equal(new URL(h.calls[0].url).search, '?q=a%20b%26c%3Dd')
+  })
+
+  test(`${platform}: HTTP errors raise GameApiError carrying status and parsed body`, async () => {
+    const h = setup(desktop, {
+      respond: () => ({ status: 401, body: JSON.stringify({ error: 'auth key is required' }) }),
+    })
+    const error = await h.api.gameFetch('/api/friends').then(
+      () => null,
+      (err) => err,
+    )
+    assert.ok(error instanceof h.api.GameApiError)
+    assert.equal(error.status, 401)
+    assert.equal(h.api.mapGameApiAuthReason(error), 'missing_auth_header')
+  })
+
+  test(`${platform}: a refusal that arrives as 2xx is returned, not thrown`, async () => {
+    // The game server answers refusals with HTTP 200 and `ok: false`.
+    // Throwing here would make "already friends" indistinguishable
+    // from a transport failure.
+    const h = setup(desktop, {
+      respond: () => ({ status: 200, body: JSON.stringify({ ok: false, reason: 'already_friends' }) }),
+    })
+    const result = await h.api.gameFetch('/api/friends/request')
+    structural(result, { ok: false, reason: 'already_friends' })
+  })
+
+  test(`${platform}: transport failures surface as errors and are not retried`, async () => {
+    const h = setup(desktop, { failure: new TypeError('Failed to fetch') })
+    const error = await h.api.gameFetch('/api/friends/remove', { body: '{}' }).then(
+      () => null,
+      (err) => err,
+    )
+    assert.equal(typeof error?.message, 'string')
+    assert.match(error.message, /Failed to fetch/)
+    assert.equal(h.calls.length, 1, 'a failed mutation must not be replayed')
+  })
+
+  test(`${platform}: the etag helper sends If-None-Match and short-circuits on 304`, async () => {
+    const h = setup(desktop, {
+      respond: (call) => call.ifNoneMatch === 'W/"v1"'
+        ? { status: 304, body: '', headers: [['etag', 'W/"v1"']] }
+        : { status: 200, body: JSON.stringify({ friends: [] }), headers: [['etag', 'W/"v1"']] },
+    })
+    const first = await h.api.gameFetchWithEtag('/api/friends', null)
+    structural(first, { graph: { friends: [] }, etag: 'W/"v1"' })
+
+    const second = await h.api.gameFetchWithEtag('/api/friends', first.etag)
+    structural(second, { graph: null, etag: 'W/"v1"' })
+    assert.equal(h.calls[1].ifNoneMatch, 'W/"v1"')
   })
 }
 
-test('development URL overrides and missing tokens reach the native transport unchanged', async () => {
+test('desktop keeps every game API request off the WebView transport', async () => {
+  // The assertion that matters for the CORS fix: `setup(true)`
+  // makes the context's `fetch` fail the test outright, so this
+  // exercises the paths a friends poll actually walks.
   const h = setup(true, {
-    token: null,
-    env: { DEV: true, VITE_API_URL: 'http://localhost:3002/' },
-    respond: () => ({ status: 401, body: '' }),
+    respond: () => ({ status: 200, body: '{}', headers: [['etag', 'W/"v1"']] }),
   })
-  assert.equal((await h.dispatch('search', { query: 'player' })).reason, 'unauthenticated')
-  assert.equal(h.calls[0].url, 'http://localhost:3002/v1/friends/search-users?q=player&limit=10')
-  assert.equal(h.calls[0].bearer, null)
+  await h.api.gameFetch('/api/friends')
+  await h.api.gameFetch('/api/friends/accept', { body: '{"id":"x"}' })
+  await h.api.gameFetchWithEtag('/api/friends', null)
+  assert.equal(h.calls.length, 3)
+  assert.deepEqual([...new Set(h.calls.map((c) => c.transport))], ['ipc'])
 })

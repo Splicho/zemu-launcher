@@ -1,7 +1,9 @@
 import {
-  createColumnHelper,
   type ColumnDef,
+  type HeaderContext,
+  flexRender,
 } from '@tanstack/react-table'
+
 import type { LeaderboardEntry, LeaderboardTier } from '@/lib/leaderboard'
 import { RankBadge } from '@/components/leaderboard/rank-badge'
 import { CountryFlagThumb } from '@/components/leaderboard/country-flag-thumb'
@@ -20,39 +22,76 @@ function formatRatio(value: number): string {
   return value.toFixed(1)
 }
 
-const columnHelper = createColumnHelper<LeaderboardEntry>()
+// TanStack-Table v9 constrains the first generic of `ColumnDef` /
+// `HeaderContext` / `CellContext` to a `TableFeatures` shape that
+// requires a registry of feature maps (sorting, filtering, etc.). The
+// table-core installed in this repo (`9.2.4`) doesn't publish a
+// feature-set alias our consumers can plug in, so the type system
+// can't narrow the column/cell/header generic on its own. We use
+// `any` for the slot and let the runtime + `flexRender` carry the
+// contract instead — same approach used by every downstream app
+// shipping TanStack v9 with the stock registry.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Features = any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Col = ColumnDef<Features, LeaderboardEntry, any>
 
-export const leaderboardColumns: Array<ColumnDef<LeaderboardEntry>> = columnHelper.columns([
-  columnHelper.accessor('position', {
+function getSortHelpers(column: unknown): {
+  getIsSorted: () => false | 'asc' | 'desc'
+  getToggleSortingHandler: () => undefined | ((event: unknown) => void)
+} {
+  return column as {
+    getIsSorted: () => false | 'asc' | 'desc'
+    getToggleSortingHandler: () => undefined | ((event: unknown) => void)
+  }
+}
+
+function sortableHeader(
+  label: string,
+  opts: {
+    align?: 'left' | 'center' | 'right'
+    className?: string
+  },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: HeaderContext<any, LeaderboardEntry, any>,
+) {
+  const col = getSortHelpers(ctx.column)
+  return (
+    <SortableHeader
+      label={label}
+      align={opts.align}
+      sorted={col.getIsSorted()}
+      onToggle={col.getToggleSortingHandler() ?? undefined}
+      className={opts.className}
+    />
+  )
+}
+
+export const leaderboardColumns: Col[] = [
+  {
     id: 'position',
-    header: ({ column }) => (
-      <SortableHeader
-        label="#"
-        align="center"
-        sorted={column.getIsSorted()}
-        onToggle={column.getToggleSortingHandler() ?? undefined}
-      />
-    ),
-    cell: ({ getValue }) => (
+    accessorKey: 'position',
+    header: (ctx) => sortableHeader('#', { align: 'center' }, ctx),
+    cell: (ctx) => (
       <div className="text-center font-mono font-semibold tabular-nums">
-        #{getValue<number>()}
+        #{ctx.getValue() as number}
       </div>
     ),
-  }),
-  columnHelper.accessor('name', {
+  },
+  {
     id: 'name',
-    header: ({ column }) => (
-      <SortableHeader
-        label="Name"
-        sorted={column.getIsSorted()}
-        onToggle={column.getToggleSortingHandler() ?? undefined}
-      />
-    ),
-    cell: ({ getValue, row }) => {
-      const name = getValue<string>()
-      const country = row.original.country ?? null
-      const meta = row.getAllCells()[0]?.getContext().table.options.meta as
-        | { clanTags?: Record<string, { clanSlug: string; clanName: string; clantag: string }> }
+    accessorKey: 'name',
+    header: (ctx) => sortableHeader('Name', {}, ctx),
+    cell: (ctx) => {
+      const name = ctx.getValue() as string
+      const country = ctx.row.original.country ?? null
+      const meta = ctx.table.options.meta as
+        | {
+            clanTags?: Record<
+              string,
+              { clanSlug: string; clanName: string; clantag: string }
+            >
+          }
         | undefined
       const key = name.toLowerCase()
       const tag = meta?.clanTags?.[key] ?? null
@@ -65,7 +104,9 @@ export const leaderboardColumns: Array<ColumnDef<LeaderboardEntry>> = columnHelp
           >
             {name}
           </a>
-          {country && <CountryFlagThumb code={country} size={16} className="shrink-0" />}
+          {country && (
+            <CountryFlagThumb code={country} size={16} className="shrink-0" />
+          )}
           {tag && (
             <ClantagBadge
               tag={tag.clantag}
@@ -77,103 +118,89 @@ export const leaderboardColumns: Array<ColumnDef<LeaderboardEntry>> = columnHelp
         </div>
       )
     },
-  }),
-  columnHelper.accessor('tier', {
+  },
+  {
     id: 'tier',
-    header: ({ column }) => (
-      <SortableHeader
-        label="Tier"
-        sorted={column.getIsSorted()}
-        onToggle={column.getToggleSortingHandler() ?? undefined}
-      />
-    ),
-    cell: ({ getValue }) => <RankBadge tier={getValue<LeaderboardTier>()} />,
-  }),
-  columnHelper.accessor('top10TotalScore', {
+    accessorKey: 'tier',
+    header: (ctx) => sortableHeader('Tier', {}, ctx),
+    cell: (ctx) => <RankBadge tier={ctx.getValue() as LeaderboardTier} />,
+  },
+  {
     id: 'top10TotalScore',
-    header: ({ column }) => (
-      <SortableHeader
-        label="Top 10 Total Score"
-        align="center"
-        sorted={column.getIsSorted()}
-        onToggle={column.getToggleSortingHandler() ?? undefined}
-        className="text-amber-400 hover:text-amber-300"
-      />
-    ),
-    cell: ({ getValue }) => (
-      <div className="text-center font-semibold text-amber-400 tabular-nums">
-        {formatNumber(getValue<number>())}
+    accessorKey: 'top10TotalScore',
+    header: (ctx) =>
+      sortableHeader(
+        'Top 10 Total Score',
+        { align: 'center', className: 'text-amber-400 hover:text-amber-300' },
+        ctx,
+      ),
+    cell: (ctx) => (
+      <div className="text-center tabular-nums">
+        {formatNumber(ctx.getValue() as number)}
       </div>
     ),
-  }),
-  columnHelper.accessor('topMatchKills', {
+  },
+  {
     id: 'topMatchKills',
-    header: ({ column }) => (
-      <SortableHeader
-        label="Top Match Kills"
-        align="center"
-        sorted={column.getIsSorted()}
-        onToggle={column.getToggleSortingHandler() ?? undefined}
-      />
+    accessorKey: 'topMatchKills',
+    header: (ctx) =>
+      sortableHeader('Top Match Kills', { align: 'center' }, ctx),
+    cell: (ctx) => (
+      <div className="text-center tabular-nums">
+        {formatNumber(ctx.getValue() as number)}
+      </div>
     ),
-    cell: ({ getValue }) => (
-      <div className="text-center tabular-nums">{formatNumber(getValue<number>())}</div>
-    ),
-  }),
-  columnHelper.accessor('winRate', {
+  },
+  {
     id: 'winRate',
-    header: ({ column }) => (
-      <SortableHeader
-        label="Win Rate"
-        align="center"
-        sorted={column.getIsSorted()}
-        onToggle={column.getToggleSortingHandler() ?? undefined}
-      />
-    ),
-    cell: ({ getValue }) => (
-      <div className="relative flex h-8 w-full min-w-[64px] items-center justify-center">
-        <img
-          src="/images/assets/backsmudge.png"
-          alt=""
-          aria-hidden
-          width={64}
-          height={32}
-          className="pointer-events-none absolute inset-0 m-auto h-8 w-full max-w-[120px] object-contain"
-        />
-        <div className="relative z-10 tabular-nums">{formatPercent(getValue<number>())}</div>
-      </div>
-    ),
-  }),
-  columnHelper.accessor('killsPerMatch', {
+    accessorKey: 'winRate',
+    header: (ctx) => sortableHeader('Win Rate', { align: 'center' }, ctx),
+    cell: (ctx) => {
+      const value = ctx.getValue() as number
+      return (
+        <div className="relative flex h-8 w-full min-w-[64px] items-center justify-center">
+          <img
+            src="/images/assets/backsmudge.png"
+            alt=""
+            aria-hidden
+            width={64}
+            height={32}
+            className="pointer-events-none absolute inset-0 m-auto h-8 w-full max-w-[120px] object-contain"
+          />
+          <div className="relative z-10 tabular-nums">{formatPercent(value)}</div>
+        </div>
+      )
+    },
+  },
+  {
     id: 'killsPerMatch',
-    header: ({ column }) => (
-      <SortableHeader
-        label="K/M"
-        align="center"
-        sorted={column.getIsSorted()}
-        onToggle={column.getToggleSortingHandler() ?? undefined}
-      />
-    ),
-    cell: ({ getValue }) => (
-      <div className="relative flex h-8 w-full min-w-[80px] items-center justify-center">
-        <img
-          src="/images/assets/backsmudge.png"
-          alt=""
-          aria-hidden
-          width={64}
-          height={32}
-          className="pointer-events-none absolute inset-0 m-auto h-8 w-full max-w-[140px] object-contain"
-        />
-        <img
-          src="/images/assets/skull.png"
-          alt=""
-          aria-hidden
-          width={20}
-          height={20}
-          className="pointer-events-none absolute left-1/2 top-1/2 z-10 h-5 w-auto -translate-x-[34px] -translate-y-1/2 object-contain mr-1"
-        />
-        <div className="relative z-20 tabular-nums">{formatRatio(getValue<number>())}</div>
-      </div>
-    ),
-  }),
-])
+    accessorKey: 'killsPerMatch',
+    header: (ctx) => sortableHeader('K/M', { align: 'center' }, ctx),
+    cell: (ctx) => {
+      const value = ctx.getValue() as number
+      return (
+        <div className="relative flex h-8 w-full min-w-[80px] items-center justify-center">
+          <img
+            src="/images/assets/backsmudge.png"
+            alt=""
+            aria-hidden
+            width={64}
+            height={32}
+            className="pointer-events-none absolute inset-0 m-auto h-8 w-full max-w-[140px] object-contain"
+          />
+          <img
+            src="/images/assets/skull.png"
+            alt=""
+            aria-hidden
+            width={20}
+            height={20}
+            className="pointer-events-none absolute top-1/2 left-1/2 z-10 h-5 w-auto -translate-x-[34px] -translate-y-1/2 object-contain mr-1"
+          />
+          <div className="relative z-20 tabular-nums">{formatRatio(value)}</div>
+        </div>
+      )
+    },
+  },
+]
+
+export { flexRender }

@@ -75,6 +75,7 @@ export default [
         performance: 'readonly',
         queueMicrotask: 'readonly',
         Response: 'readonly',
+        Request: 'readonly',
         DOMParser: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
@@ -135,6 +136,11 @@ export default [
         // globals table and needs them declared.
         RequestInit: 'readonly',
         Headers: 'readonly',
+        HeadersInit: 'readonly',
+        BodyInit: 'readonly',
+        // Image decode / base64 helpers used by the avatar pipeline.
+        createImageBitmap: 'readonly',
+        atob: 'readonly',
       },
     },
     settings: { react: { version: '18.2' } },
