@@ -122,6 +122,14 @@ export default [
         Node: 'readonly',
         HTMLElementTagNameMap: 'readonly',
         CustomEvent: 'readonly',
+        // DOM data/Blob/File constructors used by image-upload flows
+        // and Canvas/blob conversion paths. TS knows them via
+        // `lib: ["DOM"]`, but `no-undef` runs against this globals
+        // table and needs them declared.
+        Blob: 'readonly',
+        File: 'readonly',
+        Image: 'readonly',
+        FormData: 'readonly',
         // Fetch API constructors used in client wrappers; TS knows
         // them via `lib: ["DOM"]`, but `no-undef` runs against this
         // globals table and needs them declared.

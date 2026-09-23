@@ -18,7 +18,8 @@ import {
 } from '@/components/ui/pagination'
 
 import { ClanCard } from '@/components/clan/clan-card'
-import { ClanFiltersBar, DEFAULT_CLAN_FILTERS } from '@/components/clan/clan-filters-bar'
+import { ClanFiltersBar } from '@/components/clan/clan-filters-bar'
+import { DEFAULT_CLAN_FILTERS } from '@/components/clan/clan-filters'
 
 const PAGE_SIZE = 24
 

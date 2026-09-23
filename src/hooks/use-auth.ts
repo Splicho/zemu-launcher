@@ -282,6 +282,13 @@ export function useAuth(): UseAuthResult {
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
+    // Dep is `token?.token` (just the bearer string) on purpose: the
+    // focus listener should only re-attach when the *credential*
+    // changes, not when any other field on `token` mutates (avatar,
+    // display name, etc.). Listing the full `token` object would
+    // re-run this effect on every profile refresh and bounce the
+    // listener — the comment above explains why we don't want that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token?.token, refreshProfileFromServer])
 
   const login = useCallback(async (email: string, password: string) => {

@@ -12,26 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-
-/**
- * Filter values for the clan directory page.
- *
- * Mirrors `apps/web/app/clans/filters-types.ts:FilterValues` so
- * both surfaces expose the same affordance.
- */
-export type ClanFilters = {
-  q: string
-  visibility: 'all' | 'public' | 'private'
-  verified: 'all' | 'verified'
-  sort: 'members' | 'followers' | 'newest' | 'name'
-}
-
-export const DEFAULT_CLAN_FILTERS: ClanFilters = {
-  q: '',
-  visibility: 'all',
-  verified: 'all',
-  sort: 'members',
-}
+import { DEFAULT_CLAN_FILTERS, type ClanFilters } from '@/components/clan/clan-filters'
 
 /**
  * Search + Verified + Visibility + Sort bar at the top of `/clans`.
