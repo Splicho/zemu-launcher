@@ -29,11 +29,16 @@ export function ClantagBadge({
   )
 
   if (href) {
+    // Internal hash links (`#/clan/<slug>`) are routed inside the
+    // launcher's webview — no `target="_blank"` needed. External
+    // `http(s)://` URLs (older links pointing at the website) still
+    // open in the user's default browser.
+    const isInternal = href.startsWith('#')
     return (
       <a
         href={href}
-        target="_blank"
-        rel="noopener noreferrer"
+        target={isInternal ? undefined : '_blank'}
+        rel={isInternal ? undefined : 'noopener noreferrer'}
         className={cn(classes, 'transition-colors hover:bg-muted/80')}
         aria-label={`View clan ${tag}`}
       >

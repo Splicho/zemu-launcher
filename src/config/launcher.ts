@@ -34,6 +34,11 @@ export const LAUNCHER_CONFIG = {
   // Stats API for leaderboards and player data. In dev, set
   // VITE_API_URL=http://localhost:3002 in `.env.local`.
   statsApiBaseUrl: 'https://api.zemu.uk/v1/stats',
+  // Public zemu.uk website. The launcher uses this for player
+  // profile pages and the clan directory — both are public, no
+  // auth. JSON shapes mirror the web app's /api routes exactly.
+  // In dev, set VITE_WEB_URL=http://localhost:3000 in `.env.local`.
+  webBaseUrl: 'https://zemu.uk',
   // Socket.IO realtime fan-out URL. The Rust backend connects here
   // (not the renderer) and forwards `friends:changed` events to the
   // renderer over Tauri's internal event bus. In dev, set

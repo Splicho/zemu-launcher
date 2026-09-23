@@ -11,6 +11,10 @@ import { OnboardingPage } from '@/pages/onboarding'
 import { PlayPage } from '@/pages/play'
 import { StreamsPage } from '@/pages/streams'
 import { LeaderboardPage } from '@/pages/leaderboard'
+import { PlayerPage } from '@/pages/player'
+import { ClanPage } from '@/pages/clan'
+import { ClanManagePage } from '@/pages/clan-manage'
+import { ClansPage } from '@/pages/clans'
 import { GeneralPage } from '@/pages/settings'
 import { AppearancePage } from '@/pages/appearance'
 import { AdvancedPage } from '@/pages/advanced'
@@ -36,7 +40,32 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
   const newsMatch = hash.match(/^\/news\/(.+)$/)
   if (newsMatch) return { page: 'news-slug', params: { slug: newsMatch[1] } }
 
+  // Player profile — `/player/<displayName>`. The display name can
+  // contain spaces / punctuation, so we match the rest of the
+  // hash as-is and decodeURIComponent on the way in (see
+  // `pages/player.tsx`). Same approach as `news-slug` above.
+  const playerMatch = hash.match(/^\/player\/(.+)$/)
+  if (playerMatch) {
+    return { page: 'player', params: { displayName: playerMatch[1] } }
+  }
+
+  // Clan profile — `/clan/<slug>`. Slugs are URL-safe already
+  // (3-32 chars from the api service's slug rule), so we still
+  // decode for display only.
+  const clanMatch = hash.match(/^\/clan\/(.+)$/)
+  if (clanMatch) {
+    // Distinguish `/clan/<slug>` (public profile) from
+    // `/clan/<slug>/manage` (manage page). The order matters —
+    // match the longer path first.
+    const manageMatch = hash.match(/^\/clan\/(.+)\/manage$/)
+    if (manageMatch) {
+      return { page: 'clan-manage', params: { slug: manageMatch[1] } }
+    }
+    return { page: 'clan', params: { slug: clanMatch[1] } }
+  }
+
   if (hash === '/news') return { page: 'news' }
+  if (hash === '/clans') return { page: 'clans' }
   if (hash === '/onboarding') return { page: 'onboarding' }
   if (hash === '/play') return { page: 'play' }
   if (hash === '/streams') return { page: 'streams' }
@@ -281,6 +310,10 @@ function AuthedApp() {
         {route.page === 'play' && <PlayPage />}
         {route.page === 'streams' && <StreamsPage />}
         {route.page === 'leaderboard' && <LeaderboardPage />}
+        {route.page === 'player' && route.params && <PlayerPage displayName={route.params.displayName} />}
+        {route.page === 'clan' && route.params && <ClanPage slug={route.params.slug} />}
+        {route.page === 'clan-manage' && route.params && <ClanManagePage slug={route.params.slug} />}
+        {route.page === 'clans' && <ClansPage />}
         {route.page === 'settings' && <GeneralPage />}
         {route.page === 'appearance' && <AppearancePage />}
         {route.page === 'advanced' && <AdvancedPage />}

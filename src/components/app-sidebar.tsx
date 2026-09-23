@@ -10,6 +10,7 @@ import {
   Leaderboard,
   News,
   Play,
+  Clans,
   Socialize,
   Twitch,
   Twitter,
@@ -258,6 +259,12 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                   <a href="#/leaderboard">
                     <Leaderboard className="size-5!" />
                     <span>{t('nav.leaderboard')}</span>
+                  </a>
+                </SidebarMenuButton>
+                <SidebarMenuButton asChild isActive={isActive('/clans')} size="lg" className="px-4">
+                  <a href="#/clans">
+                    <Clans className="size-5!" />
+                    <span>{t('nav.clans')}</span>
                   </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>

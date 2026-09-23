@@ -168,6 +168,19 @@ export function Leaderboard({ ...props }: IconProps) {
   )
 }
 
+/**
+ * Clan directory icon. Three stylised player silhouettes with a
+ * shield outline behind — matches the "Clans" page in the web app
+ * and sits alongside `Leaderboard` in the launcher's sidebar.
+ */
+export function Clans({ ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+	<path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3l8 3v5c0 4.418-3.582 8-8 9c-4.418-1-8-4.582-8-9V6zm0 0V1m-3.5 6L11 9.5m5 0L18.5 7M12 9.5V13m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0"></path>
+</svg>
+  )
+}
+
 export function DiscordFilled({ ...props }: IconProps) {
   
   return (

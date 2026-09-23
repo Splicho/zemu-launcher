@@ -58,12 +58,18 @@ export const leaderboardColumns: Array<ColumnDef<LeaderboardEntry>> = columnHelp
       const tag = meta?.clanTags?.[key] ?? null
       return (
         <div className="flex items-center gap-2">
-          <span className="font-medium">{name}</span>
+          <a
+            href={`#/player/${encodeURIComponent(name)}`}
+            className="font-medium hover:underline"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {name}
+          </a>
           {country && <CountryFlagThumb code={country} size={16} className="shrink-0" />}
           {tag && (
             <ClantagBadge
               tag={tag.clantag}
-              href={`https://zemu.uk/clans/${tag.clanSlug}`}
+              href={`#/clan/${tag.clanSlug}`}
               size="sm"
               className="shrink-0"
             />
