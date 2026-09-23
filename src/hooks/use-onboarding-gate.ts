@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { getSetupChecks, type SetupChecks } from '@/lib/setup-checks'
 import { hasCompletedOnboarding } from '@/lib/onboarding'
+import { decideOnboardingGate } from '@/lib/onboarding-gate'
 
 /**
  * Single source of truth for "should the user be in /onboarding right
@@ -12,13 +13,19 @@ import { hasCompletedOnboarding } from '@/lib/onboarding'
  *   - `loading`      — initial mount, the IPC round-trip to read the
  *                      auth key + folder + base game is in flight.
  *                      Callers should treat this as "wait".
- *   - `complete`     — the user has already finished the wizard (the
- *                      localStorage flag is set) OR the on-disk
- *                      `SetupChecks` show key + folder + base game all
- *                      present. Either way, send them to `/`.
+ *   - `complete`     — the user has a real install on disk
+ *                      (key + folder + base game) OR has previously
+ *                      finished the wizard (flag + key + folder).
+ *                      Either way, send them to `/`.
  *   - `incomplete`   — at least one input is missing. `inputs` carries
  *                      what we already know so the wizard can pre-fill
  *                      and skip steps the user has already done.
+ *
+ * The decision rules live in `decideOnboardingGate` and are
+ * unit‑tested in `scripts/onboarding-gate.test.cjs`. The hook itself
+ * is a thin wrapper that resolves the flag and inputs, calls the
+ * pure decision, and exposes a `refresh()` for the wizard to invoke
+ * after flipping the flag.
  *
  * Returning users who wiped their localStorage but still have a valid
  * install on disk fall through to `complete` via the on-disk checks —
@@ -62,27 +69,7 @@ export function useOnboardingGate(): {
   const evaluate = useCallback(async () => {
     const flag = hasCompletedOnboarding()
     const inputs = await getSetupChecks()
-
-    // Path 1 — returning user with a wiped flag: if everything is on
-    // disk we skip the wizard regardless of the flag.
-    if (!flag && inputs.hasKey && inputs.hasFolder && inputs.hasBaseGame) {
-      setState({ kind: 'complete' })
-      return
-    }
-
-    // Path 2 — user has either just completed the wizard OR is a
-    // returning user with the flag set. The wizard's FinishStep only
-    // enables Finish when key + folder + base game are all true, so a
-    // set flag is a strong "they're done" signal. We still verify
-    // hasKey + hasFolder because those are the inputs the wizard
-    // writes directly (no on-disk presence required for the flag to
-    //         be authoritative on its own).
-    if (flag && inputs.hasKey && inputs.hasFolder) {
-      setState({ kind: 'complete' })
-      return
-    }
-
-    setState({ kind: 'incomplete', inputs })
+    setState(decideOnboardingGate(flag, inputs))
   }, [])
 
   useEffect(() => {
@@ -92,17 +79,7 @@ export function useOnboardingGate(): {
       const flag = hasCompletedOnboarding()
       const inputs = await getSetupChecks()
       if (cancelled) return
-
-      if (!flag && inputs.hasKey && inputs.hasFolder && inputs.hasBaseGame) {
-        setState({ kind: 'complete' })
-        return
-      }
-      if (flag && inputs.hasKey && inputs.hasFolder) {
-        setState({ kind: 'complete' })
-        return
-      }
-
-      setState({ kind: 'incomplete', inputs })
+      setState(decideOnboardingGate(flag, inputs))
     }
 
     void run()

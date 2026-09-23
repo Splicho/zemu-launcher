@@ -84,7 +84,15 @@ export async function getSetupChecks(): Promise<SetupChecks> {
 
 async function safeGetAuthKey(): Promise<string | null> {
   try {
-    return await window.launcherAPI?.getAuthKey?.()
+    const value = await window.launcherAPI?.getAuthKey?.()
+    // The Rust side stores the key verbatim; an empty/whitespace
+    // return means "no key set", not "the key is empty". Coerce so
+    // callers can do a plain truthiness check without having to
+    // remember the trim dance.
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value
+    }
+    return null
   } catch {
     return null
   }
@@ -92,7 +100,15 @@ async function safeGetAuthKey(): Promise<string | null> {
 
 async function safeGetDirectory(): Promise<string | null> {
   try {
-    return await window.gameAPI?.getDirectory?.()
+    const value = await window.gameAPI?.getDirectory?.()
+    // Same as `safeGetAuthKey`: the Rust side should never store an
+    // empty path, but if it returns one (storage drift, partial
+    // write, etc.) we want the gate to see "no folder" rather than
+    // an empty string that slips past a `!!value` check.
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value
+    }
+    return null
   } catch {
     return null
   }
