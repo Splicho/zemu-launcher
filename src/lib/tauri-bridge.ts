@@ -170,7 +170,7 @@ function setupCompatibilityBridge() {
       invoke<void>('game_open_in_file_manager', { directory }),
     isInstalled: () => invoke<boolean>('game_is_installed'),
     getLocalVersion: () => invoke<VersionManifest | null>('game_get_local_version'),
-    checkUpdate: (skipFiles: string[] = []) =>
+    checkUpdate: (skipFiles: readonly string[] = []) =>
       invoke<UpdateInfo>('game_check_update', { skipFiles }),
     downloadUpdate: (gameDirectory: string) =>
       invoke<{ success: boolean; error?: string }>('game_download_update', { gameDirectory }),
@@ -619,7 +619,7 @@ declare global {
       /** Cheap path existence check. */
       pathExists: (path: string) => Promise<boolean>
       getLocalVersion: () => Promise<VersionManifest | null>
-      checkUpdate: (skipFiles?: string[]) => Promise<UpdateInfo>
+      checkUpdate: (skipFiles?: readonly string[]) => Promise<UpdateInfo>
       downloadUpdate: (gameDirectory: string) => Promise<{ success: boolean; error?: string }>
       getUpdateStatus: () => Promise<UpdateStatus | null>
       getLaunchState: () => Promise<GameLaunchState>
@@ -686,6 +686,12 @@ declare global {
       listRuntimes: () => Promise<WineRuntime[]>
       selectPrefixDirectory: () => Promise<string | null>
       selectRuntimeExecutable: () => Promise<string | null>
+    }
+    friendsDebugLog: {
+      write: (source: string, message: string) => Promise<void>
+      getPath: () => Promise<string>
+      read: () => Promise<string>
+      clear: () => Promise<void>
     }
     friendsAPI: {
       /**

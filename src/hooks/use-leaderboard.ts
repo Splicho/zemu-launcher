@@ -14,11 +14,11 @@ import {
 } from '@/lib/leaderboard'
 
 /**
- * Full leaderboard entries with background auto-refresh every 60 seconds.
- * `initialEntries` (from SSR) can be passed as `initialData` so the table
- * renders immediately without a loading state on first paint.
+ * Full leaderboard entries, kept fresh for 20 seconds between visits.
+ * Only seed the cache when entries were actually preloaded. Defaulting to []
+ * would mark an unfetched leaderboard as fresh and suppress the first request.
  */
-export function useLeaderboardEntries(initialEntries: LeaderboardEntry[] = []) {
+export function useLeaderboardEntries(initialEntries?: LeaderboardEntry[]) {
   return useQuery({
     queryKey: ['leaderboard', 'entries'],
     queryFn: fetchLeaderboardEntries,

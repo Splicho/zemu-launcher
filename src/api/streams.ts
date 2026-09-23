@@ -1,4 +1,4 @@
-import { fetchPublicApi } from '@/lib/public-api'
+import { httpFetch } from '@/lib/http-fetch'
 
 // ─── URL resolution ───────────────────────────────────────────────────────
 //
@@ -31,7 +31,7 @@ export type StreamsResponse = {
 }
 
 export async function fetchStreams(): Promise<StreamsResponse> {
-  const res = await fetchPublicApi(`${API_BASE}${STREAMS_PATH}`)
+  const res = await httpFetch(`${API_BASE}${STREAMS_PATH}`, { headers: { Accept: 'application/json' } })
   if (!res.ok) throw new Error(`Streams request failed (HTTP ${res.status})`)
   return res.json()
 }

@@ -10,13 +10,13 @@
  * renames a field, update the type here — the runtime is the source
  * of truth, the type just keeps the renderer honest.
  *
- * Uses `fetchPublicApi` (Tauri Rust transport on Linux, browser
- * fetch elsewhere) — same path the news, leaderboard, and friends
+ * Uses `httpFetch` (Rust transport on desktop, browser
+ * fetch in previews) — same path the news, leaderboard, and friends
  * libs use. CORS is handled by the same shared middleware.
  */
 
 import { LAUNCHER_CONFIG } from '@/config/launcher'
-import { fetchPublicApi } from '@/lib/public-api'
+import { httpFetch } from '@/lib/http-fetch'
 
 function getPlayerApiBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_API_URL as string | undefined
@@ -75,8 +75,9 @@ export interface PlayerProfile {
 export async function fetchPlayerByDisplayName(
   displayName: string,
 ): Promise<PlayerProfile | null> {
-  const res = await fetchPublicApi(
+  const res = await httpFetch(
     `${PLAYER_API_BASE}/${encodeURIComponent(displayName)}`,
+    { headers: { Accept: 'application/json' } },
   )
   if (res.status === 404) return null
   if (!res.ok) {

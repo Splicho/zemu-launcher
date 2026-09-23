@@ -43,6 +43,7 @@ function setup({ pending = null, listenError = null, onListen = null } = {}) {
           return () => { unsubscribeCount++ }
         },
       }
+      if (name === '@/lib/http-fetch') return { httpFetch() { throw new Error('Unexpected HTTP request') } }
       if (name === '@/config/launcher') return { LAUNCHER_CONFIG: {} }
       throw new Error(`Unexpected import: ${name}`)
     },

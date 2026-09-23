@@ -514,7 +514,7 @@ mod tests {
         existing.as_object_mut().unwrap().remove("wine");
         existing["authKey"] = "local-auth-key".into();
         existing["gameDirectory"] = "/games/King of the Kill".into();
-        existing["sessionIdEndpointUrl"] = "http://localhost:8081/custom".into();
+        existing["apiBaseUrl"] = "http://localhost:8081/custom".into();
         let mut config: LauncherConfig = serde_json::from_value(existing.clone()).unwrap();
         assert_eq!(config.wine, WineConfig::default());
         config.wine.runtime_id = Some("custom".into());

@@ -1,37 +1,11 @@
 /**
- * Friends API client for the desktop launcher.
- *
- * Talks directly to the website's `/v1/friends/*` endpoints (the
- * zemu-website NestJS api) over HTTPS, authenticated with the
- * launcher's bearer token persisted in localStorage. The Tauri
- * IPC stub that previously sat at `window.friendsAPI.dispatch`
- * is gone — every friends action is a plain HTTP call now.
- *
- * Why this replaces the stub:
- *   - The friends graph is hosted in the central zemu-website
- *     Postgres, not in any launcher-local state. Round-tripping
- *     through a Rust command would have meant re-implementing
- *     every endpoint on the Rust side anyway.
- *   - The auth app + api already speak the same Auth.js session
- *     AND the launcher's bearer JWT (`LAUNCHER_TOKEN_SECRET`).
- *     The api's `/v1/friends/*` accepts either via the
- *     `AuthedUser` decorator pair (`SessionGuard` +
- *     `LauncherBearerGuard`).
- *
- * Error model:
- *   - Non-2xx responses raise an Error with the server's `error`
- *     / message field as `message`. The caller catches in a
- *     single place (`dispatchFriends`) and surfaces a typed
- *     `FriendsActionResult` with `ok: false`.
- *   - Network failures (Tauri webview blocked the request, DNS
- *     failed) raise a `TypeError` from `fetch`; we map that to
- *     `reason: 'network_error'`.
- *   - Missing / expired bearer — the api returns 401. We surface
- *     `reason: 'unauthenticated'` so the launcher's `useAuth`
- *     hook can sign the user out.
+ * Friends API client. Desktop requests go through Rust to avoid WebView CORS;
+ * browser previews use fetch. Both transports use the persisted launcher
+ * bearer and share the same response normalization and action dispatch.
  */
 
 import { readPersistedToken } from '@/lib/auth'
+import { httpFetch } from '@/lib/http-fetch'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 
@@ -217,9 +191,9 @@ function getBearer(): string | null {
 }
 
 /**
- * Single HTTP shim. Adds the bearer header, decodes JSON, and
- * raises an Error on non-2xx. Returns `null` as a "401 specifically"
- * signal so the dispatch layer can branch on it.
+ * Single HTTP shim. Sends authenticated requests through Rust on desktop,
+ * decodes JSON, and raises an Error on non-2xx, including unauthenticated
+ * for 401. Successful empty responses (e.g. DELETE 204) return null.
  *
  * One console.log per request (URL+method on the way out,
  * status+ms on the way back) so the launcher DevTools console
@@ -228,12 +202,12 @@ function getBearer(): string | null {
  */
 async function apiFetch<T>(
   path: string,
-  init: RequestInit = {},
+  init: { method?: 'GET' | 'POST' | 'DELETE'; body?: string } = {},
 ): Promise<T> {
   const base = FRIENDS_API_BASE
   const bearer = getBearer()
   const method = (init.method ?? 'GET').toUpperCase()
-  const headers = new Headers(init.headers)
+  const headers = new Headers()
   headers.set('Accept', 'application/json')
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
@@ -241,20 +215,23 @@ async function apiFetch<T>(
   if (bearer) {
     headers.set('Authorization', `Bearer ${bearer}`)
   }
-  const url = `${base}${path}`
+  const url = `${base.replace(/\/+$/, '')}${path}`
   const startedAt = performance.now()
   console.log(`[friends] → ${method} ${url}`)
   void flog(
     'http',
     `→ ${method} ${path} bearer=${bearer ? 'yes' : 'no'}`,
   )
-  let response: Response
+  let status: number
+  let text: string
   try {
-    response = await fetch(url, {
+    const response = await httpFetch(url, {
       ...init,
       headers,
-      credentials: 'omit',
+      redirect: 'error',
     })
+    status = response.status
+    text = await response.text()
   } catch (networkError) {
     const errMsg =
       networkError instanceof Error ? networkError.message : String(networkError)
@@ -263,10 +240,11 @@ async function apiFetch<T>(
       networkError,
     )
     void flog('http', `× ${method} ${path} network_error err=${errMsg}`)
-    throw networkError
+    // The shared transport rejects network failures; retain the friends UI's
+    // error code without retrying mutations.
+    throw new Error('network_error')
   }
   const elapsed = Math.round(performance.now() - startedAt)
-  const text = await response.text()
   let payload: unknown = null
   if (text) {
     try {
@@ -276,18 +254,18 @@ async function apiFetch<T>(
     }
   }
   console.log(
-    `[friends] ← ${response.status} ${method} ${path} (${elapsed}ms)`,
+    `[friends] ← ${status} ${method} ${path} (${elapsed}ms)`,
   )
   void flog(
     'http',
-    `← ${response.status} ${method} ${path} (${elapsed}ms)`,
+    `← ${status} ${method} ${path} (${elapsed}ms)`,
   )
-  if (response.status === 401) {
+  if (status === 401) {
     console.warn('[friends] 401 — token missing or expired')
     void flog('http', `401 unauthenticated for ${method} ${path}`)
-    return null as T
+    throw new Error('unauthenticated')
   }
-  if (!response.ok) {
+  if (status < 200 || status >= 300) {
     const message =
       payload && typeof payload === 'object'
         ? String(
@@ -297,14 +275,14 @@ async function apiFetch<T>(
           )
         : ''
     console.error(
-      `[friends] HTTP ${response.status} ${method} ${path}:`,
+      `[friends] HTTP ${status} ${method} ${path}:`,
       message,
     )
     void flog(
       'http',
-      `✗ HTTP ${response.status} ${method} ${path} message=${message}`,
+      `✗ HTTP ${status} ${method} ${path} message=${message}`,
     )
-    throw new Error(message || `HTTP ${response.status}`)
+    throw new Error(message || `HTTP ${status}`)
   }
   return payload as T
 }
@@ -494,13 +472,6 @@ export async function dispatchFriends(
           '/v1/friends/requests/outgoing',
         ),
       ])
-      if (
-        friendsPage === null ||
-        incomingPage === null ||
-        outgoingPage === null
-      ) {
-        return failureResult('unauthenticated')
-      }
       return normalizeResult({
         friends: friendsPage.friends,
         incoming: incomingPage.requests,
@@ -518,7 +489,6 @@ export async function dispatchFriends(
       }>(
         `/v1/friends/search-users?q=${encodeURIComponent(query)}&limit=10`,
       )
-      if (value === null) return failureResult('unauthenticated')
       const hits = (value.users ?? []) as unknown[]
       return normalizeResult({
         ...value,
@@ -534,11 +504,10 @@ export async function dispatchFriends(
       if (!targetId) {
         return failureResult('missing_target')
       }
-      const body = await apiFetch<{ id: string; autoAccepted?: boolean }>(
+      await apiFetch<{ id: string; autoAccepted?: boolean }>(
         `/v1/friends/requests/${encodeURIComponent(targetId)}`,
         { method: 'POST' },
       )
-      if (body === null) return failureResult('unauthenticated')
       // Re-fetch the graph so the panel reflects the new pending row.
       const graph = await apiFetch<{
         friends: unknown[]

@@ -15,11 +15,10 @@ function setup(platform, { status = 200, body = '[]', failure, env = {} } = {}) 
     if (name === '@tauri-apps/api/core') return {
       isTauri: () => platform !== 'browser',
       async invoke(command, args) {
-        assert.equal(command, 'public_api_get')
+        assert.equal(command, 'http_fetch')
         calls.push({ transport: 'ipc', url: args.url })
-        if (platform !== 'linux') return null
         if (failure) throw failure
-        return { status, body }
+        return { status, statusText: '', headers: [], body: Array.from(Buffer.from(body)), url: args.url }
       },
     }
     if (name === '@/config/launcher') return { LAUNCHER_CONFIG: config }
@@ -31,10 +30,10 @@ function setup(platform, { status = 200, body = '[]', failure, env = {} } = {}) 
     const exports = {}
     cache.set(name, exports)
     runInNewContext(outputText, {
-      exports, require: load, testEnv: { DEV: false, ...env }, URLSearchParams,
+      exports, require: load, testEnv: { DEV: false, ...env }, URLSearchParams, Request, Response, Uint8Array,
       async fetch(url) {
         calls.push({ transport: 'fetch', url })
-        if (platform === 'linux') throw new Error('Linux must not use WebView fetch')
+        if (platform !== 'browser') throw new Error('Desktop must not use WebView fetch')
         if (failure) throw failure
         return new Response(body, { status })
       },
@@ -56,7 +55,7 @@ for (const platform of ['linux', 'windows', 'macos', 'browser']) {
       const h = setup(platform, { body })
       check(await h.load(module)[fn](...args))
       assert.equal(h.calls.at(-1).url, `https://api.zemu.uk${path}`)
-      assert.equal(h.calls.filter(c => c.transport === 'fetch').length, platform === 'linux' ? 0 : 1)
+      assert.equal(h.calls.filter(c => c.transport === 'fetch').length, platform !== 'browser' ? 0 : 1)
       assert.equal(h.calls.filter(c => c.transport === 'ipc').length, platform === 'browser' ? 0 : 1)
     }
   })
@@ -76,7 +75,7 @@ for (const platform of ['linux', 'windows', 'macos', 'browser']) {
     const { fetchTopLeaderboard } = h.load('@/lib/leaderboard')
     const bronze = await fetchTopLeaderboard({ tier: 'bronze' })
     assert.equal(bronze.length, 5)
-    assert.deepEqual(Array.from(bronze, e => e.position), [7, 8, 9, 10, 11])
+    assert.deepEqual(Array.from(bronze, e => e.name), ['Bronze 0', 'Bronze 1', 'Bronze 2', 'Bronze 3', 'Bronze 4'])
     assert.ok(bronze.every(e => e.tier === 'bronze'))
     const silver = await fetchTopLeaderboard({ tier: 'silver' })
     assert.deepEqual(Array.from(silver, e => e.name), ['Silver'])
@@ -93,14 +92,14 @@ for (const platform of ['linux', 'windows', 'macos', 'browser']) {
       await assert.rejects(setup(platform, { status: 503 }).load(module)[fn](), /HTTP 503/)
       await assert.rejects(setup(platform, { body: '<html>Invalid JSON</html>' }).load(module)[fn]())
       const h = setup(platform, { failure: 'connection refused' })
-      await assert.rejects(h.load(module)[fn](), platform === 'linux' ? /connection refused/ : undefined)
-      assert.equal(h.calls.filter(c => c.transport === 'fetch').length, platform === 'linux' ? 0 : 1)
+      await assert.rejects(h.load(module)[fn](), platform !== 'browser' ? /connection refused/ : undefined)
+      assert.equal(h.calls.filter(c => c.transport === 'fetch').length, platform !== 'browser' ? 0 : 1)
     }
   })
 }
 
 test('development API overrides reach the native transport unchanged', async () => {
-  const env = { DEV: true, VITE_NEWS_API_BASE_URL: 'http://localhost:3002/v1/news', VITE_STATS_API_BASE_URL: 'http://localhost:3002/v1/stats', VITE_STREAMS_API_BASE_URL: 'http://localhost:3002' }
+  const env = { DEV: true, VITE_API_URL: 'http://localhost:3002' }
   for (const [module, fn, path] of [['@/lib/news', 'fetchNewsList', '/v1/news'], ['@/lib/leaderboard', 'fetchTopLeaderboard', '/v1/stats/leaderboards'], ['@/api/streams', 'fetchStreams', '/streams']]) {
     const h = setup('linux', { env, body: '{"entries":[]}' })
     await h.load(module)[fn]()

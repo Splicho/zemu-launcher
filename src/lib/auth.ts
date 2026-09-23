@@ -11,8 +11,8 @@
  *
  *   2. The credential login flow — a plain POST to
  *      `/api/launcher/auth/login`, returning the bearer JWT + user
- *      payload. Pure HTTP, works from the renderer without any
- *      native bridging.
+ *      payload, using the shared HTTP transport (Rust on desktop,
+ *      browser fetch in previews).
  *
  *   3. The OAuth entry point — generates a CSRF state, then asks the
  *      Rust side to open the user's default browser to the
@@ -25,6 +25,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+import { httpFetch } from '@/lib/http-fetch'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 export type Provider = 'discord' | 'steam'
@@ -174,7 +175,7 @@ export async function loginWithCredentials(
   password: string,
 ): Promise<AuthToken> {
   const base = await getApiBaseUrl()
-  const response = await fetch(`${base}/api/launcher/auth/login`, {
+  const response = await httpFetch(`${base}/api/launcher/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -337,7 +338,7 @@ export async function introspectToken(
   const base = await getApiBaseUrl()
   let response: Response
   try {
-    response = await fetch(`${base}/api/launcher/oauth/introspect`, {
+    response = await httpFetch(`${base}/api/launcher/oauth/introspect`, {
       headers: { Authorization: `Bearer ${token}` },
     })
   } catch (err) {
@@ -415,7 +416,7 @@ export async function fetchMyAuthKey(
   const base = await getApiBaseUrl()
   let response: Response
   try {
-    response = await fetch(`${base}/api/launcher/auth/my-key`, {
+    response = await httpFetch(`${base}/api/launcher/auth/my-key`, {
       headers: { Authorization: `Bearer ${token}` },
     })
   } catch (err) {

@@ -17,7 +17,7 @@
  */
 
 import { LAUNCHER_CONFIG } from '@/config/launcher'
-import { fetchPublicApi } from '@/lib/public-api'
+import { httpFetch } from '@/lib/http-fetch'
 
 export interface NewsListItem {
   slug: string
@@ -48,7 +48,7 @@ export interface NewsFull extends NewsListItem {
  *      `https://api.zemu.uk/v1/news` in published builds.
  *
  * These endpoints use the anonymous public-API transport: native HTTP
- * on Linux, browser fetch on other platforms. Auth API configuration
+ * on desktop, browser fetch in previews. Auth API configuration
  * and the launcher session are independent of the news feed.
  */
 function getNewsApiBaseUrl(): string {
@@ -69,7 +69,7 @@ const NEWS_API_BASE = getNewsApiBaseUrl()
  * as a real "no news" state, not an error.
  */
 export async function fetchNewsList(): Promise<NewsListItem[]> {
-  const response = await fetchPublicApi(`${NEWS_API_BASE}`)
+  const response = await httpFetch(`${NEWS_API_BASE}`, { headers: { Accept: 'application/json' } })
   if (!response.ok) {
     throw new Error(`News list request failed (HTTP ${response.status})`)
   }
@@ -83,7 +83,7 @@ export async function fetchNewsList(): Promise<NewsListItem[]> {
  * non-2xx or network failure.
  */
 export async function fetchNewsBySlug(slug: string): Promise<NewsFull | null> {
-  const response = await fetchPublicApi(`${NEWS_API_BASE}/${encodeURIComponent(slug)}`)
+  const response = await httpFetch(`${NEWS_API_BASE}/${encodeURIComponent(slug)}`, { headers: { Accept: 'application/json' } })
   if (response.status === 404) return null
   if (!response.ok) {
     throw new Error(`News item request failed (HTTP ${response.status})`)
