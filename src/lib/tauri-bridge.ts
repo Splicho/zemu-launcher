@@ -446,6 +446,23 @@ function setupCompatibilityBridge() {
      */
     setAuthKey: (key: string) => invoke<void>('launcher_set_auth_key', { key }),
     /**
+     * Read the persisted first-run onboarding completed flag.
+     * Defaults to `false` on fresh installs and on configs written
+     * before this field existed — the gate falls through to on-disk
+     * checks before trusting the flag.
+     */
+    getOnboardingCompleted: () =>
+      invoke<boolean>('launcher_get_onboarding_completed'),
+    /**
+     * Persist the first-run onboarding completed flag. `true` after
+     * the wizard's Finish click and after the install-check
+     * pre-screen's "Yes" branch. The flag is advisory — the gate
+     * still re-validates key + folder + base game on disk before
+     * letting the user past `#/`.
+     */
+    setOnboardingCompleted: (completed: boolean) =>
+      invoke<void>('launcher_set_onboarding_completed', { completed }),
+    /**
      * Read the persisted game locale (lowercase `xx_yy` tag like
      * `en_us`, `fr_fr`, `zh_cn`). Falls back to `en_us` when the
      * user hasn't picked one yet or the config was written before
@@ -509,6 +526,11 @@ function setupCompatibilityBridge() {
           error: safeStringify(error),
         })
       }),
+    fetchAvatarBytes: (url: string) =>
+      invoke<{ status: number; contentType: string; bodyBase64: string }>(
+        'avatar_fetch_bytes',
+        { url },
+      ),
   }
 
   // Apply the persisted theme before the first paint so there is no flash.
@@ -594,6 +616,20 @@ declare global {
       isPackaged: () => Promise<boolean>
       onMaximized: (callback: () => void) => void
       onUnmaximized: (callback: () => void) => void
+    }
+    /**
+     * Friends-specific debug logger bridge. Lives on `window` so the
+     * renderer can poke it from DevTools:
+     *   await window.friendsDebugLog.write('manual', 'test')
+     *   await window.friendsDebugLog.getPath()
+     * The Rust side writes to `%APPDATA%\uk.zemu.launcher\friendlist-
+     * debug.log`. Wired from `setupCompatibilityBridge()` below.
+     */
+    friendsDebugLog: {
+      write: (source: string, message: string) => Promise<void>
+      getPath: () => Promise<string>
+      read: () => Promise<string>
+      clear: () => Promise<void>
     }
     gameAPI: {
       getDirectory: () => Promise<string | null>
@@ -707,6 +743,17 @@ declare global {
       getAuthKey: () => Promise<string | null>
       /** Persist a new auth key. An empty string clears the key. */
       setAuthKey: (key: string) => Promise<void>
+      /**
+       * Read the first-run onboarding completed flag. Defaults to
+       * `false` on fresh installs.
+       */
+      getOnboardingCompleted: () => Promise<boolean>
+      /**
+       * Persist the first-run onboarding completed flag. The flag
+       * is advisory — the gate still re-validates the on-disk
+       * install before letting the user past `#/`.
+       */
+      setOnboardingCompleted: (completed: boolean) => Promise<void>
       /** Returns the persisted game locale (`xx_yy` tag), defaulting to `en_us`. */
       getLocale: () => Promise<string>
       /** Persist the game locale. Empty string clears it. */
@@ -730,6 +777,22 @@ declare global {
        * never sees a missing-folder error on first launch.
        */
       openAppDataDir: () => Promise<void>
+      /**
+       * Download a remote image as raw bytes. Goes through Rust +
+       * `reqwest` (no CORS check) so CDNs that don't send
+       * `Access-Control-Allow-Origin` headers don't silently 404
+       * the way they would for a webview `fetch()`. Returns the
+       * response bytes base64-encoded alongside the upstream
+       * Content-Type so the renderer can build a typed `Blob` and
+       * feed it to the existing avatar downscale pipeline.
+       *
+       * Throws on non-2xx or oversized responses. Caller is
+       * expected to log the failure (the avatar-sync hook already
+       * has a `friendsDebugLog` channel).
+       */
+      fetchAvatarBytes: (
+        url: string,
+      ) => Promise<{ status: number; contentType: string; bodyBase64: string }>
     }
   }
 }

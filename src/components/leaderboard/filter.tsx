@@ -74,7 +74,6 @@ export default function Filter({
             emit({ search: e.target.value })
           }}
           className="w-52 pr-3 pl-9"
-          size="sm"
         />
       </div>
 

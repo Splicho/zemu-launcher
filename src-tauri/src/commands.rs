@@ -600,6 +600,38 @@ pub async fn public_api_get(
     result.map(Some).map_err(|error| error.to_string())
 }
 
+/// Download a remote image as raw bytes via `reqwest` and return
+/// them to the renderer as a base64 string alongside the response
+/// Content-Type.
+///
+/// Why a Tauri command instead of `fetch(url, { mode: 'cors' })` from
+/// the renderer:
+///   - The launcher's webview enforces CORS on `fetch`. CDNs that
+///     don't send `Access-Control-Allow-Origin` headers silently
+///     reject the request ("Failed to fetch") even though the same
+///     URL renders fine in an `<img>` tag (browsers don't enforce
+///     CORS on image elements).
+///   - This surfaces in `useAvatarSync`: `fetchAndDownscale` is
+///     called with `mode: 'cors'` to keep the canvas untainted for
+///     `canvas.toBlob()`, and if the CDN doesn't allow our origin
+///     the upload is skipped with the generic "Failed to fetch"
+///     message — the user sees their avatar in their own dropdown
+///     (image elements are permissive) but their friends never see
+///     it on theirs (the game server never received the upload).
+///
+/// Native `reqwest` runs in the Rust process, has no CORS, and
+/// returns the bytes directly. The renderer turns the base64 string
+/// back into a `Blob` and feeds it to the existing canvas pipeline
+/// — no canvas taint, no CORS preflight, no opaque-response hacks.
+#[tauri::command]
+pub async fn avatar_fetch_bytes(
+    url: String,
+) -> Result<crate::public_api::PublicImageResponse, String> {
+    crate::public_api::get_image(&url)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub async fn api_get(
     app: tauri::AppHandle,
@@ -665,6 +697,30 @@ pub fn launcher_set_auth_key(app: tauri::AppHandle, key: String) -> Result<(), S
         Some(key.trim().to_string())
     };
     storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())
+}
+
+/// Read the persisted first-run onboarding completed flag. Default
+/// `false` (the user has not finished onboarding) on fresh installs
+/// and on configs written before the field existed — both are the
+/// right answer for the gate, which falls through to on-disk
+/// checks before trusting the flag.
+#[tauri::command]
+pub fn launcher_get_onboarding_completed(app: tauri::AppHandle) -> Result<bool, String> {
+    storage::has_completed_onboarding(&app).map_err(|e| e.to_string())
+}
+
+/// Persist the first-run onboarding completed flag. The wizard's
+/// `Finish` click and the install-check pre-screen's "Yes, I do"
+/// branch both flip this on; `advanced` settings expose a toggle
+/// for power users who want to re-trigger the wizard. The flag is
+/// advisory — the gate still re-validates key + folder + base game
+/// on disk before letting a returning user past `#/`.
+#[tauri::command]
+pub fn launcher_set_onboarding_completed(
+    app: tauri::AppHandle,
+    completed: bool,
+) -> Result<(), String> {
+    storage::mark_onboarding_completed(&app, completed).map_err(|e| e.to_string())
 }
 
 /// Locales the H1Z1 client understands. Mirrors the whitelist in
@@ -930,11 +986,14 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         log_to_terminal,
         api_get,
         public_api_get,
+        avatar_fetch_bytes,
         api_post,
         launcher_get_autostart_enabled,
         launcher_set_autostart_enabled,
         launcher_get_auth_key,
         launcher_set_auth_key,
+        launcher_get_onboarding_completed,
+        launcher_set_onboarding_completed,
         launcher_get_locale,
         launcher_set_locale,
         steam_bridge_is_available,

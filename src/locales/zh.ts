@@ -70,7 +70,7 @@ export default {
       },
       step3: {
         title: '获取底包游戏',
-        description: 'ZEmu 不捆绑底包游戏。请选择下面的方式 — 推荐使用自动下载（可用时）。',
+        description: 'ZEmu 不捆绑底包游戏。请使用 Steam 手机应用登录，将底包游戏直接下载到您的安装文件夹。',
         auto: {
           label: '自动下载',
           description: 'SteamCMD 直接将仓库拉取到您刚选择的文件夹中，无需 Steam 客户端。',
@@ -118,6 +118,18 @@ export default {
         },
         finish: '完成设置',
       },
+    },
+    // 预引导界面。位于着陆页（`/`）和 `#/onboarding` 之间 — 询问
+    // 老用户是否已安装 Pre-Season 3 客户端，以便他们跳过向导。
+    // 路径为 `#/install-check`。
+    installCheck: {
+      title: '您是否已安装 Pre-Season 3 客户端？',
+      description:
+        '如果您已从 Steam 下载了游戏，可以跳过设置向导。否则我们将引导您完成下载和补丁。',
+      detectedHint: '我们检测到现有安装 — 一切就绪。',
+      alreadyInstalled: '是的，我已经有了',
+      chooseFolder: '是的 — 让我选择文件夹',
+      needToDownload: '不，我需要下载',
     },
     account: {
       openMenu: '打开账户菜单',
@@ -212,6 +224,15 @@ export default {
         notImplemented: '好友 API 尚未连接。',
         unknown: '出现错误。',
         unauthenticated: '请登录后管理好友。',
+        // 401 “unknown key - the account has not logged into the
+        // game yet”。根据 API 文档：用此 key 启动游戏一次，服务
+        // 端才会创建账号。
+        key_never_played: '请先用此授权密钥启动一次游戏，再使用好友功能。',
+        // 401 “that account has no character yet”。玩家尚未在游戏
+        // 内创建角色。
+        no_character: '请先在游戏内创建一个角色，再使用好友功能。',
+        // 401 “<header> is required” — 客户端 bug，用户无法解决。
+        missing_auth_header: '好友服务拒绝了该请求。',
         network_error: '无法连接好友服务，请检查网络后重试。',
         missing_target: '请先选择一名玩家。',
         unknown_action: '不支持该操作。',

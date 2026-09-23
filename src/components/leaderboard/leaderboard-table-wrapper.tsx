@@ -33,7 +33,7 @@ function buildPageRanges(
 
 export default function LeaderboardTableWrapper() {
   const { token } = useAuthContext()
-  const authName = token?.user?.name ?? null
+  const authName = token?.displayName ?? null
 
   const { data: entries = [], isLoading } = useLeaderboardEntries()
 

@@ -18,6 +18,7 @@ import {
   useFriendsRemove,
   useFriendsRequest,
   useFriendsSearch,
+  useZemuAuthKeyReady,
   friendsKeys,
 } from '@/hooks/use-friends'
 import { useAuthContext } from '@/contexts/auth-context'
@@ -87,12 +88,30 @@ export function FriendsPanel({ active }: FriendsPanelProps) {
   // invalidating on `token?.token` change, the next `useFriendsGraph`
   // call hits the API with the fresh token and self-corrects.
   const { token } = useAuthContext()
+  const { t } = useTranslation()
+  const authKeyReady = useZemuAuthKeyReady(token != null)
   const qc = useQueryClient()
   React.useEffect(() => {
     void qc.invalidateQueries({ queryKey: friendsKeys.all })
   }, [qc, token?.token])
 
-  const graphQuery = useFriendsGraph({ enabled: active })
+  // Local UI state. Must sit above any early `return` (e.g. the
+  // auth-key gate below) so React's hooks stay in a stable order
+  // across renders — adding a hook after a conditional return trips
+  // `react-hooks/rules-of-hooks`.
+  const [page, setPage] = React.useState<'list' | 'add' | 'requests'>('list')
+
+  // Reset to the list page whenever the panel becomes inactive so we
+  // never land on the Add page with stale search state if the user
+  // reopens the Sheet later.
+  React.useEffect(() => {
+    if (!active) setPage('list')
+  }, [active])
+
+  const graphQuery = useFriendsGraph({
+    enabled: active && authKeyReady,
+    refetchInterval: 4_000,
+  })
   const requestMutation = useFriendsRequest()
   const acceptMutation = useFriendsAccept()
   const declineMutation = useFriendsDecline()
@@ -107,6 +126,7 @@ export function FriendsPanel({ active }: FriendsPanelProps) {
     incoming: [],
     outgoing: [],
     results: [],
+    directoryConfigured: true,
   }
 
   const isBusy =
@@ -124,14 +144,25 @@ export function FriendsPanel({ active }: FriendsPanelProps) {
   //             and search input. Clicking back returns to 'list'.
   // We keep the active search query in state so switching back and
   // forth doesn't lose what the user typed.
-  const [page, setPage] = React.useState<'list' | 'add' | 'requests'>('list')
 
-  // Reset to the list page whenever the panel becomes inactive so we
-  // never land on the Add page with stale search state if the user
-  // reopens the Sheet later.
-  React.useEffect(() => {
-    if (!active) setPage('list')
-  }, [active])
+  // Auth-key gate. The game server rejects calls without a valid
+  // `Authorization: Bearer <ZEmu auth key>`; surfacing the CTA here
+  // keeps the panel from looking like it's broken until the user
+  // saves (or generates) a key and launches the game once.
+  if (active && !authKeyReady) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ScrollArea className="flex-1">
+          <div className="flex flex-col gap-3 px-4 py-6 text-sm text-muted-foreground">
+            <h3 className="text-base font-semibold text-foreground">
+              {t('friends.authKeyRequired')}
+            </h3>
+            <p>{t('friends.authKeyRequiredDesc')}</p>
+          </div>
+        </ScrollArea>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -237,6 +268,17 @@ function FriendsListPage({
               className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
             >
               {errorMessage}
+              {/* Append the raw reason code in a comment-like style —
+               * the localized copy above is the user-facing message,
+               * but the underlying identifier is what support needs
+               * to debug. Hidden behind text-muted so it doesn't
+               * dominate the visual but is right there if the user
+               * quotes their screen. */}
+              {result.reason ? (
+                <span className="ml-2 text-destructive/60">
+                  ({result.reason})
+                </span>
+              ) : null}
             </p>
           ) : null}
 
@@ -343,6 +385,7 @@ function AddFriendsPage({ onBack }: AddFriendsPageProps) {
         incoming: [],
         outgoing: [],
         results: [],
+        directoryConfigured: true,
       })
     : (graphQuery.data ?? {
         ok: true,
@@ -352,6 +395,7 @@ function AddFriendsPage({ onBack }: AddFriendsPageProps) {
         incoming: [],
         outgoing: [],
         results: [],
+        directoryConfigured: true,
       })
 
   const errorMessage = resolveReason(result.reason, t)
@@ -420,6 +464,17 @@ function AddFriendsPage({ onBack }: AddFriendsPageProps) {
               className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
             >
               {errorMessage}
+              {/* Append the raw reason code in a comment-like style —
+               * the localized copy above is the user-facing message,
+               * but the underlying identifier is what support needs
+               * to debug. Hidden behind text-muted so it doesn't
+               * dominate the visual but is right there if the user
+               * quotes their screen. */}
+              {result.reason ? (
+                <span className="ml-2 text-destructive/60">
+                  ({result.reason})
+                </span>
+              ) : null}
             </p>
           ) : null}
 

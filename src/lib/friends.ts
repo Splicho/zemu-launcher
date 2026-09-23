@@ -1,118 +1,66 @@
 /**
  * Friends API client for the desktop launcher.
  *
- * Talks directly to the website's `/v1/friends/*` endpoints (the
- * zemu-website NestJS api) over HTTPS, authenticated with the
- * launcher's bearer token persisted in localStorage. The Tauri
- * IPC stub that previously sat at `window.friendsAPI.dispatch`
- * is gone — every friends action is a plain HTTP call now.
+ * Talks to the game server's `/api/friends` endpoints over plain
+ * HTTP (see `LAUNCHER-API (1).md`). The full URL is fixed in
+ * `zemu-game-api.ts` — it is the same server that runs the game on
+ * port 8126.
  *
- * Why this replaces the stub:
- *   - The friends graph is hosted in the central zemu-website
- *     Postgres, not in any launcher-local state. Round-tripping
- *     through a Rust command would have meant re-implementing
- *     every endpoint on the Rust side anyway.
- *   - The auth app + api already speak the same Auth.js session
- *     AND the launcher's bearer JWT (`LAUNCHER_TOKEN_SECRET`).
- *     The api's `/v1/friends/*` accepts either via the
- *     `AuthedUser` decorator pair (`SessionGuard` +
- *     `LauncherBearerGuard`).
+ * Auth: `Authorization: Bearer <ZEmu auth key>` — the same 0x + 16
+ * hex digit key the launcher hands to the game at launch. Pulled
+ * from `window.launcherAPI.getAuthKey()` via `getZemuAuthKey()`.
+ * NOT the OAuth JWT — the game server has no idea what
+ * `id.zemu.uk` is and rejects the wrong token with a 401.
+ *
+ * Wire shape (matches the doc verbatim):
+ *   `GET /api/friends` → `FriendsGraph` (+ `ETag` header; 304 on
+ *                          matching `If-None-Match`).
+ *   `GET /api/friends/search?q=<query>` → `FriendsGraph` with `results`
+ *                          populated, no `incoming`/`outgoing`/`friends`.
+ *   `POST /api/friends/{action} { id | name }` → `FriendsActionResult`
+ *                          where action ∈ request | accept | decline |
+ *                          cancel | remove. Refusals come back as
+ *                          2xx with `ok: false` and a `reason`
+ *                          string. We forward those verbatim.
+ *   `PUT /api/friends/profile` → always `{ ok: false,
+ *                          reason: 'display_name_is_the_in_game_name' }`
+ *                          (the server enforces in-game name as
+ *                          the displayed name).
  *
  * Error model:
- *   - Non-2xx responses raise an Error with the server's `error`
- *     / message field as `message`. The caller catches in a
- *     single place (`dispatchFriends`) and surfaces a typed
- *     `FriendsActionResult` with `ok: false`.
- *   - Network failures (Tauri webview blocked the request, DNS
- *     failed) raise a `TypeError` from `fetch`; we map that to
- *     `reason: 'network_error'`.
- *   - Missing / expired bearer — the api returns 401. We surface
- *     `reason: 'unauthenticated'` so the launcher's `useAuth`
- *     hook can sign the user out.
+ *   - Network failure (DNS / refused / offline) → `fetch` throws;
+ *     we map to `reason: 'network_error'`.
+ *   - `GameApiError` 4xx/5xx → `reason: 'api_error:<status>'` so the
+ *     panel can branch on a typed shape.
+ *   - No auth key saved → we don't even call; surface
+ *     `reason: 'unauthenticated'` so the upstream `useFriends` can
+ *     render the "set your auth key" CTA instead of the panel.
+ *
+ * The `useFriendsGraph` polling layer persists the latest
+ * `etag` header in `sessionStorage` and re-attaches it as
+ * `If-None-Match` on the next `list` call. On a 304, the cached
+ * `FriendsGraph` is returned without touching React state — this
+ * keeps the friends panel's 3-5 s poll under 100 bytes per round
+ * when nothing has changed.
  */
+import {
+  gameFetch,
+  gameFetchWithEtag,
+  GameApiError,
+  friendsDebugLog,
+  getZemuAuthKey,
+  GAME_API_BASE_URL,
+  mapGameApiAuthReason,
+} from '@/lib/zemu-game-api'
 
-import { readPersistedToken } from '@/lib/auth'
-import { LAUNCHER_CONFIG } from '@/config/launcher'
-import { invoke, isTauri } from '@tauri-apps/api/core'
+// ─── Types ───────────────────────────────────────────────────────────────
 
-// ─── Friends debug log bridge ───────────────────────────────────────────
-//
-// Thin shim around the Rust `friends_debug_log_*` commands. Every
-// friends system call writes a line to `%APPDATA%\com.zemuuk.launcher
-// \friendlist-debug.log` so we can reproduce any user-reported bug
-// without rerunning it under the webview debugger.
-//
-// When we're not running inside Tauri (`isTauri()` is false, e.g.
-// `vite dev` in a plain browser tab), the helper falls back to
-// `console.log` so dev-time console monitoring keeps working.
-
-async function flog(source: string, message: string): Promise<void> {
-  const line = `[${source}] ${message}`
-  if (!isTauri()) {
-    console.log(`[friendlist-debug] ${line}`)
-    return
-  }
-  try {
-    await invoke('friends_debug_log_write', { source, message })
-  } catch {
-    // Best-effort — never propagate log-write failures.
-  }
-}
-
-async function flogPath(): Promise<string | null> {
-  if (!isTauri()) return null
-  try {
-    return (await invoke<string>('friends_debug_log_path')) ?? null
-  } catch {
-    return null
-  }
-}
-
-export const friendsDebugLog = {
-  log: flog,
-  getPath: flogPath,
-}
-
-// ─── URL resolution (mirrors src/lib/news.ts) ─────────────────────────────
-//
-// Single source of truth for where to send `/v1/friends/*` calls.
-// All four API consumers (friends, news, streams, leaderboard) share
-// `VITE_API_URL`, which points at the root of the api server.
-//
-// Precedence (first wins):
-//   1. `VITE_API_URL` set in `.env.local` — Vite exposes this only
-//      at dev-time, so production bundles ignore it entirely.
-//   2. `LAUNCHER_CONFIG.friendsApiBaseUrl` — the bundled default,
-//      `https://api.zemu.uk` in published builds.
-
-function resolveFriendsApiBaseUrl(): string {
-  const fromEnv = import.meta.env.VITE_API_URL as string | undefined
-  if (import.meta.env.DEV && fromEnv) return fromEnv
-  return LAUNCHER_CONFIG.friendsApiBaseUrl
-}
-
-const FRIENDS_API_BASE = resolveFriendsApiBaseUrl()
-const FRIENDS_API_BASE_LOOKS_DEV = /localhost|127\.0\.0\.1|tauri\.localhost/.test(
-  FRIENDS_API_BASE,
-)
-console.log(
-  `[friends] base URL = ${FRIENDS_API_BASE} ${FRIENDS_API_BASE_LOOKS_DEV ? '(dev)' : '(PROD!)'}`,
-)
-if (import.meta.env.DEV && !FRIENDS_API_BASE_LOOKS_DEV) {
-  console.warn(
-    '[friends] DEV mode but VITE_API_URL is not set — every friends call will hit production. ' +
-      'Add VITE_API_URL=http://localhost:3002 to zemu-launcher/.env.local',
-  )
-}
-
-export type FriendStatus = 'online' | 'away' | 'busy' | 'in_game' | 'offline'
+export type FriendStatus = 'online' | 'in_game' | 'offline'
 
 /**
- * The launcher's relationship lexicon. Matches the
- * `relationState` field returned by the friends api one-for-one;
- * `normalizeFriendRelationship` collapses an unknown server value
- * to `'none'` so the rest of the UI keeps working when a future
- * kind is added.
+ * The launcher's relationship lexicon. Matches the `relationship`
+ * field on `Friend` from the game server one-for-one. Unknown values
+ * are coerced to `'none'` by `normalizeFriendRelationship`.
  */
 export type FriendRelationship =
   | 'self'
@@ -121,37 +69,52 @@ export type FriendRelationship =
   | 'outgoing'
   | 'none'
 
+/**
+ * A single friend row, as returned by `/api/friends`. The doc adds
+ * fields the original webhook-driven loader didn't track
+ * (`lastSeen`, `activity`, `atMenu`, `partyId`) — kept here so the
+ * UI can render them when they're meaningful (e.g. per-row invite
+ * gating on `atMenu`).
+ */
 export interface Friend {
   id: string
-  displayName: string | null
+  displayName: string
+  /**
+   * Resolved absolute URL for the friend's avatar image on the game
+   * server, or `null` when they have no icon uploaded. The server
+   * returns relative paths (`/avatar/<id>`); we prefix the game API
+   * base URL during normalisation.
+   */
   avatarUrl: string | null
+  /**
+   * ISO 3166-1 alpha-2 country code from the directory, when present.
+   * Optional in the wire payload; the renderer treats `null` as
+   * "no country chip".
+   */
   country: string | null
-  /** ISO timestamp the friendship was accepted. Null for pending / search hits. */
+  /**
+   * ISO timestamp the friendship was accepted. Null for pending /
+   * search hits (the game server doesn't carry this — accepted
+   * requests don't have a separate "since" timestamp in the wire
+   * format; we default to null and the renderer can re-derive from
+   * `lastSeen` if needed).
+   */
   friendsSince: string | null
-  /**
-   * Server-provided relation snapshot. The launcher keeps its own
-   * copy because search-result rows carry this on the hit itself
-   * (see `FriendSearchHit.relationState`).
-   */
   relationship: FriendRelationship
-  /**
-   * Synthesized on the client from a server-side status field when
-   * present. The launcher's renderer treats missing / stale values
-   * as `'offline'` (see `useFriendsPresence` for the realtime
-   * patcher that drives updates after the initial fetch).
-   */
   status: FriendStatus
   /**
-   * Free-form game label set by the friend's launcher's heartbeat.
-   * Non-null only when `status === 'in_game'`; the renderer shows
-   * "Currently playing <currentGame>" under the display name.
+   * Free-form mode label set by the friend's game while
+   * `status === 'in_game'` (e.g. "Solos", "Duos", "Fives"). Null
+   * otherwise.
    */
   currentGame: string | null
   /**
-   * ISO timestamp the presence row was last written. Used to render
-   * "last seen 2 minutes ago" copy when the row is stale.
+   * ISO 8601 UTC timestamp the friend was last seen connected to
+   * the game server. Null while `status` is online / in_game, and
+   * for a player who's never been on (the doc's "last seen"
+   * semantics).
    */
-  lastSeenAt: string | null
+  lastSeen: string | null
 }
 
 export interface FriendSearchHit extends Friend {
@@ -166,10 +129,17 @@ export interface FriendsGraph {
   outgoing: Friend[]
   /**
    * Last search results. Stays populated until the next
-   * `list` / `refresh`. Empty until the launcher actually
+   * `list` / `refresh` / `search`. Empty until the launcher actually
    * invokes a search.
    */
   results: FriendSearchHit[]
+  /**
+   * `true` when the backend already knows the player's display
+   * name (e.g. via the in-game directory) and the panel should hide
+   * the "set your name" form. The game server always returns
+   * `true` — the in-game name IS the displayed name on this server.
+   */
+  directoryConfigured: boolean
 }
 
 export interface FriendsActionResult extends FriendsGraph {
@@ -188,9 +158,9 @@ export type FriendsAction =
   | 'profile'
 
 export interface FriendsRequestPayload {
-  /** Target player ID, when applicable. */
+  /** Target player id (decimal-string from `Friend.id`). */
   targetId?: string
-  /** New display name, when applicable. */
+  /** New display name, when applicable (the profile action). */
   displayName?: string
   /** Search query, when applicable. */
   query?: string
@@ -202,125 +172,31 @@ const DEFAULT_GRAPH: FriendsGraph = {
   incoming: [],
   outgoing: [],
   results: [],
+  directoryConfigured: true,
 }
 
-// ─── API client ───────────────────────────────────────────────────────────
+// ─── Wire normalisation ──────────────────────────────────────────────────
 
 /**
- * Read the bearer token from localStorage. Returns `null` when
- * the user is signed out — the call sites translate that into
- * `reason: 'unauthenticated'`.
+ * The game server may return `avatarUrl` as a relative path
+ * (`/avatar/<id>`) per the doc, or already absolute depending on
+ * proxy hops. Resolve to an absolute URL on the game server so the
+ * `<img>` tag can render without the component caring which case
+ * we got.
  */
-function getBearer(): string | null {
-  const token = readPersistedToken()
-  return token?.token ?? null
+function resolveAvatarUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length === 0) return null
+  if (/^https?:/i.test(value)) return value
+  if (value.startsWith('/')) return `${GAME_API_BASE_URL}${value}`
+  return `${GAME_API_BASE_URL}/${value}`
 }
-
-/**
- * Single HTTP shim. Adds the bearer header, decodes JSON, and
- * raises an Error on non-2xx. Returns `null` as a "401 specifically"
- * signal so the dispatch layer can branch on it.
- *
- * One console.log per request (URL+method on the way out,
- * status+ms on the way back) so the launcher DevTools console
- * tells the whole story of a friends call without us needing to
- * attach the webview debugger.
- */
-async function apiFetch<T>(
-  path: string,
-  init: RequestInit = {},
-): Promise<T> {
-  const base = FRIENDS_API_BASE
-  const bearer = getBearer()
-  const method = (init.method ?? 'GET').toUpperCase()
-  const headers = new Headers(init.headers)
-  headers.set('Accept', 'application/json')
-  if (init.body && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json')
-  }
-  if (bearer) {
-    headers.set('Authorization', `Bearer ${bearer}`)
-  }
-  const url = `${base}${path}`
-  const startedAt = performance.now()
-  console.log(`[friends] → ${method} ${url}`)
-  void flog(
-    'http',
-    `→ ${method} ${path} bearer=${bearer ? 'yes' : 'no'}`,
-  )
-  let response: Response
-  try {
-    response = await fetch(url, {
-      ...init,
-      headers,
-      credentials: 'omit',
-    })
-  } catch (networkError) {
-    const errMsg =
-      networkError instanceof Error ? networkError.message : String(networkError)
-    console.error(
-      `[friends] fetch threw for ${method} ${path}`,
-      networkError,
-    )
-    void flog('http', `× ${method} ${path} network_error err=${errMsg}`)
-    throw networkError
-  }
-  const elapsed = Math.round(performance.now() - startedAt)
-  const text = await response.text()
-  let payload: unknown = null
-  if (text) {
-    try {
-      payload = JSON.parse(text)
-    } catch {
-      payload = text
-    }
-  }
-  console.log(
-    `[friends] ← ${response.status} ${method} ${path} (${elapsed}ms)`,
-  )
-  void flog(
-    'http',
-    `← ${response.status} ${method} ${path} (${elapsed}ms)`,
-  )
-  if (response.status === 401) {
-    console.warn('[friends] 401 — token missing or expired')
-    void flog('http', `401 unauthenticated for ${method} ${path}`)
-    return null as T
-  }
-  if (!response.ok) {
-    const message =
-      payload && typeof payload === 'object'
-        ? String(
-            (payload as { error?: unknown; message?: unknown }).error ??
-              (payload as { message?: unknown }).message ??
-              '',
-          )
-        : ''
-    console.error(
-      `[friends] HTTP ${response.status} ${method} ${path}:`,
-      message,
-    )
-    void flog(
-      'http',
-      `✗ HTTP ${response.status} ${method} ${path} message=${message}`,
-    )
-    throw new Error(message || `HTTP ${response.status}`)
-  }
-  return payload as T
-}
-
-// ─── Wire → UI normalization ──────────────────────────────────────────────
 
 export function normalizeFriendStatus(value: unknown): FriendStatus {
-  if (
-    value === 'online' ||
-    value === 'away' ||
-    value === 'busy' ||
-    value === 'in_game' ||
-    value === 'offline'
-  ) {
+  if (value === 'online' || value === 'in_game' || value === 'offline') {
     return value
   }
+  // Doc says `online | in_game | offline` only — anything else
+  // (`'menu'` / `'in_match'` legacy, junk) projects to `offline`.
   return 'offline'
 }
 
@@ -337,88 +213,46 @@ export function normalizeFriendRelationship(value: unknown): FriendRelationship 
   return 'none'
 }
 
-function normalizeFriend(value: unknown, relationOverride?: FriendRelationship): Friend | null {
+export function normalizeFriend(value: unknown): Friend | null {
   if (!value || typeof value !== 'object') return null
   const raw = value as Record<string, unknown>
-  const id =
-    typeof raw.id === 'string'
-      ? raw.id
-      : typeof raw.friendUserId === 'string'
-        ? raw.friendUserId
-        : typeof raw.otherUserId === 'string'
-          ? raw.otherUserId
-          : ''
+  const id = typeof raw.id === 'string' ? raw.id : ''
   if (!id) return null
-  const displayName =
-    typeof raw.displayName === 'string'
-      ? raw.displayName
-      : typeof raw.friendDisplayName === 'string'
-        ? raw.friendDisplayName
-        : typeof raw.otherDisplayName === 'string'
-          ? raw.otherDisplayName
-          : null
-  const avatarUrl =
-    typeof raw.avatarUrl === 'string'
-      ? raw.avatarUrl
-      : typeof raw.friendAvatarUrl === 'string'
-        ? raw.friendAvatarUrl
-        : typeof raw.otherAvatarUrl === 'string'
-          ? raw.otherAvatarUrl
-          : null
-  const country =
-    typeof raw.country === 'string'
-      ? raw.country
-      : typeof raw.friendCountry === 'string'
-        ? raw.friendCountry
-        : typeof raw.otherCountry === 'string'
-          ? raw.otherCountry
-          : null
-  const friendsSince =
-    typeof raw.friendsSince === 'string'
-      ? raw.friendsSince
-      : typeof raw.sentAt === 'string'
-        ? raw.sentAt
-        : null
-  const relationship = relationOverride
-    ?? normalizeFriendRelationship(
-        raw.relationship ?? raw.relationState,
-      )
-  const status = normalizeFriendStatus(raw.status ?? raw.friendStatus)
-  // The api's friend-list DTO carries `friendCurrentGame` and
-  // `friendLastSeenAt`; search hits use `currentGame` / `lastSeenAt`.
-  // The renderer treats missing values as "no presence" and projects
-  // to its own `'offline'` UI state.
-  const currentGame =
-    typeof raw.currentGame === 'string'
-      ? raw.currentGame
-      : typeof raw.friendCurrentGame === 'string'
-        ? raw.friendCurrentGame
-        : null
-  const lastSeenAt =
-    typeof raw.lastSeenAt === 'string'
-      ? raw.lastSeenAt
-      : typeof raw.friendLastSeenAt === 'string'
-        ? raw.friendLastSeenAt
-        : null
   return {
     id,
-    displayName,
-    avatarUrl,
-    country,
-    friendsSince,
-    relationship,
-    status,
-    currentGame,
-    lastSeenAt,
+    displayName: typeof raw.displayName === 'string' ? raw.displayName : '',
+    avatarUrl: resolveAvatarUrl(raw.avatarUrl),
+    country: typeof raw.country === 'string' ? raw.country : null,
+    friendsSince:
+      typeof raw.friendsSince === 'string' ? raw.friendsSince : null,
+    relationship: normalizeFriendRelationship(raw.relationship),
+    status: normalizeFriendStatus(raw.status),
+    currentGame:
+      typeof raw.activity === 'string'
+        ? raw.activity
+        : typeof raw.currentGame === 'string'
+          ? raw.currentGame
+          : null,
+    lastSeen:
+      typeof raw.lastSeen === 'string'
+        ? raw.lastSeen
+        : typeof raw.lastSeenAt === 'string'
+          ? raw.lastSeenAt
+          : null,
   }
 }
 
-function normalizeFriendList(value: unknown, relationOverride?: FriendRelationship): Friend[] {
+function normalizeFriendList(
+  value: unknown,
+  relationOverride: FriendRelationship,
+): Friend[] {
   if (!Array.isArray(value)) return []
   const out: Friend[] = []
   for (const item of value) {
-    const friend = normalizeFriend(item, relationOverride)
-    if (friend) out.push(friend)
+    const friend = normalizeFriend(item)
+    if (!friend) continue
+    friend.relationship = relationOverride
+    out.push(friend)
   }
   return out
 }
@@ -432,7 +266,9 @@ function normalizeSearchHits(value: unknown): FriendSearchHit[] {
     const raw = item as Record<string, unknown>
     out.push({
       ...hit,
-      relationState: normalizeFriendRelationship(raw.relationState),
+      relationState: normalizeFriendRelationship(
+        raw.relationState ?? raw.relationship,
+      ),
     })
   }
   return out
@@ -446,7 +282,11 @@ function normalizeGraph(value: unknown): FriendsGraph {
     friends: normalizeFriendList(raw.friends, 'friend'),
     incoming: normalizeFriendList(raw.incoming, 'incoming'),
     outgoing: normalizeFriendList(raw.outgoing, 'outgoing'),
-    results: normalizeSearchHits(raw.results ?? raw.users),
+    results: normalizeSearchHits(raw.results),
+    directoryConfigured:
+      typeof raw.directoryConfigured === 'boolean'
+        ? raw.directoryConfigured
+        : true,
   }
 }
 
@@ -463,166 +303,308 @@ function normalizeResult(value: unknown): FriendsActionResult {
   }
 }
 
-// ─── Action dispatcher ────────────────────────────────────────────────────
+// ─── Action dispatcher ───────────────────────────────────────────────────
+
+function defaultFailure(): FriendsActionResult {
+  return { ...DEFAULT_GRAPH, ok: false, reason: 'unknown' }
+}
 
 /**
- * Single entry point used by every React hook. Maps the React-
- * level action discriminator to one (or more) HTTP calls and
- * returns a normalized `FriendsActionResult`.
+ * Internal-only sentinel returned from `dispatchFriends('list')` and
+ * `dispatchFriends('search')` to signal "the request succeeded but
+ * nothing new came back" (a 304 on the polling endpoint, or a
+ * malformed search payload). The hook layer (`useFriendsGraph`) is
+ * the only thing that should read this — UI code is expected to
+ * never see it, because the hook either replays the prior cache or
+ * discards the result before React sees it. We prefix it with `__`
+ * and pick a name that's not a valid translation key so even if it
+ * *does* leak through, the panel's `resolveReason` helper falls
+ * back to a generic message rather than a specific one.
+ */
+export const NOT_MODIFIED_REASON = '__not_modified__'
+
+export function isNotModifiedResult(
+  result: FriendsActionResult | null | undefined,
+): boolean {
+  return (
+    !!result &&
+    result.ok === true &&
+    result.reason === NOT_MODIFIED_REASON
+  )
+}
+
+function unauthenticatedFailure(): FriendsActionResult {
+  return { ...DEFAULT_GRAPH, ok: false, reason: 'unauthenticated' }
+}
+
+function networkErrorFailure(): FriendsActionResult {
+  return { ...DEFAULT_GRAPH, ok: false, reason: 'network_error' }
+}
+
+/** Per-account ETag cache. Keyed by ZEmu auth key so a sign-out /
+ *  sign-in as a different user doesn't leak the previous user's
+ *  conditional-GET cursor. In `sessionStorage` so it doesn't
+ *  survive a launcher restart (the in-memory cache is meaningless
+ *  after a cold start anyway — first `list` after restart will be
+ *  an unconditional GET that seeds a fresh ETag). */
+const ETAG_STORAGE_PREFIX = 'zemu-launcher.friends.etag.'
+
+function loadStoredEtag(authKey: string): string | null {
+  try {
+    return sessionStorage.getItem(ETAG_STORAGE_PREFIX + authKey)
+  } catch {
+    return null
+  }
+}
+
+function saveStoredEtag(authKey: string, etag: string | null): void {
+  try {
+    if (etag) sessionStorage.setItem(ETAG_STORAGE_PREFIX + authKey, etag)
+    else sessionStorage.removeItem(ETAG_STORAGE_PREFIX + authKey)
+  } catch {
+    // sessionStorage may be unavailable in private mode.
+  }
+}
+
+/**
+ * Drop the stored conditional-GET cursor for the *current* user's
+ * auth key. Exported so the polling hook (`useFriendsGraph`) can
+ * detect the cold-cache 304 case — where the dispatcher hands back
+ * `NOT_MODIFIED_REASON` for a 304 but the query cache has no prior
+ * entry to replay against — and force the next request to be
+ * unconditional. The second call will seed a fresh etag (or
+ * surface a real 4xx/5xx), unblocking the panel.
  *
- * The `ok: false` shape is returned (not thrown) so the React
- * panel can render an inline error message instead of catching
- * errors through TanStack Query's error boundary.
+ * Calling with no signed-in key is a no-op; the dispatcher's
+ * unauthenticated path returns its own `reason` without ever
+ * touching the etag store.
+ */
+export async function invalidateFriendsEtag(): Promise<void> {
+  const authKey = await getZemuAuthKey()
+  if (!authKey) return
+  saveStoredEtag(authKey, null)
+}
+
+/**
+ * Issue one friends action against the game server.
+ *
+ * The shape of the returned `FriendsActionResult` is intentionally
+ * identical to the previous (zemu-website / NestJS) implementation
+ * so the React panel doesn't need any rewiring. The only caller-
+ * visible difference is the `reason` vocabulary, which now mirrors
+ * the LAUNCHER-API doc strings verbatim (`player_not_found`,
+ * `already_friends`, `already_requested`, `no_pending_request`,
+ * `not_friends`, `friend_limit_reached`, `pending_limit_reached`,
+ * plus the runner-up `unauthenticated` / `network_error` /
+ * `not_implemented` we map from the local auth- and transport-
+ * level guards).
+ *
+ * Catching strategy: 4xx/5xx `GameApiError`s are mapped to
+ * `reason: 'api_error:<status>'` so the panel can fall back to
+ * the generic "unknown" copy rather than throwing through the
+ * TanStack Query error boundary. Calls inside the React layer
+ * (`useFriendsGraph`'s `queryFn`, the mutation hooks) handle the
+ * `ok: false` shape as a regular state update — no try/catch at
+ * the call sites.
  */
 export async function dispatchFriends(
   action: FriendsAction,
   payload: FriendsRequestPayload = {},
 ): Promise<FriendsActionResult> {
-  try {
-    if (action === 'list' || action === 'profile') {
-      // Fetch all three lists in parallel; the launcher's Graph
-      // panel renders friends / incoming / outgoing side by side, so
-      // the cheapest way to keep them in sync is one round trip per
-      // list. Each endpoint is a single indexed scan; the total
-      // is bounded by the user's actual relationships.
-      const [friendsPage, incomingPage, outgoingPage] = await Promise.all([
-        apiFetch<{ friends: unknown[] }>('/v1/friends'),
-        apiFetch<{ requests: unknown[] }>(
-          '/v1/friends/requests/incoming',
-        ),
-        apiFetch<{ requests: unknown[] }>(
-          '/v1/friends/requests/outgoing',
-        ),
-      ])
-      if (
-        friendsPage === null ||
-        incomingPage === null ||
-        outgoingPage === null
-      ) {
-        return failureResult('unauthenticated')
-      }
-      return normalizeResult({
-        friends: friendsPage.friends,
-        incoming: incomingPage.requests,
-        outgoing: outgoingPage.requests,
-        ok: true,
-      })
-    }
-    if (action === 'search') {
-      const query = (payload.query ?? '').trim()
-      if (query.length < 2) {
-        return { ...DEFAULT_GRAPH, ok: true, reason: null }
-      }
-      const value = await apiFetch<{
-        users: unknown[]
-      }>(
-        `/v1/friends/search-users?q=${encodeURIComponent(query)}&limit=10`,
-      )
-      if (value === null) return failureResult('unauthenticated')
-      const hits = (value.users ?? []) as unknown[]
-      return normalizeResult({
-        ...value,
-        friends: [],
-        incoming: [],
-        outgoing: [],
-        results: hits,
-        ok: true,
-      })
-    }
-    if (action === 'request') {
-      const targetId = payload.targetId
-      if (!targetId) {
-        return failureResult('missing_target')
-      }
-      const body = await apiFetch<{ id: string; autoAccepted?: boolean }>(
-        `/v1/friends/requests/${encodeURIComponent(targetId)}`,
-        { method: 'POST' },
-      )
-      if (body === null) return failureResult('unauthenticated')
-      // Re-fetch the graph so the panel reflects the new pending row.
-      const graph = await apiFetch<{
-        friends: unknown[]
-      }>('/v1/friends')
-      return normalizeResult({ ...graph, ok: true })
-    }
-    if (action === 'accept') {
-      const fromUserId = payload.targetId
-      if (!fromUserId) {
-        return failureResult('missing_target')
-      }
-      await apiFetch<unknown>(
-        `/v1/friends/requests/${encodeURIComponent(fromUserId)}/accept`,
-        { method: 'POST' },
-      )
-      const graph = await apiFetch<{
-        friends: unknown[]
-      }>('/v1/friends')
-      return normalizeResult({ ...graph, ok: true })
-    }
-    if (action === 'decline') {
-      const fromUserId = payload.targetId
-      if (!fromUserId) {
-        return failureResult('missing_target')
-      }
-      await apiFetch<unknown>(
-        `/v1/friends/requests/${encodeURIComponent(fromUserId)}/decline`,
-        { method: 'POST' },
-      )
-      const graph = await apiFetch<{ friends: unknown[] }>(
-        '/v1/friends',
-      )
-      return normalizeResult({ ...graph, ok: true })
-    }
-    if (action === 'cancel') {
-      const toUserId = payload.targetId
-      if (!toUserId) {
-        return failureResult('missing_target')
-      }
-      await apiFetch<unknown>(
-        `/v1/friends/requests/${encodeURIComponent(toUserId)}`,
-        { method: 'DELETE' },
-      )
-      const graph = await apiFetch<{ friends: unknown[] }>(
-        '/v1/friends',
-      )
-      return normalizeResult({ ...graph, ok: true })
-    }
-    if (action === 'remove') {
-      const otherUserId = payload.targetId
-      if (!otherUserId) {
-        return failureResult('missing_target')
-      }
-      await apiFetch<unknown>(
-        `/v1/friends/requests/${encodeURIComponent(otherUserId)}`,
-        {
-          method: 'DELETE',
-          body: JSON.stringify({ kind: 'friend' }),
-        },
-      )
-      const graph = await apiFetch<{ friends: unknown[] }>(
-        '/v1/friends',
-      )
-      return normalizeResult({ ...graph, ok: true })
-    }
-    return failureResult('unknown_action')
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : typeof error === 'string'
-          ? error
-          : 'unknown'
-    const reason = message.includes('Failed to fetch')
-      ? 'network_error'
-      : message
-    return failureResult(reason)
+  const authKey = await getZemuAuthKey()
+  if (!authKey) {
+    // Distinct log marker so an "unauthenticated friends panel" is
+    // trivial to spot in the debug log — without it, the panel's
+    // "Please sign in to manage friends" copy and the generic
+    // "Something went wrong." surface from the same `ok: false`
+    // shape and a support engineer has to read the resolver chain
+    // to tell them apart.
+    void friendsDebugLog.log('friends', `dispatch[${action}] no auth key — returning unauthenticated`)
+    return unauthenticatedFailure()
   }
-}
 
-function failureResult(reason: string): FriendsActionResult {
-  return {
-    ...DEFAULT_GRAPH,
-    ok: false,
-    reason,
+  try {
+    switch (action) {
+      case 'list':
+      case 'profile': {
+        // Per the doc, `profile` is `PUT /api/friends/profile` and
+        // always returns `{ ok: false, reason:
+        // 'display_name_is_the_in_game_name' }`. We forward that
+        // shape unchanged and don't try to take the rendered name
+        // from anywhere else — the server enforces in-game-only
+        // display names.
+        if (action === 'profile') {
+          const result = await gameFetch<unknown>('/api/friends/profile', {
+            method: 'PUT',
+            silent: true,
+          })
+          return normalizeResult(result)
+        }
+
+        const etag = loadStoredEtag(authKey)
+        // Tracing the etag state at request time — if the user
+        // just signed in (no stored etag yet) the request goes
+        // out without `If-None-Match`, the server returns 200 +
+        // a fresh body, and everything below is happy. If they
+        // *do* have a stored etag and the server still returns
+        // 200 (rather than 304) we'd double-paint; if the etag
+        // is wrong-shaped (corrupted storage) the server may
+        // respond with 412 Precondition Failed which surfaces
+        // here as "Something went wrong." in the panel.
+        void friendsDebugLog.log(
+          'friends',
+          `dispatch[list] authKey.len=${authKey.length} etag=${etag ? 'present' : 'absent'}`,
+        )
+        const { graph, etag: nextEtag } = await gameFetchWithEtag<unknown>(
+          '/api/friends',
+          etag,
+        )
+        if (graph === null) {
+          // 304 — caller already has the latest. The polling hook
+          // (`useFriendsGraph`) detects this sentinel via
+          // `isNotModifiedResult` and replays the previous cache
+          // entry so the panel's friend list never flashes empty
+          // and the error-banner heuristic never sees a non-null
+          // `reason` (which previously surfaced as "Something
+          // went wrong." every refetch cycle). The sentinel is
+          // marked `ok: true` so the sidebar's request-count
+          // derivation, which reads `data.ok`, still treats the
+          // cycle as successful.
+          //
+          // CAVEAT — cold-cache 304 leak: the hook's replay
+          // guard (`prior && prior.ok`) silently drops this
+          // sentinel when there's no prior cache, letting it
+          // become the cached `data` for the lifetime of the
+          // query. The panel then shows "Something went wrong.
+          // (__not_modified__)" even though the server actually
+          // said "no changes". The hook's
+          // `queryFn` handles that path — it intercepts this
+          // sentinel and issues an unconditional refetch on the
+          // first cold-cache poll. This dispatcher stays
+          // unchanged so the warm-cache polling rate stays at
+          // one request per `refetchInterval` (not two).
+          void friendsDebugLog.log(
+            'friends',
+            `dispatch[list] 304 not-modified (will be replayed or refetched by the hook)`,
+          )
+          return { ...DEFAULT_GRAPH, ok: true, reason: NOT_MODIFIED_REASON }
+        }
+        if (nextEtag) saveStoredEtag(authKey, nextEtag)
+        const result = normalizeResult(graph)
+        // The shape of `ok` + `reason` is the single most useful
+        // piece of telemetry when the panel goes red: the panel
+        // shows the localized copy (`result.reason` lookup),
+        // but the raw string is opaque to the user. Logging it
+        // here lets the debug-log reader see "the server said
+        // `not_implemented`" rather than "Something went wrong."
+        // (Both are the same colour on screen.)
+        if (!result.ok) {
+          void friendsDebugLog.log(
+            'friends',
+            `dispatch[list] server returned not-ok: reason=${result.reason ?? 'null'} friends.len=${result.friends.length}`,
+          )
+        }
+        return result
+      }
+
+      case 'search': {
+        const query = (payload.query ?? '').trim()
+        if (query.length < 2) {
+          return { ...DEFAULT_GRAPH, ok: true, reason: null }
+        }
+        const result = await gameFetch<unknown>(
+          `/api/friends/search?q=${encodeURIComponent(query)}`,
+          { silent: true },
+        )
+        if (!result || typeof result !== 'object') {
+          // Treat any non-object payload as a successful empty
+          // search — the `results: []` we return below already
+          // covers "no players matched", and putting a non-null
+          // reason here used to surface as "Something went wrong."
+          // (the same banner fired on the 304 polling case; see
+          // `NOT_MODIFIED_REASON` for the rationale).
+          return { ...DEFAULT_GRAPH, ok: true, reason: null }
+        }
+        const raw = result as Record<string, unknown>
+        const graph: FriendsGraph = {
+          self: null,
+          friends: [],
+          incoming: [],
+          outgoing: [],
+          results: normalizeSearchHits(raw.results),
+          directoryConfigured: true,
+        }
+        const okField = raw.ok
+        return {
+          ...graph,
+          ok: okField === undefined ? true : okField === true,
+          reason:
+            typeof raw.reason === 'string' ? raw.reason : null,
+        }
+      }
+
+      case 'request':
+      case 'accept':
+      case 'decline':
+      case 'cancel':
+      case 'remove': {
+        const targetId = payload.targetId
+        if (!targetId) {
+          return { ...DEFAULT_GRAPH, ok: false, reason: 'missing_target' }
+        }
+        const httpMethod =
+          action === 'cancel' || action === 'remove' ? 'POST' : 'POST'
+        // The doc lists the verb as POST for every action; only the
+        // path differs. Match that here.
+        const body = JSON.stringify({ id: targetId })
+        const result = await gameFetch<unknown>(
+          `/api/friends/${action}`,
+          {
+            method: httpMethod,
+            body,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
+        return normalizeResult(result)
+      }
+
+      default:
+        return { ...DEFAULT_GRAPH, ok: false, reason: 'unknown_action' }
+    }
+  } catch (error) {
+    if (error instanceof GameApiError) {
+      // The game server uses 401 for four distinct conditions —
+      // see `mapGameApiAuthReason` for the breakdown. We only fall
+      // back to the generic "unauthenticated" copy when the body
+      // doesn't match one of the known reasons (defensive default
+      // against future server-side additions).
+      if (error.status === 401) {
+        return { ...DEFAULT_GRAPH, ok: false, reason: mapGameApiAuthReason(error) }
+      }
+      return {
+        ...DEFAULT_GRAPH,
+        ok: false,
+        reason: `api_error:${error.status}`,
+      }
+    }
+    const message =
+      error instanceof Error ? error.message : String(error)
+    // Log to the structured debug channel too — the `console.warn`
+      // is invisible in a packaged launcher with no DevTools
+      // open, and the [friends] Something went wrong. banner the
+      // user sees is colour-blind to the underlying cause. We
+      // log BOTH the action and the raw message so a `grep
+      // "dispatch\[\(request\|accept\|decline\|cancel\|remove\)\]"`
+      // across the debug log ties each line back to the action
+      // that triggered it.
+    void friendsDebugLog.log(
+      'friends',
+      `dispatch[${action}] threw: status=${error instanceof GameApiError ? error.status : 'n/a'} msg=${message}`,
+    )
+    if (message.includes('Failed to fetch') || message.includes('network')) {
+      return networkErrorFailure()
+    }
+    console.warn(`[friends] ${action} failed`, message)
+    return defaultFailure()
   }
 }

@@ -47,11 +47,14 @@ export interface FriendsPresenceUpdatedPayload {
  */
 const STALE_AFTER_MS = 90_000
 
-/** FriendStatus union used by the renderer. */
+/** FriendStatus union used by the renderer. The LAUNCHER-API doc
+ *  narrows this to `online | in_game | offline` (`away` / `busy`
+ *  are never sent by the new game server). The presence hook still
+ *  accepts legacy events that carry `away` / `busy` and projects
+ *  them to `offline` so a buggy realtime socket doesn't crash the
+ *  panel. */
 const FRIEND_STATUS_VALUES: readonly FriendStatus[] = [
   'online',
-  'away',
-  'busy',
   'in_game',
   'offline',
 ] as const

@@ -2,7 +2,14 @@
 
 import { useState, useCallback, useMemo, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
-import { type ColumnDef, createSortedRowModel, rowSortingFeature, tableFeatures, useTable } from '@tanstack/react-table'
+import {
+  type ColumnDef,
+  createSortedRowModel,
+  rowSortingFeature,
+  tableFeatures,
+  useTable,
+  flexRender,
+} from '@tanstack/react-table'
 import {
   Table,
   TableBody,
@@ -22,7 +29,11 @@ const features = tableFeatures({ rowSortingFeature, sortedRowModel: createSorted
 
 interface LeaderboardTableProps {
   entries: readonly LeaderboardEntry[]
-  columns?: Array<ColumnDef<LeaderboardEntry>>
+  // TanStack-Table v9 generics — see leaderboard-columns.tsx for why
+  // we use `any` for the features slot. The runtime contract still
+  // flows through `useTable`, so the column array stays array-shaped.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  columns?: Array<ColumnDef<any, LeaderboardEntry, any>>
   isLoading?: boolean
   filters?: {
     search: string
@@ -117,10 +128,7 @@ export default function LeaderboardTable({
                 >
                   {header.isPlaceholder
                     ? null
-                    : (table.FlexRender as (h: typeof header, p: unknown) => React.ReactNode)(
-                        header.getContext(),
-                        {},
-                      )}
+                    : flexRender(header.column.columnDef.header, header.getContext())}
                 </TableHead>
               ))}
             </TableRow>
@@ -188,10 +196,7 @@ export default function LeaderboardTable({
                       }
                       return (
                         <TableCell key={cell.id}>
-                          {(table.FlexRender as (c: typeof cell, p: unknown) => React.ReactNode)(
-                            cell.getContext(),
-                            {},
-                          )}
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
                       )
                     })}

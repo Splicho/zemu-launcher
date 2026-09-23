@@ -71,7 +71,7 @@ export default {
       },
       step3: {
         title: 'Get H1Z1: King of the Kill',
-        description: 'ZEmu does not bundle H1Z1: King of the Kill. Pick a path below — automatic download is recommended when available.',
+        description: 'ZEmu does not bundle H1Z1: King of the Kill. Sign in with the Steam Mobile app to download the base game straight into your install folder.',
         auto: {
           label: 'Download automatically',
           description: 'SteamCMD pulls the depot straight into the folder you just picked. No Steam client required.',
@@ -119,6 +119,27 @@ export default {
         },
         finish: 'Finish setup',
       },
+    },
+    // Pre-onboarding screen. Mounts between the landing page
+    // (`/`) and `#/onboarding` — asks returning users if they
+    // already have the Pre-Season 3 client installed so they can
+    // skip the wizard. Lives at `#/install-check`.
+    installCheck: {
+      title: 'Do you have the Pre-Season 3 Client already installed?',
+      description:
+        'If you already downloaded the game from Steam, you can skip the setup wizard. Otherwise we will walk you through downloading and patching it.',
+      // Shown when the disk check already sees an install —
+      // reassures the user the "Yes" branch won't strand them.
+      detectedHint:
+        'We detected an existing install — looks like you are set.',
+      // Primary "skip wizard" branch. Two labels depending on
+      // whether the install folder is already chosen by the gate
+      // (one-click skip) or whether we need to open the picker
+      // first so the user can point us at their moved/dropped
+      // folder.
+      alreadyInstalled: 'Yes, I already have it',
+      chooseFolder: 'Yes — let me pick the folder',
+      needToDownload: 'No, I need to download it',
     },
     account: {
       openMenu: 'Open account menu',
@@ -284,6 +305,22 @@ export default {
         notImplemented: 'Friends API not connected yet.',
         unknown: 'Something went wrong.',
         unauthenticated: 'Please sign in to manage friends.',
+        // 401 with `error` body "unknown key - the account has not
+        // logged into the game yet". The user has a valid ZEmu key
+        // but the game server has no row for them yet, because the
+        // game hasn't been launched with that key. Per the API doc,
+        // the fix is to launch the game once so the account shows
+        // up on the server.
+        key_never_played:
+          'Launch the game once with this auth key before using friends.',
+        // 401 with `error` body "that account has no character yet".
+        // The player signed in but hasn't created an in-game
+        // character yet.
+        no_character: 'Create a character in-game before using friends.',
+        // 401 with `error` body "<header> is required". This points
+        // at our own code (the Authorization header didn't go out)
+        // — the user can't fix it; log + telemetry should catch it.
+        missing_auth_header: 'Friends service rejected the request.',
         network_error: 'Could not reach the friends service. Check your connection and try again.',
         missing_target: 'Pick a player first.',
         unknown_action: 'That action is not supported yet.',

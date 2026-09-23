@@ -8,6 +8,7 @@ import { TitleBar } from '@/components/title-bar'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
 import { OnboardingPage } from '@/pages/onboarding'
+import { InstallCheckPage } from '@/pages/install-check'
 import { PlayPage } from '@/pages/play'
 import { StreamsPage } from '@/pages/streams'
 import { LeaderboardPage } from '@/pages/leaderboard'
@@ -29,6 +30,7 @@ import { useDownloadSpeedToast } from '@/hooks/use-download-speed-toast'
 import { useFriendsIncomingToast } from '@/hooks/use-friends-incoming-toast'
 import { useFriendsPresence } from '@/hooks/use-friends-presence'
 import { useFriendsRealtimeSync } from '@/hooks/use-friends'
+import { useAvatarSync } from '@/hooks/use-avatar-sync'
 import { usePresenceHeartbeat } from '@/hooks/use-presence-heartbeat'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
@@ -67,6 +69,7 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
   if (hash === '/news') return { page: 'news' }
   if (hash === '/clans') return { page: 'clans' }
   if (hash === '/onboarding') return { page: 'onboarding' }
+  if (hash === '/install-check') return { page: 'install-check' }
   if (hash === '/play') return { page: 'play' }
   if (hash === '/streams') return { page: 'streams' }
   if (hash === '/leaderboard') return { page: 'leaderboard' }
@@ -129,6 +132,21 @@ function PresenceHeartbeatHost() {
   return null
 }
 
+/**
+ * Mounted at the top level so the avatar (the user's 64x64 icon on
+ * the game server) auto-syncs once the user is signed in AND has a
+ * ZEmu auth key saved. Failures are swallowed; the user never
+ * sees a "your avatar didn't upload" toast.
+ *
+ * One attempt per session per source URL. Re-linked providers
+ * with a new picture reset the dedupe via `user.image` changing.
+ */
+function AvatarSyncHost() {
+  const { status } = useAuthContext()
+  useAvatarSync(status === 'authed')
+  return null
+}
+
 export default function MainApp() {
   return (
     <AuthProvider>
@@ -140,6 +158,7 @@ export default function MainApp() {
           <FriendsRealtimeSyncHost />
           <FriendsPresenceHost />
           <PresenceHeartbeatHost />
+          <AvatarSyncHost />
           <Toaster />
         </GameStateProvider>
       </UpdateProvider>
@@ -234,18 +253,27 @@ function AuthedApp() {
   // First-run wizard redirect.
   //
   // For an authed user whose on-disk setup is incomplete, push them
-  // into the wizard at `#/onboarding`. We deliberately run *after*
-  // the intended-hash restore effect above so a deep-link sign-in
-  // (e.g. OAuth callback returning to `/play`) lands on its real
-  // destination first; only the landing page (`/` or empty hash)
-  // gets pushed into the wizard.
+  // into the install-check pre-screen at `#/install-check`. That
+  // screen asks "do you already have the Pre-Season 3 client?" —
+  // clicking "Yes" commits the Rust-side
+  // `LauncherConfig.onboarding_completed` flag and lands them on
+  // `/` directly, while "No, I need to download" routes them into
+  // the wizard at `#/onboarding`. This split avoids re-walking a
+  // returning user whose disk has drifted out of sync with the gate
+  // (e.g. the `.zemu-install-v1` marker is missing because they
+  // copied an old PS3 folder by hand).
   //
-  // Returning users whose localStorage was wiped but who still have
-  // a valid install on disk are caught by the gate and skip straight
-  // to `/` (handled inside `useOnboardingGate`).
+  // We deliberately run *after* the intended-hash restore effect
+  // above so a deep-link sign-in (e.g. OAuth callback returning to
+  // `/play`) lands on its real destination first; only the landing
+  // page (`/` or empty hash) gets pushed into the install-check.
+  //
+  // Returning users whose onboarding flag was reset but who still
+  // have a valid install on disk are caught by the gate and skip
+  // straight to `/` (handled inside `useOnboardingGate`).
   useEffect(() => {
     if (status !== 'authed') return
-    if (route.page === 'onboarding') return
+    if (route.page === 'onboarding' || route.page === 'install-check') return
     if (gateState.kind === 'loading') return
     if (gateState.kind === 'complete') return
 
@@ -254,8 +282,8 @@ function AuthedApp() {
     if (intended && intended !== '/') return
 
     queueMicrotask(() => {
-      if (window.location.hash !== '#/onboarding') {
-        window.location.hash = '#/onboarding'
+      if (window.location.hash !== '#/install-check') {
+        window.location.hash = '#/install-check'
       }
     })
   }, [status, route.page, gateState.kind])
@@ -275,10 +303,13 @@ function AuthedApp() {
     )
   }
 
-  // The wizard owns the full screen — no title bar chrome, no main
-  // layout, no sidebar. Renders inside the same rounded-window shell
-  // for visual consistency with the rest of the app.
-  if (route.page === 'onboarding') {
+  // The install-check pre-screen and the onboarding wizard both
+  // own the full screen — no `<MainLayout>`, no sidebar. They
+  // render their own `<TitleBar />` inside the page for visual
+  // consistency with the rest of the app. Both pages receive the
+  // same `initialChecks` shape so they can hydrate from the same
+  // gate evaluation.
+  if (route.page === 'install-check' || route.page === 'onboarding') {
     const initialChecks =
       gateState.kind === 'incomplete'
         ? gateState.inputs
@@ -289,6 +320,16 @@ function AuthedApp() {
             hasMarker: false,
             folderPath: null,
           }
+
+    if (route.page === 'install-check') {
+      return (
+        <InstallCheckPage
+          initialChecks={initialChecks}
+          onRefreshGate={refreshGate}
+        />
+      )
+    }
+
     return (
       <OnboardingPage
         initialChecks={initialChecks}

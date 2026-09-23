@@ -71,7 +71,7 @@ export default {
       },
       step3: {
         title: 'Obtenha o jogo base',
-        description: 'O ZEmu não inclui o jogo base. Escolha um método abaixo — o download automático é recomendado quando disponível.',
+        description: 'O ZEmu não inclui o jogo base. Entre com o aplicativo Steam Mobile para baixar o jogo base direto na sua pasta de instalação.',
         auto: {
           label: 'Baixar automaticamente',
           description: 'O SteamCMD baixa o depot direto para a pasta que você acabou de escolher. Não precisa do cliente Steam.',
@@ -119,6 +119,20 @@ export default {
         },
         finish: 'Concluir configuração',
       },
+    },
+    // Tela de pré-onboarding. Fica entre a landing page (`/`) e
+    // `#/onboarding` — pergunta a quem já tem o client Pre-Season 3
+    // se ele está instalado, para que eles pulem o assistente.
+    // Mora em `#/install-check`.
+    installCheck: {
+      title: 'Você já tem o client Pre-Season 3 instalado?',
+      description:
+        'Se você já baixou o jogo pela Steam, pode pular o assistente. Caso contrário, vamos te guiar pelo download e patch.',
+      detectedHint:
+        'Detectamos uma instalação existente — parece que está tudo certo.',
+      alreadyInstalled: 'Sim, já tenho',
+      chooseFolder: 'Sim — deixe-me escolher a pasta',
+      needToDownload: 'Não, preciso baixar',
     },
     account: {
       openMenu: 'Abrir menu da conta',
@@ -213,6 +227,17 @@ export default {
         notImplemented: 'API de amigos ainda não conectada.',
         unknown: 'Algo deu errado.',
         unauthenticated: 'Entre para gerenciar amigos.',
+        // 401 "unknown key - the account has not logged into the
+        // game yet". Conforme a API: abra o jogo uma vez com a
+        // chave para criar a conta no servidor.
+        key_never_played:
+          'Abra o jogo uma vez com esta chave antes de usar amigos.',
+        // 401 "that account has no character yet". O jogador ainda
+        // não criou um personagem no jogo.
+        no_character: 'Crie um personagem no jogo antes de usar amigos.',
+        // 401 "<header> is required" — bug do cliente, não
+        // corrigível pelo usuário.
+        missing_auth_header: 'O serviço de amigos rejeitou a requisição.',
         network_error: 'Não foi possível conectar ao serviço. Verifique sua conexão.',
         missing_target: 'Selecione um jogador primeiro.',
         unknown_action: 'Ação não suportada.',

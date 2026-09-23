@@ -99,14 +99,14 @@ export function useFriendsIncomingToast(enabled: boolean) {
                 ...prev.incoming,
                 {
                   id: userId,
-                  displayName: fromUser.displayName,
+                  displayName: fromUser.displayName ?? '',
                   avatarUrl: fromUser.avatarUrl,
                   country: null,
                   friendsSince: null,
                   relationship: 'incoming',
                   status: 'offline',
                   currentGame: null,
-                  lastSeenAt: null,
+                  lastSeen: null,
                 },
               ],
             }

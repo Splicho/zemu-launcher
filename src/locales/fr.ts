@@ -75,7 +75,7 @@ export default {
       },
       step3: {
         title: 'Obtenir le jeu de base',
-        description: 'ZEmu n’embarque pas le jeu de base. Choisissez une méthode ci-dessous — le téléchargement automatique est recommandé lorsqu’il est disponible.',
+        description: "ZEmu n’embarque pas le jeu de base. Connectez-vous avec l’application Steam Mobile pour télécharger le jeu de base directement dans votre dossier d’installation.",
         auto: {
           label: 'Télécharger automatiquement',
           description: 'SteamCMD extrait le dépôt directement dans le dossier que vous venez de choisir. Aucun client Steam requis.',
@@ -123,6 +123,21 @@ export default {
         },
         finish: 'Terminer la configuration',
       },
+    },
+    // Écran de pré-configuration. Se place entre la page
+    // d'accueil (`/`) et `#/onboarding` — demande aux utilisateurs
+    // existants s'ils ont déjà le client Pre-Season 3 installé
+    // pour qu'ils puissent passer l'assistant. Vit à
+    // `#/install-check`.
+    installCheck: {
+      title: 'Avez-vous déjà le client Pre-Season 3 installé ?',
+      description:
+        "Si vous avez déjà téléchargé le jeu depuis Steam, vous pouvez ignorer l'assistant de configuration. Sinon, nous vous guiderons pour le télécharger et le patcher.",
+      detectedHint:
+        "Nous avons détecté une installation existante — tout semble prêt.",
+      alreadyInstalled: 'Oui, je l’ai déjà',
+      chooseFolder: 'Oui — laissez-moi choisir le dossier',
+      needToDownload: 'Non, j’ai besoin de le télécharger',
     },
     account: {
       openMenu: "Ouvrir le menu du compte",
@@ -217,6 +232,17 @@ export default {
         notImplemented: 'L.’API Amis n.’est pas encore connectée.',
         unknown: 'Une erreur s.’est produite.',
         unauthenticated: 'Veuillez vous connecter pour gérer vos amis.',
+        // 401 "unknown key - the account has not logged into the
+        // game yet". Per l’API : lancer le jeu une fois avec la
+        // clé pour créer le compte côté serveur.
+        key_never_played:
+          'Lancez le jeu une fois avec cette clé avant d’utiliser les amis.',
+        // 401 "that account has no character yet". Le joueur n’a
+        // pas encore créé de personnage en jeu.
+        no_character: 'Créez un personnage en jeu avant d’utiliser les amis.',
+        // 401 "<header> is required" — bug côté client, pas
+        // corrigeable par l’utilisateur.
+        missing_auth_header: 'Le service d.’amis a rejeté la requête.',
         network_error: 'Impossible de rejoindre le service d.’amis. Vérifiez votre connexion et réessayez.',
         missing_target: 'Sélectionnez d.’abord un joueur.',
         unknown_action: 'Cette action n.’est pas prise en charge.',

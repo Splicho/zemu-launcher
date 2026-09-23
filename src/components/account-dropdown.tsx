@@ -33,6 +33,22 @@ export function AccountDropdown() {
 
   const fallback = (displayName[0] ?? '?').toUpperCase()
 
+  // The avatar in the dropdown should always be a fully-qualified
+  // URL on a CDN (Discord/Steam/R2). Historically the auth app's
+  // `publicUrlFor` could silently return the *bare R2 key* when
+  // `R2_PUBLIC_URL` was unset, and the launcher's persisted
+  // `token.image` then propagated that bare path through. The
+  // browser would resolve `https://tauri.localhost/avatars/...`
+  // (404) and the dropdown would silently render the fallback
+  // letter — but with no way for the user to tell *why*. Gate the
+  // `<AvatarImage>` on a real absolute URL so the fallback is the
+  // explicit "we don't know your avatar" signal rather than a
+  // silent 404.
+  const avatarSrc =
+    token?.image && /^https?:\/\//i.test(token.image)
+      ? token.image
+      : null
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -46,7 +62,7 @@ export function AccountDropdown() {
           className="rounded-full border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <Avatar>
-            {token?.image && <AvatarImage src={token.image} alt={displayName} />}
+            {avatarSrc ? <AvatarImage src={avatarSrc} alt={displayName} /> : null}
             <AvatarFallback>{fallback}</AvatarFallback>
           </Avatar>
         </button>
