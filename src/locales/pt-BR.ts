@@ -126,6 +126,7 @@ export default {
       signOut: 'Sair',
       unknownUser: 'Usuário desconhecido',
       title: 'Conta',
+      authKey: 'Chave de autenticação',
       description: 'Gerencie sua conta e credenciais salvas.',
       keyLabel: 'Chave de autenticação',
       keyDescription: 'A chave usada pelo jogo para identificar sua sessão.',

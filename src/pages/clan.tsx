@@ -139,8 +139,6 @@ function ClanView({ clan }: { clan: ClanProfile }) {
         <ClanActions clan={clan} />
       </div>
 
-      <Separator />
-
       <ClanTabs clan={clan} />
     </article>
   )

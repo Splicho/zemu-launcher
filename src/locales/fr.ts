@@ -130,6 +130,7 @@ export default {
       signOut: "Se déconnecter",
       unknownUser: "Utilisateur inconnu",
       title: "Compte",
+      authKey: "Clé d'authentification",
       description: "Gérez votre compte et vos identifiants enregistrés.",
       keyLabel: "Clé d'authentification",
       keyDescription: "La clé utilisée par le jeu pour identifier votre session.",

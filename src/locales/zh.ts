@@ -125,6 +125,7 @@ export default {
       signOut: '退出登录',
       unknownUser: '未知用户',
       title: '账户',
+      authKey: '身份验证密钥',
       description: '管理您的账户和已保存的凭据。',
       keyLabel: '身份验证密钥',
       keyDescription: '游戏用于识别您会话的密钥。',

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   awaitOAuthCallback,
@@ -82,6 +82,85 @@ export function useAuth(): UseAuthResult {
     token ? 'loading' : 'auth',
   )
   const [error, setError] = useState<string | null>(null)
+
+  // Always-fresh reference to the current token. The focus listener
+  // below reads from this ref instead of capturing `token` in its
+  // closure, so a refresh mid-session doesn't cause a stale read.
+  // Without this, the listener would either have to re-attach on
+  // every `token` change (churn) or silently use the bearer that
+  // was current at mount time.
+  const tokenRef = useRef<AuthToken | null>(token)
+  useEffect(() => {
+    tokenRef.current = token
+  }, [token])
+
+  // Re-run introspect against the server to pick up any user-side
+  // changes (avatar, display name, roles) that happened while we
+  // weren't looking. Two callers need this:
+  //
+  //   1. The mount effect below — startup introspect, unchanged.
+  //   2. The window-focus listener further down — re-introspect
+  //      when the user tabs back into the launcher. This is the
+  //      path that catches "I changed my avatar on the website,
+  //      came back to the launcher, and the dropdown is still
+  //      showing the old picture".
+  //
+  // The function is intentionally tolerant: a failure here never
+  // throws, never signs the user out, and never blanks the cached
+  // token. The dropdown would rather show a slightly stale avatar
+  // than bounce the user to the login screen because the introspect
+  // endpoint hiccuped while they were editing their profile.
+  //
+  // Side-effect: when the introspect payload actually changed the
+  // cached user fields (avatar URL, display name, etc.), we also
+  // rewrite the persisted token so a relaunch of the launcher
+  // doesn't snap back to the stale values. `persistToken` is a
+  // synchronous localStorage write — cheap, no race with the
+  // introspect request itself.
+  //
+  // Reads the token from `tokenRef` (not the closure) so the
+  // listener keeps working after a successful refresh without
+  // re-attaching.
+  const refreshProfileFromServer = useCallback(async () => {
+    const current = tokenRef.current
+    if (!current) return
+    try {
+      const result = await introspectToken(current.token)
+      if (!result.valid || !result.user) return
+      const user = result.user
+      const next: AuthToken = {
+        ...current,
+        userId: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        username: user.name,
+        image: user.image,
+        provider: user.provider,
+        roles: user.roles,
+        permissions: user.permissions,
+      }
+      // Cheap field-by-field diff so we only rewrite localStorage
+      // (and re-render consumers) when the server actually returned
+      // something new. Avatar URLs in particular change on every
+      // re-upload, so this will trigger on every profile edit;
+      // display name only on a rename.
+      const changed =
+        current.image !== next.image ||
+        current.displayName !== next.displayName ||
+        current.username !== next.username ||
+        current.email !== next.email ||
+        current.userId !== next.userId
+      if (!changed) return
+      setToken(next)
+      try {
+        persistToken(next)
+      } catch {
+        // best-effort: in-memory state already updated.
+      }
+    } catch (err) {
+      console.warn('[auth] focus-refresh introspect threw', err)
+    }
+  }, [])
 
   // Startup: if we have a persisted token, hit introspect to confirm
   // it's still valid (server-side expiry, secret rotation, etc.) before
@@ -180,6 +259,30 @@ export function useAuth(): UseAuthResult {
     // login/logout, which is exactly when we *want* to re-introspect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token?.token])
+
+  // Refresh the cached profile whenever the launcher window regains
+  // focus. Without this the dropdown avatar + display name stay
+  // pinned to whatever was true at app startup — so editing the
+  // profile on the website (or in another window of the launcher)
+  // shows no effect until the user signs out and back in.
+  //
+  // We piggyback on the existing `refreshProfileFromServer` callback,
+  // which is already tolerant of transient failures: a flaky
+  // network at focus time leaves the cached token untouched rather
+  // than bouncing the user to the login screen.
+  //
+  // Dep is just the bearer string — `refreshProfileFromServer` reads
+  // from `tokenRef` so it always sees the current token, and we don't
+  // need to re-attach the listener every time a refresh mutates the
+  // token shape.
+  useEffect(() => {
+    if (!token) return
+    const onFocus = () => {
+      void refreshProfileFromServer()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [token?.token, refreshProfileFromServer])
 
   const login = useCallback(async (email: string, password: string) => {
     setError(null)

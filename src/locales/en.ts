@@ -126,6 +126,12 @@ export default {
       signOut: 'Sign out',
       unknownUser: 'Unknown user',
       title: 'Account',
+      // Sidebar entry for the launcher's local auth-key surface.
+      // The launcher only owns this one slice of account
+      // management — profile/security/connected-accounts live on
+      // the web under `/settings/account`, reached via the
+      // "Account" external link above this entry.
+      authKey: 'Auth Key',
       description: 'Manage your account and saved credentials.',
       keyLabel: 'Auth key',
       keyDescription: 'The key used by the game to identify your session.',
