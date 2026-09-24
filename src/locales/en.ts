@@ -525,6 +525,41 @@ export default {
       loginBtn: 'Login',
       noAccount: 'No account?',
       createAccount: 'Create new account',
+      // Server-side error codes returned by /api/launcher/oauth/complete
+      // and /api/launcher/auth/login. Each code maps onto a `_title`
+      // and an optional `_desc` key; the launcher renders the title in
+      // `text-destructive` `font-medium` and the description (when
+      // present) in `text-muted-foreground`, matching the website's
+      // `<OAuthErrorBanner>` layout. Unknown codes fall through to
+      // `fallback_*`, which surfaces the raw code in the description
+      // so an unshipping bug is at least greppable from a screenshot.
+      errors: {
+        user_banned_title: 'Your account has been suspended',
+        user_banned_desc:
+          'If you believe this is a mistake, contact a staff member.',
+        session_missing_title:
+          'Sign-in session expired before completion',
+        session_missing_desc: 'Please try again.',
+        token_mint_failed_title: 'Could not finalize sign-in',
+        token_mint_failed_desc: 'Please try again in a moment.',
+        session_lookup_failed_title:
+          'Could not look up your sign-in session',
+        session_lookup_failed_desc: 'Please try again.',
+        invalid_callback_title: 'The login callback was rejected',
+        invalid_callback_desc:
+          'Please close the window and try again.',
+        invalid_credentials_title: 'That email or password is incorrect',
+        invalid_credentials_desc: 'Please try again.',
+        email_unverified_title: 'Your email is not verified yet',
+        email_unverified_desc:
+          'Check your inbox for the verification link, or sign in with Discord/Steam to skip this step.',
+        invalid_body_title: 'The sign-in request was rejected by the server',
+        invalid_body_desc: 'Please try again.',
+        internal_error_title: 'The server hit an unexpected error',
+        internal_error_desc: 'Please try again in a moment.',
+        fallback_title: 'Sign-in failed',
+        fallback_desc: 'Unexpected error code: {{code}}.',
+      },
     },
     news: {
       allNews: 'All news',

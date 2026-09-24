@@ -5,8 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
-import { AlertTriangle, DiscordFilled, Mail, Steam } from '@/components/icons'
+import { CircleAlert, DiscordFilled, Mail, Steam } from '@/components/icons'
 import { useAuthContext } from '@/contexts/auth-context'
+import { formatAuthError, type AuthErrorMessage } from '@/lib/auth-errors'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 import type { Provider } from '@/lib/auth'
 
@@ -15,14 +16,24 @@ export function LoginPage() {
   const { login, loginWithProvider } = useAuthContext()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<AuthErrorMessage | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showEmailForm, setShowEmailForm] = useState(false)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
 
+  // Wrap setError so any value coming back from the auth client is
+  // passed through the i18n mapping before it hits the banner. The
+  // auth client returns raw server-side codes (`user_banned`,
+  // `session_missing`, etc.); without this mapping the user sees
+  // the literal snake_case string in the UI, which looks like a
+  // dev-mode leak. See `lib/auth-errors.ts` for the full mapping.
+  const setAuthError = (code: string | null | undefined) => {
+    setError(formatAuthError(t, code))
+  }
+
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
+    setAuthError(null)
     setIsSubmitting(true)
     try {
       const result = await login(email, password)
@@ -31,7 +42,7 @@ export function LoginPage() {
         setEmail('')
         setPassword('')
       } else {
-        setError(result.error ?? 'Login failed')
+        setAuthError(result.error ?? 'loginFailed')
       }
     } finally {
       setIsSubmitting(false)
@@ -39,7 +50,7 @@ export function LoginPage() {
   }
 
   const handleProvider = (provider: Provider) => {
-    setError(null)
+    setAuthError(null)
     // Fire-and-forget. `loginWithProvider` awaits the entire OAuth
     // dance (browser handoff → user consents → callback event → token
     // exchange), which can take minutes if the user walks away. Holding
@@ -51,7 +62,7 @@ export function LoginPage() {
     // when it fails — so we don't need to wait here.
     void loginWithProvider(provider).then((result) => {
       if (!result.success && result.error) {
-        setError(result.error)
+        setAuthError(result.error)
       }
     })
   }
@@ -75,14 +86,24 @@ export function LoginPage() {
         transition={{ duration: 0.4, ease: 'easeOut' }}
         // `min-w-0` lets this column shrink below its intrinsic content
         // width — without it, a wide child (input, button text, brand
-        // icon) can blow the column past `max-w-md`, causing the OAuth
-        // stack and email form to escape the rounded card boundary.
-        // `mx-auto` plus `w-full` keeps the card horizontally centered
-        // up to the max width. We deliberately don't set `overflow-hidden`
-        // here — the focus ring on the email input extends 3px outside
-        // its bounding box via `focus-visible:ring-3`, and clipping it
-        // makes the ring look cut off on the left/right edges.
-        className="relative z-10 mx-auto flex w-full min-w-0 max-w-md flex-col gap-6 p-8 py-8"
+        // icon) can blow the column past the max width, causing the
+        // OAuth stack and email form to escape the rounded card
+        // boundary. `mx-auto` plus `w-full` keeps the card
+        // horizontally centered up to the max width. We deliberately
+        // don't set `overflow-hidden` here — the focus ring on the
+        // email input extends 3px outside its bounding box via
+        // `focus-visible:ring-3`, and clipping it makes the ring look
+        // cut off on the left/right edges.
+        //
+        // `max-w-lg` (32rem) is the wider card the launcher uses for
+        // its other forms (onboarding, settings) — `max-w-md` (28rem)
+        // started to feel cramped once the destructive error banner
+        // started rendering its two-line layout (title +
+        // muted-foreground description), especially when the
+        // description is a full sentence like the `user_banned`
+        // appeal message. Going wider here keeps the wrap point well
+        // clear of the icon column.
+        className="relative z-10 mx-auto flex w-full min-w-0 max-w-lg flex-col gap-6 p-8 py-8"
       >
         {/* Logo + title. The app icon path is bundled by Tauri's
             resource bundler; falls back to a transparent slot if the
@@ -104,18 +125,30 @@ export function LoginPage() {
             below). The previous version only rendered this inside the
             email form, which meant OAuth failures looked like
             nothing happened — the user just saw a button that didn't
-            seem to respond. */}
+            seem to respond.
+
+            The two-line layout mirrors the website's
+            `<OAuthErrorBanner>`: a destructive-border card with a
+            circle-alert icon on the left, a bold headline in
+            `text-destructive` and an optional muted-foreground
+            subtitle below. The subtitle is omitted when the locale
+            doesn't ship a secondary line (the `_desc` key missed)
+            so simple codes still render cleanly. */}
         {error && (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+            className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm"
           >
-            <AlertTriangle
-              size={16}
-              className="mt-0.5 shrink-0"
+            <CircleAlert
+              className="mt-0.5 size-4 shrink-0 text-destructive"
               aria-hidden="true"
             />
-            <span>{error}</span>
+            <div className="flex flex-col gap-1">
+              <p className="font-medium text-destructive">{error.title}</p>
+              {error.description ? (
+                <p className="text-muted-foreground">{error.description}</p>
+              ) : null}
+            </div>
           </div>
         )}
 
@@ -144,7 +177,7 @@ export function LoginPage() {
             type="button"
             variant="email"
             onClick={() => {
-              setError(null)
+              setAuthError(null)
               setShowEmailForm((prev) => !prev)
             }}
             disabled={isSubmitting}

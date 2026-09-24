@@ -463,6 +463,30 @@ export default {
       loginBtn: 'Entrar',
       noAccount: 'Não tem uma conta?',
       createAccount: 'Criar nova conta',
+      errors: {
+        user_banned_title: 'Sua conta foi suspensa',
+        user_banned_desc:
+          'Se você acha que isso é um engano, entre em contato com a equipe.',
+        session_missing_title: 'A sessão de login expirou antes de terminar',
+        session_missing_desc: 'Tente novamente.',
+        token_mint_failed_title: 'Não foi possível concluir o login',
+        token_mint_failed_desc: 'Tente novamente em instantes.',
+        session_lookup_failed_title: 'Não foi possível localizar sua sessão',
+        session_lookup_failed_desc: 'Tente novamente.',
+        invalid_callback_title: 'O retorno do login foi rejeitado',
+        invalid_callback_desc: 'Feche a janela e tente novamente.',
+        invalid_credentials_title: 'E-mail ou senha incorretos',
+        invalid_credentials_desc: 'Tente novamente.',
+        email_unverified_title: 'Seu e-mail ainda não foi verificado',
+        email_unverified_desc:
+          'Confira sua caixa de entrada ou entre com Discord/Steam para pular esta etapa.',
+        invalid_body_title: 'A requisição de login foi rejeitada pelo servidor',
+        invalid_body_desc: 'Tente novamente.',
+        internal_error_title: 'O servidor encontrou um erro inesperado',
+        internal_error_desc: 'Tente novamente em instantes.',
+        fallback_title: 'Falha ao entrar',
+        fallback_desc: 'Código de erro inesperado: {{code}}.',
+      },
     },
     // News pages
     news: {

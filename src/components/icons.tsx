@@ -214,12 +214,32 @@ export function Mail({ ...props }: IconProps) {
 }
 
 export function AlertTriangle({ ...props }: IconProps) {
-  
+
   return (
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="1em" height="1em" {...props}>
 	<g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}>
 		<path d="M13.925 21h-3.85c-4.63 0-6.945 0-7.799-1.506c-.853-1.506.331-3.503 2.7-7.495L6.9 8.753C9.176 4.918 10.313 3 12 3s2.824 1.918 5.1 5.753L19.023 12c2.369 3.992 3.553 5.989 2.7 7.495C20.87 21 18.555 21 13.924 21M12 17v-4"></path>
 		<path d="M12 9.25h.125m.125 0a.25.25 0 1 0-.5 0a.25.25 0 0 0 .5 0"></path>
+	</g>
+</svg>
+  )
+}
+
+/**
+ * Lucide's `circle-alert` icon — outlined circle with an exclamation
+ * mark. We pair this with the destructive banner on the login screen
+ * (and any other auth-error surface) to match the web's auth-app
+ * banner. `AlertTriangle` is the heavier, filled variant; this is
+ * the lighter outline version that the design system uses for
+ * recoverable / informational errors.
+ */
+export function CircleAlert({ ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+	<g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}>
+		<circle cx="12" cy="12" r="10"></circle>
+		<line x1="12" x2="12" y1="8" y2="12"></line>
+		<line x1="12" x2="12.01" y1="16" y2="16"></line>
 	</g>
 </svg>
   )

@@ -196,7 +196,13 @@ fn handle_request(
             200,
             render_page(
                 true,
-                "Return to ZEmu Launcher to finish signing in. You can close this window.",
+                // Auto-closes after 1.5s — the message is just a
+                // confirmation pulse so the user knows the browser
+                // got the result before it disappears. The actual
+                // sign-in happens via the `oauth-callback` Tauri
+                // event the loopback server fires in parallel; this
+                // page is purely visual.
+                "Returning to ZEmu Launcher. You can close this window if it doesn't close automatically.",
             ),
         ),
         Err(error) => (400, render_page(false, &error.to_string())),
@@ -224,15 +230,42 @@ fn render_page(success: bool, message: &str) -> String {
         "Authentication Failed"
     };
     let color = if success { "#4ade80" } else { "#f87171" };
+    // Escape user-supplied values to keep the response body inert.
+    // The Rust handler builds the body by string concatenation, so
+    // every value rendered inside the page has to be HTML-escaped
+    // here — without it a malicious or buggy upstream callback
+    // (e.g. `?error=<script>…</script>`) could turn this page into
+    // an XSS vector against anyone in the launcher's browser
+    // session. The error parameter also goes through the
+    // `replace` chain below.
     let message = message
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;");
+    // Auto-close on success so the user doesn't have to dismiss the
+    // tab manually. The Tauri webview handles the actual sign-in
+    // completion via the `oauth-callback` event the loopback server
+    // fires in parallel — this page is purely a visual confirmation
+    // for the system browser. We delay the close by `auto_close_ms`
+    // so the user has a beat to read the message, then `window.close()`
+    // returns focus to whatever they had open before the OAuth flow
+    // started. On the error path we keep the page open so the user
+    // can copy the error into a support ticket — auto-closing an
+    // error page is the kind of papercut that turns into a
+    // 30-minute support chat.
+    let auto_close_ms = if success { 1500 } else { 0 };
+    let auto_close_script = if auto_close_ms > 0 {
+        format!(
+            "<script>setTimeout(function(){{window.close();}}, {auto_close_ms});</script>"
+        )
+    } else {
+        String::new()
+    };
 
     format!(
-        "<!DOCTYPE html><html><head><title>OAuth Callback</title><style>body{{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#1a1a1a;color:#fff;}}.container{{text-align:center;padding:2rem;}}h1{{color:{color};}}</style></head><body><div class='container'><h1>{title}</h1><p>{message}</p></div></body></html>"
+        "<!DOCTYPE html><html><head><title>OAuth Callback</title><style>body{{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#1a1a1a;color:#fff;}}.container{{text-align:center;padding:2rem;}}h1{{color:{color};}}</style></head><body><div class='container'><h1>{title}</h1><p>{message}</p></div>{auto_close_script}</body></html>"
     )
 }
 
