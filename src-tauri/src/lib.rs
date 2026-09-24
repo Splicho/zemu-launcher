@@ -5,11 +5,14 @@ mod client_config;
 mod commands;
 mod debug_log;
 mod depot;
+mod dev_env;
 mod discord;
 mod friends;
 mod friends_debug_log;
 mod friends_realtime;
 mod game;
+mod hardware;
+mod hardware_api;
 mod launch_args;
 mod models;
 mod oauth_server;
@@ -17,6 +20,7 @@ mod public_api;
 mod state;
 mod steam;
 mod storage;
+mod tpm;
 mod update;
 mod wine;
 
@@ -28,6 +32,16 @@ use url::Url;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load dev-only env overrides from `.env.local` BEFORE anything
+    // else. The Rust side doesn't read Vite's `.env.local` natively;
+    // this is the bridge that lets `LAUNCHER_API_BASE_URL` (and any
+    // other dev-only override) flow into `std::env::var(...)` calls.
+    // Production bundles ship without `.env.local`, so a missing file
+    // is a no-op. See `dev_env.rs` for the full rationale.
+    if let Err(error) = dev_env::load() {
+        eprintln!("[dev_env] load failed: {error}");
+    }
+
     let app_state = AppState::default();
 
     // One-shot shutdown channel. When the app exits, the `Sender` is dropped

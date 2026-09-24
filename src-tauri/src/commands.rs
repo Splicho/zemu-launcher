@@ -5,6 +5,8 @@ use crate::discord;
 use crate::friends;
 use crate::friends_debug_log;
 use crate::game;
+use crate::hardware;
+use crate::hardware_api;
 use crate::models::{
     AppTheme, AuthToken, CommandResult, DiscordRpcMode, GameLaunchState,
     OAuthCallbackPayload, SteamcmdResult, UpdateCheckResult, UpdateStatus, VersionManifest,
@@ -461,6 +463,104 @@ pub fn auth_stop_oauth_callback_server(
 ) -> Result<(), String> {
     crate::oauth_server::stop_oauth_callback_server(&app, &expected_state)
         .map_err(|error| error.to_string())
+}
+
+/// Enroll this device's hardware anchor with the api.
+///
+/// Called by the renderer's `use-enroll-hardware` hook after the user
+/// reaches the `'authed'` state for the first time in this session.
+/// The api re-keys the `publicKey` server-side via `hmacSha256Hex()`
+/// before insert, so a leak of one HMAC secret doesn't expose
+/// previously-hashed rows.
+///
+/// On success returns `Some({ kind, hash })` — the `kind` is the
+/// anchor the api accepted (`machine-guid`, etc.); the `hash` is
+/// empty for now because the api's `POST /v1/hardware/enroll` returns
+/// `{ enrolled: true }` without echoing the re-keyed hash back. A
+/// future "my devices" surface in the account dropdown can call
+/// `GET /v1/hardware/list` to render the rows. On any failure — no
+/// anchor at all, network error, 4xx/5xx — returns `Ok(None)` so
+/// the renderer doesn't have to handle a thrown error; the
+/// `assertHardwareNotBanned` gate degrades to a no-op when the user
+/// has zero rows (best-effort per the plan).
+///
+/// We deliberately do NOT pre-hash on the launcher side. Sending the
+/// raw TPM pubkey / OS UUID keeps `HMAC_SECRET` server-only; the api
+/// re-keys anyway, so there's no signal-strength difference.
+#[tauri::command]
+pub async fn enroll_hardware(
+    app: tauri::AppHandle,
+) -> Result<Option<hardware::EnrolledAnchor>, String> {
+    let computed = match hardware::compute_anchor(&app) {
+        Ok(Some(anchor)) => anchor,
+        Ok(None) => {
+            let _ = debug_log::append(
+                &app,
+                "hardware",
+                "enroll_hardware: no anchor — launcher login proceeds without hardware ban-evasion defense",
+            );
+            return Ok(None);
+        }
+        Err(error) => {
+            let _ = debug_log::append(
+                &app,
+                "hardware",
+                &format!("enroll_hardware: compute_anchor error {error}"),
+            );
+            return Ok(None);
+        }
+    };
+
+    let kind_string = computed.kind.api_string().to_string();
+    let public_key = match String::from_utf8(computed.pub_bytes.clone()) {
+        Ok(s) => s,
+        Err(err) => {
+            let _ = debug_log::append(
+                &app,
+                "hardware",
+                &format!("enroll_hardware: pub_bytes not valid utf8: {err}"),
+            );
+            return Ok(None);
+        }
+    };
+
+    // The api's Zod schema requires `launcherKey` to be exactly 32
+    // chars; the service ignores it (auth is via the bearer header).
+    // We send a 32-char placeholder so the schema passes; the api
+    // resolves the user from `Authorization: Bearer …` regardless.
+    let payload = serde_json::json!({
+        "launcherKey": "0".repeat(32),
+        "kind": kind_string,
+        "publicKey": public_key,
+        "metadata": computed.metadata.clone(),
+    });
+
+    // The hardware endpoint lives on the api (`api.zemu.uk`),
+    // NOT the auth app (`id.zemu.uk`) — `hardware_api::api_post`
+    // uses a separate base URL. We can't reuse `api::api_post`
+    // here because that route resolves to the auth app via
+    // `detect_api_base_url`.
+    match hardware_api::api_post(&app, "v1/hardware/enroll", payload).await {
+        Ok(_value) => {
+            let _ = debug_log::append(
+                &app,
+                "hardware",
+                &format!("enroll_hardware: enrolled kind={kind_string}"),
+            );
+            Ok(Some(hardware::EnrolledAnchor {
+                kind: kind_string,
+                hash: String::new(),
+            }))
+        }
+        Err(error) => {
+            let _ = debug_log::append(
+                &app,
+                "hardware",
+                &format!("enroll_hardware: POST failed {error}"),
+            );
+            Ok(None)
+        }
+    }
 }
 
 #[tauri::command]
@@ -971,6 +1071,7 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         auth_complete_oauth_token,
         auth_take_pending_oauth_callback,
         auth_stop_oauth_callback_server,
+        enroll_hardware,
         discord_set_in_launcher,
         discord_set_activity,
         discord_get_enabled,

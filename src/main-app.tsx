@@ -32,6 +32,7 @@ import { useFriendsPresence } from '@/hooks/use-friends-presence'
 import { useFriendsRealtimeSync } from '@/hooks/use-friends'
 import { useAvatarSync } from '@/hooks/use-avatar-sync'
 import { usePresenceHeartbeat } from '@/hooks/use-presence-heartbeat'
+import { useEnrollHardware } from '@/hooks/use-enroll-hardware'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
@@ -147,6 +148,20 @@ function AvatarSyncHost() {
   return null
 }
 
+/**
+ * Mounted at the top level so the launcher's hardware-identity
+ * enrollment fires once per `'authed'` resolution, regardless of
+ * which page the user is on. The Rust side does the actual lift
+ * (TPM ladder + OS-UUID fallback + API POST); the renderer just
+ * enqueues the call on a short idle delay and silently swallows
+ * failures. See `use-enroll-hardware.ts` for the full rationale.
+ */
+function EnrollHardwareHost() {
+  const { status } = useAuthContext()
+  useEnrollHardware(status)
+  return null
+}
+
 export default function MainApp() {
   return (
     <AuthProvider>
@@ -159,6 +174,7 @@ export default function MainApp() {
           <FriendsPresenceHost />
           <PresenceHeartbeatHost />
           <AvatarSyncHost />
+          <EnrollHardwareHost />
           <Toaster />
         </GameStateProvider>
       </UpdateProvider>
