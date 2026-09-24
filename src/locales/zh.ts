@@ -361,6 +361,7 @@ export default {
       loginBtn: '登录',
       noAccount: '没有账户？',
       createNewAccount: '创建新账户',
+      lastUsed: '上次使用',
       errors: {
         user_banned_title: '您的账户已被封禁',
         user_banned_desc: '如果您认为这是误判，请联系管理员申诉。',

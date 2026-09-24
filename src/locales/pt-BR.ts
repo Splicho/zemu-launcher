@@ -463,6 +463,7 @@ export default {
       loginBtn: 'Entrar',
       noAccount: 'Não tem uma conta?',
       createAccount: 'Criar nova conta',
+      lastUsed: 'Usado por último',
       errors: {
         user_banned_title: 'Sua conta foi suspensa',
         user_banned_desc:

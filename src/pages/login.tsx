@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { CircleAlert, DiscordFilled, Mail, Steam } from '@/components/icons'
 import { useAuthContext } from '@/contexts/auth-context'
+import { useLastUsedProvider } from '@/hooks/use-last-used-provider'
 import { formatAuthError, type AuthErrorMessage } from '@/lib/auth-errors'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 import type { Provider } from '@/lib/auth'
@@ -14,6 +16,7 @@ import type { Provider } from '@/lib/auth'
 export function LoginPage() {
   const { t } = useTranslation()
   const { login, loginWithProvider } = useAuthContext()
+  const { lastUsedProvider, saveLastUsedProvider } = useLastUsedProvider()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<AuthErrorMessage | null>(null)
@@ -35,6 +38,13 @@ export function LoginPage() {
     e.preventDefault()
     setAuthError(null)
     setIsSubmitting(true)
+    // Record the user's preferred login surface. We save *before*
+    // the network call (rather than on success) because a returning
+    // user who picks the same method every launch still benefits
+    // from the badge even when today's attempt fails — see
+    // `useLastUsedProvider` for the rationale. Same pattern for
+    // OAuth in `handleProvider`.
+    saveLastUsedProvider('email')
     try {
       const result = await login(email, password)
       if (result.success) {
@@ -51,6 +61,13 @@ export function LoginPage() {
 
   const handleProvider = (provider: Provider) => {
     setAuthError(null)
+    // Record the user's preferred login surface *before* kicking off
+    // the OAuth flow. We don't gate on `success` here either —
+    // returning users tend to keep using the same provider even
+    // when individual attempts fail, and the badge should point at
+    // the button they actually clicked last, not at the button that
+    // happened to succeed.
+    saveLastUsedProvider(provider)
     // Fire-and-forget. `loginWithProvider` awaits the entire OAuth
     // dance (browser handoff → user consents → callback event → token
     // exchange), which can take minutes if the user walks away. Holding
@@ -153,40 +170,68 @@ export function LoginPage() {
         )}
 
         <div className="flex flex-col gap-3">
-          <Button
-            type="button"
-            variant="discord"
-            onClick={() => handleProvider('discord')}
-            size="lg"
-            className="h-12 w-full justify-center rounded-sm"
-          >
-            <DiscordFilled className="!size-5" />
-            {t('login.continueDiscord')}
-          </Button>
-          <Button
-            type="button"
-            variant="steam"
-            onClick={() => handleProvider('steam')}
-            size="lg"
-            className="h-12 w-full justify-center rounded-sm"
-          >
-            <Steam className="!size-5" />
-            {t('login.continueSteam')}
-          </Button>
-          <Button
-            type="button"
-            variant="email"
-            onClick={() => {
-              setAuthError(null)
-              setShowEmailForm((prev) => !prev)
-            }}
-            disabled={isSubmitting}
-            size="lg"
-            className="h-12 w-full justify-center rounded-sm"
-          >
-            <Mail className="!size-5" />
-            {t('login.continueEmail')}
-          </Button>
+          {/* Each button is wrapped in a `relative` container so the
+              "Last used" badge can absolutely-position itself at the
+              top-right corner, sitting half-on-half-off the button's
+              rounded border. The badge is keyed off the
+              `lastUsedProvider` value read once on mount (see
+              `use-last-used-provider.ts`), so it doesn't flicker
+              between clicks — only between sessions. */}
+          <div className="relative">
+            <Button
+              type="button"
+              variant="discord"
+              onClick={() => handleProvider('discord')}
+              size="lg"
+              className="h-12 w-full justify-center rounded-sm"
+            >
+              <DiscordFilled className="!size-5" />
+              {t('login.continueDiscord')}
+            </Button>
+            {lastUsedProvider === 'discord' ? (
+              <Badge className="absolute -top-2 -right-2">
+                {t('login.lastUsed')}
+              </Badge>
+            ) : null}
+          </div>
+          <div className="relative">
+            <Button
+              type="button"
+              variant="steam"
+              onClick={() => handleProvider('steam')}
+              size="lg"
+              className="h-12 w-full justify-center rounded-sm"
+            >
+              <Steam className="!size-5" />
+              {t('login.continueSteam')}
+            </Button>
+            {lastUsedProvider === 'steam' ? (
+              <Badge className="absolute -top-2 -right-2">
+                {t('login.lastUsed')}
+              </Badge>
+            ) : null}
+          </div>
+          <div className="relative">
+            <Button
+              type="button"
+              variant="email"
+              onClick={() => {
+                setAuthError(null)
+                setShowEmailForm((prev) => !prev)
+              }}
+              disabled={isSubmitting}
+              size="lg"
+              className="h-12 w-full justify-center rounded-sm"
+            >
+              <Mail className="!size-5" />
+              {t('login.continueEmail')}
+            </Button>
+            {lastUsedProvider === 'email' ? (
+              <Badge className="absolute -top-2 -right-2">
+                {t('login.lastUsed')}
+              </Badge>
+            ) : null}
+          </div>
         </div>
 
 

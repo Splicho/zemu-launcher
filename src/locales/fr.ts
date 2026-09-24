@@ -365,6 +365,7 @@ export default {
       loginBtn: "Connexion",
       noAccount: "Pas de compte ?",
       createAccount: "Créer un nouveau compte",
+      lastUsed: "Dernière connexion",
       errors: {
         user_banned_title: 'Votre compte a été suspendu',
         user_banned_desc:

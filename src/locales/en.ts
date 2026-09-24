@@ -525,6 +525,11 @@ export default {
       loginBtn: 'Login',
       noAccount: 'No account?',
       createAccount: 'Create new account',
+      // Floating badge attached to the button the user picked last
+      // time they signed in. Rendered above the top-right corner of
+      // the matching Discord / Steam / Email button — see
+      // `use-last-used-provider.ts` for the storage shape.
+      lastUsed: 'Last used',
       // Server-side error codes returned by /api/launcher/oauth/complete
       // and /api/launcher/auth/login. Each code maps onto a `_title`
       // and an optional `_desc` key; the launcher renders the title in
