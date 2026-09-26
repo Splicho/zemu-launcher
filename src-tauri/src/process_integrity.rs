@@ -13,9 +13,10 @@
 //! This module closes that gap by enumerating the live loaded-module
 //! list of every `H1Z1.exe` (and its child processes) on a fixed
 //! cadence, diffing it against a static allowlist, and POSTing
-//! anything unknown to zemu-website's `POST /v1/integrity/events`
-//! endpoint. The API fans out to a new admin `Integrity Alerts` tab
-//! and a configurable Discord channel via the existing bot
+//! anything unknown to zemu-website's
+//! `POST /v1/moderation/integrity/events` endpoint. The API fans
+//! out to the `Integrity Alerts` tab (under the admin `Moderation`
+//! group) and a configurable Discord channel via the existing bot
 //! notifications pipeline.
 //!
 //! ## Design
@@ -48,7 +49,7 @@
 //! ## Wire shape
 //!
 //! ```json
-//! POST /v1/integrity/events
+//! POST /v1/moderation/integrity/events
 //! {
 //!   "occurredAt": "2026-09-26T20:31:04.123Z",
 //!   "gamePid": 1234,
@@ -163,7 +164,7 @@ struct UnknownModule {
     first_seen_at: DateTime<Utc>,
 }
 
-/// Request body for `POST /v1/integrity/events`.
+/// Request body for `POST /v1/moderation/integrity/events`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProcessIntegrityEvent {
@@ -742,7 +743,7 @@ fn hex_lower(bytes: &[u8]) -> String {
 /// handling stay consistent with the rest of the launcher's
 /// server-facing requests.
 fn post_event(app: &AppHandle, event: &ProcessIntegrityEvent) -> Result<(), ApiPostError> {
-    let path = "/v1/integrity/events";
+    let path = "/v1/moderation/integrity/events";
     let body = serde_json::to_vec(event).map_err(|err| {
         ApiPostError::Other(format!("serialise integrity event: {err}"))
     })?;

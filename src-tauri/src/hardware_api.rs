@@ -171,8 +171,9 @@ impl std::error::Error for ApiPostError {}
 /// iteration of its inner loop.
 ///
 /// Returns `Ok(())` on a 2xx response — the api's
-/// `POST /v1/integrity/events` doesn't return any data the launcher
-/// needs; it only needs to know "did the server accept the report".
+/// `POST /v1/moderation/integrity/events` doesn't return any data
+/// the launcher needs; it only needs to know "did the server accept
+/// the report".
 pub fn api_post_json(
     app: &AppHandle,
     path: &str,
