@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -26,10 +25,11 @@ import {
   CardContent,
 } from '@/components/ui/card'
 import {
-  fetchTopLeaderboard,
   TIER_VALUES,
   type LeaderboardTier,
+  type LeaderboardEntry,
 } from '@/lib/leaderboard'
+import { useLeaderboardEntries } from '@/hooks/use-leaderboard'
 
 const RANK_ASSETS: Record<LeaderboardTier, { smudge: string; medal: string }> = {
   bronze: { smudge: '/images/assets/ranks/bronze/smudge.png', medal: '/images/assets/ranks/bronze/medal.png' },
@@ -82,14 +82,33 @@ export function LeaderboardCard() {
   const [region, setRegion] = useState('EU')
   const [teamMode, setTeamMode] = useState('Solo')
 
-  const { data: entries, error } = useQuery({
-    queryKey: ['leaderboard', { region, teamMode, tierFilter }],
-    queryFn: () => fetchTopLeaderboard({ limit: 5, tier: tierFilter }),
-  })
+  // Share the `['leaderboard', 'entries']` cache with the dedicated
+  // leaderboard page. The page hits the same key, so navigating
+  // straight from this card into the full table renders the rows
+  // instantly without a second fetch + skeleton flash.
+  const { data: entries, error } = useLeaderboardEntries()
 
-  // Hard cap so the card always renders at most 5 rows even if the API
-  // returns more, or the tier filter is later relaxed client-side.
-  const visibleEntries = entries?.slice(0, 5)
+  // Sort by Total Score, take the top 5, and apply the tier filter
+  // client-side. The underlying query returns the full standings in
+  // server order, so we re-rank here for the card. Re-running the
+  // sort + filter is cheap (the page already does the same thing
+  // over the same array) and keeps the home card consistent with
+  // the leaderboard page's first row.
+  const visibleEntries = useMemo<LeaderboardEntry[]>(() => {
+    if (!entries) return []
+    const filtered = tierFilter === 'all'
+      ? entries
+      : entries.filter(e => e.tier === tierFilter)
+    const sorted = [...filtered].sort(
+      (a, b) => b.top10TotalScore - a.top10TotalScore,
+    )
+    return sorted.slice(0, 5).map((entry, index) => ({
+      ...entry,
+      position: index + 1,
+    }))
+  }, [entries, tierFilter])
+
+  const isInitialLoading = entries === undefined && !error
 
   return (
     <Card>
@@ -163,7 +182,7 @@ export function LeaderboardCard() {
               </TableRow>
             )}
 
-            {entries === undefined && !error && (
+            {isInitialLoading && (
               <>
                 <SkeletonRow />
                 <SkeletonRow />
@@ -173,7 +192,7 @@ export function LeaderboardCard() {
               </>
             )}
 
-            {visibleEntries && visibleEntries.length === 0 && !error && (
+            {!isInitialLoading && visibleEntries.length === 0 && !error && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
                   {t('leaderboard.noPlayersFound')}
@@ -181,7 +200,7 @@ export function LeaderboardCard() {
               </TableRow>
             )}
 
-            {visibleEntries?.map((entry) => (
+            {visibleEntries.map((entry) => (
               <TableRow
                 key={entry.position}
                 className="cursor-pointer hover:bg-foreground/5"
