@@ -215,14 +215,19 @@ for (const desktop of [true, false]) {
     for (const playing of [false, true]) {
       const h = setup(desktop, { playing })
       h.load('@/hooks/use-presence-heartbeat').usePresenceHeartbeat(true)
-      assert.equal(h.timers[0].delay, 2000)
-      await h.timers.shift().callback()
+      // The 5000ms timer is the per-request timeout race inside
+      // `sendHeartbeat`. The cadence assertions below only care
+      // about the heartbeat interval, so peel the timeout race off.
+      const initialTimer = h.timers.shift()
+      assert.equal(initialTimer.delay, 2000)
+      await initialTimer.callback()
       assert.equal(h.calls[0].url, 'https://api.zemu.uk/v1/presence/heartbeat')
       assert.equal(h.calls[0].method, 'POST')
       assert.equal(new Headers(h.calls[0].headers).get('authorization'), 'Bearer test-bearer')
       assert.deepEqual(JSON.parse(decodeBody(h.calls[0])), {
         status: playing ? 'in_game' : 'online', currentGame: playing ? 'ZEmu' : null,
       })
+      assert.equal(h.timers.shift()?.delay, 5000) // timeout race
       assert.equal(h.timers[0].delay, 30000)
       h.cleanup()
       assert.equal(h.timers.length, 0)
@@ -231,5 +236,36 @@ for (const desktop of [true, false]) {
     disabled.load('@/hooks/use-presence-heartbeat').usePresenceHeartbeat(false)
     assert.equal(disabled.timers.length, 0)
     assert.equal(disabled.calls.length, 0)
+  })
+
+  test(`${platform}: presence heartbeats abort after 5s when the api stalls (the regaining timeout regression)`, async () => {
+    const h = setup(desktop, {
+      // Never resolve — simulates a hung api / TCP black hole.
+      // The shared transport doesn't expose AbortSignal, so the
+      // hook has to bound each request itself; this pins the
+      // pre-PR `AbortSignal.timeout(5_000)` ceiling.
+      failure: new Promise(() => {}),
+    })
+    const { usePresenceHeartbeat } = h.load('@/hooks/use-presence-heartbeat')
+    usePresenceHeartbeat(true)
+    // First beat's "wait 2s" timer fires; the request itself never
+    // resolves, so the hook's outer `try` falls through to the 5s
+    // timeout race instead of hanging the interval chain. Drive the
+    // outer timer, then the inner 5000ms race, without relying on
+    // wall-clock time.
+    const initialTimer = h.timers.shift()
+    assert.equal(initialTimer.delay, 2000)
+    let beatSettled = false
+    initialTimer.callback().then(() => { beatSettled = true }, () => {})
+    const timeoutTimer = h.timers.shift()
+    assert.equal(timeoutTimer?.delay, 5000)
+    timeoutTimer.callback()
+    // Settle pending microtasks: the race winner is the timeout,
+    // the request promise lingers unresolved but its eventual
+    // rejection (from the no-op `.catch()`) must not blow up.
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(beatSettled, true, 'sendHeartbeat should have settled once the timeout fired')
+    assert.ok(h.calls.length >= 1, 'at least one heartbeat request should have been issued before the timeout')
+    h.cleanup()
   })
 }

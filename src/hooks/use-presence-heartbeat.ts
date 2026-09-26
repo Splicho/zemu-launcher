@@ -46,6 +46,19 @@ import { useGameStateContext } from '@/hooks/use-game-state-context'
 const HEARTBEAT_INTERVAL_MS = 30_000
 
 /**
+ * Per-request ceiling. The shared `httpFetch` transport doesn't
+ * forward `AbortSignal`, so we wrap it in a `Promise.race` against
+ * a timer instead. The previous `fetch`-based implementation used
+ * `AbortSignal.timeout(5_000)`; this preserves the same bound
+ * without enlarging the transport's API surface.
+ *
+ * Worst-case the api's 90s staleness window shows the user as
+ * offline for an extra 5s on a hung server — acceptable, and the
+ * next interval retries.
+ */
+const HEARTBEAT_TIMEOUT_MS = 5_000
+
+/**
  * First heartbeat delay — long enough that the auth context has
  * settled and the GameStateProvider has loaded, short enough that
  * the user sees "Online" on their other devices within a couple
@@ -85,29 +98,46 @@ async function sendHeartbeat(
   payload: HeartbeatPayload,
 ): Promise<boolean> {
   const url = `${baseUrl.replace(/\/+$/, '')}/v1/presence/heartbeat`
+  // `httpFetch` doesn't expose `AbortSignal`; race it against a
+  // timer to keep the pre-PR per-request ceiling
+  // (`AbortSignal.timeout(5_000)`). The losing arm of the race is
+  // always an unhandled rejection if `sendHeartbeat` returns early
+  // (the function returns `false` to callers on any failure), so
+  // attach a no-op `.catch()` to each arm in case it loses.
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(
+      () => reject(new Error(`heartbeat timed out after ${HEARTBEAT_TIMEOUT_MS}ms`)),
+      HEARTBEAT_TIMEOUT_MS,
+    ).unref?.()
+  })
+  timeout.catch(() => {})
+  let res: Response
   try {
-    const res = await httpFetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    })
-    if (!res.ok) {
-      console.warn(
-        `[presence] heartbeat ${res.status} ${res.statusText}`,
-      )
-      return false
-    }
-    return true
+    res = await Promise.race([
+      httpFetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      }),
+      timeout,
+    ])
   } catch (err) {
     console.warn(
       `[presence] heartbeat threw: ${err instanceof Error ? err.message : String(err)}`,
     )
     return false
   }
+  if (!res.ok) {
+    console.warn(
+      `[presence] heartbeat ${res.status} ${res.statusText}`,
+    )
+    return false
+  }
+  return true
 }
 
 /**
