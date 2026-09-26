@@ -118,3 +118,117 @@ pub async fn api_post(
 fn truncate(input: &str) -> String {
     input.chars().take(400).collect()
 }
+
+/// Synchronous-friendly wrapper around `api_post` that accepts a
+/// pre-serialised JSON byte slice instead of a `serde_json::Value`.
+///
+/// Useful when the caller already paid for serialisation (e.g. the
+/// process-integrity monitor serialises once per scan and passes the
+/// bytes through) or when a tighter error type than
+/// `anyhow::Result` is desired. Errors are surfaced as
+/// [`ApiPostError`] so callers can `.unwrap_or_log` or fall back
+/// without unwrapping an `anyhow::Error`.
+#[derive(Debug)]
+pub enum ApiPostError {
+    /// No launcher JWT stored locally — the user hasn't signed in.
+    NoToken,
+    /// Network / request build failure.
+    Request(String),
+    /// Server returned a non-2xx status. Carries the status + a
+    /// truncated body so the caller can log it without dumping
+    /// potentially-large error blobs.
+    BadStatus { status: u16, body: String },
+    /// Response body didn't parse as JSON. Future use — the
+    /// integrity monitor doesn't currently need JSON back from the
+    /// api, but having the variant in the public type lets future
+    /// callers use the same helper.
+    #[allow(dead_code)]
+    BadBody(String),
+    /// Misc. serialisation failures (rare — body is pre-serialised).
+    #[allow(dead_code)]
+    Other(String),
+}
+
+impl std::fmt::Display for ApiPostError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ApiPostError::NoToken => write!(f, "launcher token missing"),
+            ApiPostError::Request(msg) => write!(f, "request failed: {msg}"),
+            ApiPostError::BadStatus { status, body } => {
+                write!(f, "status {status}: {}", truncate(body))
+            }
+            ApiPostError::BadBody(msg) => write!(f, "bad body: {msg}"),
+            ApiPostError::Other(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
+impl std::error::Error for ApiPostError {}
+
+/// Like [`api_post`] but takes a pre-serialised JSON body. Used by
+/// the process-integrity monitor, which serialises its event once
+/// per scan rather than carrying a `serde_json::Value` through every
+/// iteration of its inner loop.
+///
+/// Returns `Ok(())` on a 2xx response — the api's
+/// `POST /v1/integrity/events` doesn't return any data the launcher
+/// needs; it only needs to know "did the server accept the report".
+pub fn api_post_json(
+    app: &AppHandle,
+    path: &str,
+    body: &[u8],
+) -> Result<(), ApiPostError> {
+    let token = auth::get_token(app)
+        .map_err(|e| ApiPostError::Other(format!("token lookup: {e}")))?
+        .ok_or(ApiPostError::NoToken)?;
+
+    let api_base_url = resolve_api_base_url();
+    let base = api_base_url.trim_end_matches('/');
+    let trimmed_path = path.trim_start_matches('/');
+    let request_url = Url::parse(&format!("{base}/{trimmed_path}"))
+        .map_err(|e| ApiPostError::Other(format!("url parse: {e}")))?;
+
+    let _ = debug_log::append(
+        app,
+        "integrity.api",
+        &format!("api_post_json path={} body_bytes={}", trimmed_path, body.len()),
+    );
+
+    // We deliberately use a synchronous `reqwest::blocking::Client`
+    // here — `api_post_json` is called from the integrity monitor's
+    // thread (a plain `std::thread`, not a tokio task), and we don't
+    // want to introduce a tokio runtime just for one POST. The
+    // request is tiny and the monitor tolerates a multi-second
+    // blocking call (it sleeps the full poll interval afterwards).
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| ApiPostError::Request(format!("client build: {e}")))?;
+    let response = client
+        .post(request_url.clone())
+        .header("Content-Type", "application/json")
+        .bearer_auth(&token.token)
+        .body(body.to_vec())
+        .send()
+        .map_err(|e| ApiPostError::Request(e.to_string()))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let body_text = response.text().unwrap_or_default();
+        let _ = debug_log::append(
+            app,
+            "integrity.api",
+            &format!(
+                "api_post_json status={} body={}",
+                status,
+                truncate(&body_text)
+            ),
+        );
+        return Err(ApiPostError::BadStatus {
+            status: status.as_u16(),
+            body: body_text,
+        });
+    }
+
+    Ok(())
+}

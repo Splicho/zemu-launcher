@@ -16,6 +16,7 @@ mod hardware_api;
 mod launch_args;
 mod models;
 mod oauth_server;
+mod process_integrity;
 mod public_api;
 mod state;
 mod steam;

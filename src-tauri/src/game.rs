@@ -394,6 +394,17 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
             set_in_game_presence(app);
             emit_game_launch_state(app, state.mark_game_running(pid));
             start_game_process_monitor(app.clone(), state.clone(), pid);
+            // `executable_path` is a `PathBuf`; `file_name()` returns
+            // `Option<&OsStr>` which `to_string_lossy` flattens.
+            let exe_basename = executable_path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| "H1Z1.exe".to_string());
+            crate::process_integrity::start_integrity_monitor(
+                app.clone(),
+                pid,
+                exe_basename,
+            );
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -658,6 +669,49 @@ fn powershell_escape_single_quoted(value: &str) -> String {
     value.replace('\'', "''")
 }
 
+/// Walk the process tree from `root_pid` and return every
+/// `(pid, exe_basename_lc)` pair under it. Used by the process
+/// integrity monitor to enumerate loaded modules across any
+/// child processes the game spawns (anti-cheats, launchers, etc.).
+/// Reuses the same snapshot the orphan-kill sweep reads — the
+/// tree walks `parent_pid` edges until exhaustion.
+///
+/// Returns an empty vec when the root PID has already exited or
+/// the snapshot is empty; callers treat both as "monitor done".
+#[cfg(target_os = "windows")]
+pub(crate) fn collect_process_tree(root_pid: u32) -> Vec<(u32, String)> {
+    let processes = snapshot_processes();
+    if processes.is_empty() {
+        return Vec::new();
+    }
+
+    let live_pids: std::collections::HashSet<u32> = processes.keys().copied().collect();
+    let mut children_by_parent: HashMap<u32, Vec<u32>> = HashMap::new();
+    for (pid, (parent_pid, _)) in &processes {
+        children_by_parent.entry(*parent_pid).or_default().push(*pid);
+    }
+
+    let mut stack = vec![root_pid];
+    let mut visited = HashSet::new();
+    let mut out: Vec<(u32, String)> = Vec::new();
+    while let Some(pid) = stack.pop() {
+        if !visited.insert(pid) {
+            continue;
+        }
+        if !live_pids.contains(&pid) {
+            continue;
+        }
+        if let Some((_, name)) = processes.get(&pid) {
+            out.push((pid, name.to_lowercase()));
+        }
+        if let Some(children) = children_by_parent.get(&pid) {
+            stack.extend(children.iter().copied());
+        }
+    }
+
+    out
+}
+
 #[cfg(target_os = "windows")]
 fn is_process_tree_running(root_pid: u32) -> bool {
     let processes = snapshot_processes();
@@ -689,7 +743,7 @@ fn is_process_tree_running(root_pid: u32) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn snapshot_processes() -> HashMap<u32, (u32, String)> {
+pub(crate) fn snapshot_processes() -> HashMap<u32, (u32, String)> {
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
     if snapshot == INVALID_HANDLE_VALUE {
         return HashMap::new();
@@ -724,7 +778,7 @@ fn snapshot_processes() -> HashMap<u32, (u32, String)> {
 }
 
 #[cfg(target_os = "windows")]
-fn wide_null_trim(raw: &[u16]) -> String {
+pub(crate) fn wide_null_trim(raw: &[u16]) -> String {
     let len = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
     String::from_utf16_lossy(&raw[..len])
 }
