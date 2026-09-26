@@ -9,18 +9,9 @@ export interface GameLaunchState {
   isRunning: boolean
 }
 
-export interface UpdateProgressFolder {
-  folderName: string
-  stage: 'downloading' | 'decompressing' | 'extracting' | 'complete'
-  progress: number
-  downloaded: number
-  total: number
-  speed?: number
-}
-
 export interface UpdateProgressFile {
   filePath: string
-  stage: 'downloading' | 'decompressing' | 'extracting' | 'complete'
+  stage: 'downloading' | 'verifying' | 'complete'
   progress: number
   downloaded: number
   total: number
@@ -29,43 +20,49 @@ export interface UpdateProgressFile {
 
 export interface UpdateStatus {
   isUpdating: boolean
-  currentFolder?: string
   currentFile?: string
-  totalFolders: number
-  completedFolders: number
   totalFiles: number
   completedFiles: number
   overallProgress: number
-  folders: UpdateProgressFolder[]
   files?: UpdateProgressFile[]
   error?: string
 }
 
-export interface VersionManifest {
-  version: string
-  build: number
-  releaseDate: string
-  changelog?: string
-  folders: {
-    [folderName: string]: {
-      checksum?: string
-      size?: number
-      compressedSize?: number
-      fileCount: number
-      files?: {
-        [fileName: string]: FileManifestEntry
-      }
-    }
-  }
-  totalSize: number
-  totalCompressedSize: number
+/**
+ * One file entry in the compressor manifest. Produced by
+ * `tauri-compressor` and consumed by the launcher.
+ *
+ * - `hash` is the blake3 hex digest of the original uncompressed bytes
+ * - `compressedHash` is the SHA-256 hex digest of the `.zst` payload
+ *   (what the launcher downloads from the CDN)
+ */
+export interface CompressorManifestEntry {
+  path: string
+  size: number
+  hash: string
+  compressedSize: number
+  compressedHash: string
 }
 
-export interface FileManifestEntry {
-  checksum: string
-  size: number
-  compressedSize: number
+/**
+ * One file that was removed between the previous published manifest
+ * and this one. The launcher uses this list to delete stale files
+ * from disk after a successful update.
+ */
+export interface RemovedEntry {
   path: string
+  size: number
+  hash: string
+}
+
+/**
+ * The compressor manifest. Same shape on both producer
+ * (`tauri-compressor`) and consumer (`zemu-launcher`) sides.
+ */
+export interface CompressorManifest {
+  version: string
+  files: CompressorManifestEntry[]
+  removed: RemovedEntry[]
 }
 
 export interface UpdateInfo {
@@ -73,9 +70,7 @@ export interface UpdateInfo {
   cdnAvailable: boolean
   currentVersion?: string
   latestVersion?: string
-  foldersToUpdate?: string[]
-  filesToUpdate?: Array<{ folderName: string; filePath: string; entry: FileManifestEntry }>
-  isFileLevel?: boolean
+  filesToUpdate?: Array<{ path: string; entry: CompressorManifestEntry }>
 }
 
 export interface DepotProgress {
@@ -169,7 +164,7 @@ function setupCompatibilityBridge() {
     openInFileManager: (directory: string) =>
       invoke<void>('game_open_in_file_manager', { directory }),
     isInstalled: () => invoke<boolean>('game_is_installed'),
-    getLocalVersion: () => invoke<VersionManifest | null>('game_get_local_version'),
+      getLocalVersion: () => invoke<CompressorManifest | null>('game_get_local_version'),
     checkUpdate: (skipFiles: string[] = []) =>
       invoke<UpdateInfo>('game_check_update', { skipFiles }),
     downloadUpdate: (gameDirectory: string) =>
@@ -654,7 +649,7 @@ declare global {
       detectBaseGameInstalled: (directory: string) => Promise<boolean>
       /** Cheap path existence check. */
       pathExists: (path: string) => Promise<boolean>
-      getLocalVersion: () => Promise<VersionManifest | null>
+      getLocalVersion: () => Promise<CompressorManifest | null>
       checkUpdate: (skipFiles?: string[]) => Promise<UpdateInfo>
       downloadUpdate: (gameDirectory: string) => Promise<{ success: boolean; error?: string }>
       getUpdateStatus: () => Promise<UpdateStatus | null>

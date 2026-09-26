@@ -10,24 +10,13 @@ export interface GameLaunchState {
 
 export interface UpdateStatus {
   isUpdating: boolean
-  currentFolder?: string
   currentFile?: string
-  totalFolders: number
-  completedFolders: number
   totalFiles: number
   completedFiles: number
   overallProgress: number
-  folders: Array<{
-    folderName: string
-    stage: 'downloading' | 'decompressing' | 'extracting' | 'complete'
-    progress: number
-    downloaded: number
-    total: number
-    speed?: number
-  }>
   files?: Array<{
     filePath: string
-    stage: 'downloading' | 'decompressing' | 'extracting' | 'complete'
+    stage: 'downloading' | 'verifying' | 'complete'
     progress: number
     downloaded: number
     total: number
@@ -36,11 +25,40 @@ export interface UpdateStatus {
   error?: string
 }
 
-export interface FileManifestEntry {
-  checksum: string
-  size: number
-  compressedSize: number
+/**
+ * One file entry in the compressor manifest. Produced by
+ * `tauri-compressor` and consumed by the launcher.
+ *
+ * - `hash` is the blake3 hex digest of the original uncompressed bytes
+ * - `compressedHash` is the SHA-256 hex digest of the `.zst` payload
+ */
+export interface CompressorManifestEntry {
   path: string
+  size: number
+  hash: string
+  compressedSize: number
+  compressedHash: string
+}
+
+/**
+ * One file that was removed between the previous published manifest
+ * and this one. The launcher uses this list to delete stale files
+ * from disk after a successful update.
+ */
+export interface RemovedEntry {
+  path: string
+  size: number
+  hash: string
+}
+
+/**
+ * The compressor manifest. Same shape on both producer
+ * (`tauri-compressor`) and consumer (`zemu-launcher`) sides.
+ */
+export interface CompressorManifest {
+  version: string
+  files: CompressorManifestEntry[]
+  removed: RemovedEntry[]
 }
 
 export interface UpdateInfo {
@@ -48,9 +66,7 @@ export interface UpdateInfo {
   cdnAvailable: boolean
   currentVersion?: string
   latestVersion?: string
-  foldersToUpdate?: string[]
-  filesToUpdate?: Array<{ folderName: string; filePath: string; entry: FileManifestEntry }>
-  isFileLevel?: boolean
+  filesToUpdate?: Array<{ path: string; entry: CompressorManifestEntry }>
 }
 
 export type GameState =
@@ -369,7 +385,7 @@ const handleProgress = (status: UpdateStatus) => {
       }
 
       const hasUpdates =
-        status.totalFolders > 0 || (status.totalFiles && status.totalFiles > 0)
+        status.totalFiles > 0
       if (!status.isUpdating && status.overallProgress === 100 && gameDirectory && hasUpdates) {
         // Patch just finished. The Rust side has written `version.json`
         // for the new install, so we can confidently mark the game as
@@ -720,7 +736,7 @@ const handleProgress = (status: UpdateStatus) => {
     if (
       (isUpdating || (updateStatus && updateStatus.isUpdating)) &&
       updateStatus &&
-      (updateStatus.totalFolders > 0 || updateStatus.totalFiles > 0)
+      updateStatus.totalFiles > 0
     ) {
       return { type: 'DOWNLOADING_UPDATE', updateStatus }
     }

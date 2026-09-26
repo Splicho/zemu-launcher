@@ -34,12 +34,13 @@ export function useDownloadEta(): string {
   const { isUpdating, updateStatus } = useGameStateContext()
   const { kind, speed, stalled } = useDownloadSpeed()
 
-  // Remaining bytes for the active branch. This is the *raw* value — the
-  // monotonic clamp lives in the effect below.
+  // Remaining bytes for the active branch. The monotonic clamp lives
+  // in the effect below. We sum up only the file tracks (the launcher
+  // no longer has folder-level updates).
   const rawRemainingBytes: number | null = (() => {
-    if (kind === 'update' && isUpdating && updateStatus?.folders) {
+    if (kind === 'update' && isUpdating && updateStatus?.files) {
       let total = 0
-      for (const f of updateStatus.folders) {
+      for (const f of updateStatus.files) {
         if (f.stage !== 'complete') total += Math.max(0, f.total - f.downloaded)
       }
       return total > 0 ? total : null

@@ -235,58 +235,53 @@ fn default_locale() -> Option<String> {
     Some("en_us".to_string())
 }
 
+/// One file entry in the compressor manifest. `path` uses forward slashes
+/// relative to the game install root. `hash` is the blake3 hex digest of
+/// the original uncompressed bytes. `compressed_hash` is the SHA-256 hex
+/// digest of the `.zst` payload (what the launcher downloads).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FileManifestEntry {
-    pub checksum: String,
-    pub size: u64,
-    pub compressed_size: u64,
+pub struct CompressorManifestEntry {
     pub path: String,
+    pub size: u64,
+    pub hash: String,
+    pub compressed_size: u64,
+    pub compressed_hash: String,
 }
 
+/// One file that was removed between the previous published manifest and
+/// this one. `hash` is the blake3 hex digest of the file as it last
+/// existed (for traceability — the launcher doesn't need to download a
+/// delete).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FolderManifestEntry {
-    #[serde(default)]
-    pub checksum: Option<String>,
-    #[serde(default, alias = "totalSize")]
-    pub size: Option<u64>,
-    #[serde(default, alias = "totalCompressedSize")]
-    pub compressed_size: Option<u64>,
-    #[serde(default)]
-    pub file_count: u64,
-    #[serde(default)]
-    pub files: HashMap<String, FileManifestEntry>,
-    /// Compression algorithm used for the archive that backs this folder
-    /// or its files. Currently always `"zstd"`. Optional for backward
-    /// compatibility with manifests that pre-date the field — an absent
-    /// value is treated as `"zstd"`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub compression: Option<String>,
+pub struct RemovedEntry {
+    pub path: String,
+    pub size: u64,
+    pub hash: String,
 }
 
+/// The compressor manifest. Produced by `tauri-compressor` and consumed
+/// by the launcher's updater. Both sides serialize to the same JSON
+/// shape (camelCase, identical field names).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VersionManifest {
+pub struct CompressorManifest {
     pub version: String,
     #[serde(default)]
-    pub build: u64,
-    pub release_date: String,
+    pub files: Vec<CompressorManifestEntry>,
     #[serde(default)]
-    pub changelog: Option<String>,
-    pub folders: HashMap<String, FolderManifestEntry>,
-    #[serde(default)]
-    pub total_size: u64,
-    #[serde(default)]
-    pub total_compressed_size: u64,
+    pub removed: Vec<RemovedEntry>,
 }
 
+/// One item in `UpdateCheckResult.files_to_update`. The launcher only
+/// deals with flat file paths — there is no folder-level concept
+/// anymore.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileUpdateItem {
-    pub folder_name: String,
-    pub file_path: String,
-    pub entry: FileManifestEntry,
+    pub path: String,
+    pub entry: CompressorManifestEntry,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -299,23 +294,7 @@ pub struct UpdateCheckResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub folders_to_update: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub files_to_update: Option<Vec<FileUpdateItem>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_file_level: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FolderProgress {
-    pub folder_name: String,
-    pub stage: String,
-    pub progress: f64,
-    pub downloaded: u64,
-    pub total: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub speed: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -335,15 +314,10 @@ pub struct FileProgress {
 pub struct UpdateStatus {
     pub is_updating: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_folder: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub current_file: Option<String>,
-    pub total_folders: usize,
-    pub completed_folders: usize,
     pub total_files: usize,
     pub completed_files: usize,
     pub overall_progress: f64,
-    pub folders: Vec<FolderProgress>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<FileProgress>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -425,14 +399,10 @@ impl Default for UpdateStatus {
     fn default() -> Self {
         Self {
             is_updating: false,
-            current_folder: None,
             current_file: None,
-            total_folders: 0,
-            completed_folders: 0,
             total_files: 0,
             completed_files: 0,
             overall_progress: 0.0,
-            folders: Vec::new(),
             files: None,
             error: None,
         }

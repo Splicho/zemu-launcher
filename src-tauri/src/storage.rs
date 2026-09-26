@@ -1,4 +1,4 @@
-use crate::models::{AuthStore, LauncherConfig, VersionManifest};
+use crate::models::{AuthStore, CompressorManifest, LauncherConfig};
 use anyhow::{anyhow, Context, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -63,19 +63,19 @@ pub fn save_launcher_config(app: &AppHandle, config: &LauncherConfig) -> Result<
     write_json(&path, config)
 }
 
-pub fn load_version_cache(app: &AppHandle) -> Result<Option<VersionManifest>> {
+pub fn load_version_cache(app: &AppHandle) -> Result<Option<CompressorManifest>> {
     let path = version_cache_path(app)?;
     if !path.exists() {
         return Ok(None);
     }
 
-    match read_json::<VersionManifest>(&path) {
+    match read_json::<CompressorManifest>(&path) {
         Ok(version) => Ok(Some(version)),
         Err(_) => Ok(None),
     }
 }
 
-pub fn save_version_cache(app: &AppHandle, manifest: &VersionManifest) -> Result<()> {
+pub fn save_version_cache(app: &AppHandle, manifest: &CompressorManifest) -> Result<()> {
     let path = version_cache_path(app)?;
     write_json(&path, manifest)
 }

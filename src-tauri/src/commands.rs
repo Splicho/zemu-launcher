@@ -8,9 +8,9 @@ use crate::game;
 use crate::hardware;
 use crate::hardware_api;
 use crate::models::{
-    AppTheme, AuthToken, CommandResult, DiscordRpcMode, GameLaunchState,
-    OAuthCallbackPayload, SteamcmdResult, UpdateCheckResult, UpdateStatus, VersionManifest,
-    WineConfig, WineRuntime,
+    AppTheme, AuthToken, CommandResult, CompressorManifest, DiscordRpcMode, GameLaunchState,
+    OAuthCallbackPayload, SteamcmdResult, UpdateCheckResult, UpdateStatus, WineConfig,
+    WineRuntime,
 };
 use std::path::PathBuf;
 use crate::state::AppState;
@@ -339,7 +339,7 @@ pub fn steam_start_install_pipeline(
 }
 
 #[tauri::command]
-pub fn game_get_local_version(app: tauri::AppHandle) -> Result<Option<VersionManifest>, String> {
+pub fn game_get_local_version(app: tauri::AppHandle) -> Result<Option<CompressorManifest>, String> {
     game::get_local_version(&app).map_err(|e| e.to_string())
 }
 

@@ -66,6 +66,7 @@ walkdir = "2.5"
 webbrowser = "1.0"
 zip = "2"
 zstd = "0.13"
+blake3 = "1.5"
 tauri-plugin-fs = "2"
 tauri-plugin-keyring-store = "0.2"
 
@@ -75,6 +76,7 @@ windows-sys = { version = "0.61.2", features = [
   "Win32_Storage_FileSystem",
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_SystemInformation",
+  "Win32_System_Threading",
 ] }
 winreg = "0.52"
 

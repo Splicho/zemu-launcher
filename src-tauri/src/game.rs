@@ -28,6 +28,10 @@ use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::System::Threading::{
+    OpenProcess, TerminateProcess, PROCESS_TERMINATE,
+};
 
 #[cfg(target_os = "windows")]
 const GAME_PROCESS_POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -437,24 +441,28 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
     }
 }
 
-pub fn get_local_version(app: &AppHandle) -> Result<Option<crate::models::VersionManifest>> {
+pub fn get_local_version(app: &AppHandle) -> Result<Option<crate::models::CompressorManifest>> {
     let directory = match get_game_directory(app)? {
         Some(dir) => dir,
         None => return load_version_cache(app),
     };
 
-    let game_version = PathBuf::from(directory).join("version.json");
-    if !game_version.exists() {
-        return load_version_cache(app);
+    // Prefer the new compressor-format manifest.json inside the game
+    // directory; fall back to the legacy launcher app-data cache so
+    // users who upgraded from a prior launcher build don't see their
+    // last-known version wiped.
+    let game_manifest = PathBuf::from(&directory).join("manifest.json");
+    if game_manifest.exists() {
+        match fs::read_to_string(&game_manifest) {
+            Ok(raw) => {
+                let manifest: crate::models::CompressorManifest = serde_json::from_str(&raw)?;
+                return Ok(Some(manifest));
+            }
+            Err(_) => return load_version_cache(app),
+        }
     }
 
-    match fs::read_to_string(&game_version) {
-        Ok(raw) => {
-            let manifest: crate::models::VersionManifest = serde_json::from_str(&raw)?;
-            Ok(Some(manifest))
-        }
-        Err(_) => load_version_cache(app),
-    }
+    load_version_cache(app)
 }
 
 /// Resolves the executable path. Accepts either a bare filename (looked up
@@ -503,9 +511,33 @@ fn set_in_game_presence(app: &AppHandle) {
 
 #[cfg(target_os = "windows")]
 fn start_game_process_monitor(app: AppHandle, state: AppState, root_pid: u32) {
+    // Resolve the configured game exe name once at launch time so we can
+    // match any orphans by name on the way out. We capture it here (rather
+    // than re-reading config inside the loop) to avoid touching the
+    // launcher config from a background thread every poll.
+    let target_exe = get_game_executable(&app);
+    let target_basename = exe_basename(&target_exe).to_lowercase();
+
     thread::spawn(move || {
         while is_process_tree_running(root_pid) {
             thread::sleep(GAME_PROCESS_POLL_INTERVAL);
+        }
+
+        // The root tree is gone, but H1Z1 sometimes leaves a detached
+        // h1z1.exe child behind (e.g. if the user kills the launcher or
+        // an anti-cheat relaunches the process out from under us).
+        // Sweep and terminate any leftover instances so they don't keep
+        // holding sockets, GPU resources, or the wine prefix.
+        let killed = kill_processes_by_name(&target_basename);
+        if killed > 0 {
+            let _ = debug_log::append(
+                &app,
+                "game",
+                &format!(
+                    "game_exit_orphan_sweep target={} killed={}",
+                    target_basename, killed
+                ),
+            );
         }
 
         if let Some(snapshot) = state.clear_game_launch_if_pid_matches(root_pid) {
@@ -519,6 +551,51 @@ fn start_game_process_monitor(app: AppHandle, state: AppState, root_pid: u32) {
             }
         }
     });
+}
+
+#[cfg(target_os = "windows")]
+fn kill_processes_by_name(target_basename_lc: &str) -> usize {
+    if target_basename_lc.is_empty() {
+        return 0;
+    }
+
+    let processes = snapshot_processes();
+    let mut killed = 0usize;
+    for (pid, (_parent, name)) in &processes {
+        // Skip ourselves and any process that obviously isn't the game
+        // exe. We compare lowercased basenames so case differences
+        // (H1Z1.exe vs h1z1.exe) don't matter.
+        let name_lc = name.to_lowercase();
+        if name_lc != target_basename_lc {
+            continue;
+        }
+
+        let handle = unsafe { OpenProcess(PROCESS_TERMINATE, 0, *pid) };
+        if handle.is_null() {
+            // Most likely: process already exited between snapshot and
+            // open, or it's protected. Either way, nothing to do.
+            continue;
+        }
+        let terminated = unsafe { TerminateProcess(handle, 1) };
+        unsafe { CloseHandle(handle) };
+        if terminated != 0 {
+            killed += 1;
+        }
+    }
+    killed
+}
+
+#[cfg(target_os = "windows")]
+fn exe_basename(path: &str) -> String {
+    // Manual basename extraction: `Path::new(...).file_name()` is fine on
+    // Windows for absolute paths but the configured exe may be a bare
+    // name (e.g. "H1Z1.exe") which `file_name` already handles — using
+    // our own loop keeps the comparison dependency-free and case-aware
+    // for whatever the user typed into the launcher config.
+    match path.rfind(|c| c == '\\' || c == '/') {
+        Some(idx) => path[idx + 1..].to_string(),
+        None => path.to_string(),
+    }
 }
 
 fn emit_game_launch_state(app: &AppHandle, state: crate::models::GameLaunchState) {
@@ -586,8 +663,8 @@ fn is_process_tree_running(root_pid: u32) -> bool {
 
     let live_pids: HashSet<u32> = processes.keys().copied().collect();
     let mut children_by_parent: HashMap<u32, Vec<u32>> = HashMap::new();
-    for (pid, parent_pid) in processes {
-        children_by_parent.entry(parent_pid).or_default().push(pid);
+    for (pid, (parent_pid, _)) in &processes {
+        children_by_parent.entry(*parent_pid).or_default().push(*pid);
     }
 
     let mut stack = vec![root_pid];
@@ -608,7 +685,7 @@ fn is_process_tree_running(root_pid: u32) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn snapshot_processes() -> HashMap<u32, u32> {
+fn snapshot_processes() -> HashMap<u32, (u32, String)> {
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
     if snapshot == INVALID_HANDLE_VALUE {
         return HashMap::new();
@@ -623,7 +700,12 @@ fn snapshot_processes() -> HashMap<u32, u32> {
     let has_entry = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
     if has_entry {
         loop {
-            processes.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+            // `szExeFile` is a wide null-terminated string. Find the
+            // first NUL and slice up to it; entries are technically
+            // MAX_PATH but the toolhelp API only fills as much as
+            // needed plus the terminator.
+            let exe_name = wide_null_trim(&entry.szExeFile);
+            processes.insert(entry.th32ProcessID, (entry.th32ParentProcessID, exe_name));
             if unsafe { Process32NextW(snapshot, &mut entry) } == 0 {
                 break;
             }
@@ -635,4 +717,10 @@ fn snapshot_processes() -> HashMap<u32, u32> {
     }
 
     processes
+}
+
+#[cfg(target_os = "windows")]
+fn wide_null_trim(raw: &[u16]) -> String {
+    let len = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
+    String::from_utf16_lossy(&raw[..len])
 }

@@ -655,7 +655,7 @@ async fn drive_download(
         let _ = debug_log::append(
             app,
             "depot",
-            &format!("version.json write failed after depot: {e}"),
+            &format!("manifest.json write failed after depot: {e}"),
         );
     }
 
