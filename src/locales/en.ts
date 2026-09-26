@@ -195,16 +195,6 @@ export default {
     serverStatus: {
       // Accessibility label for the trigger button.
       openMenu: 'Open server status menu',
-      // Surface the missing-config case to the user. The api's
-      // /v1/playercount is gated by `InternalApiGuard`, which
-      // requires `API_INTERNAL_KEY`. When the launcher's build env
-      // (or `.env.local` for dev) doesn't include
-      // `VITE_LAUNCHER_INTERNAL_API_KEY`, the query stays idle and
-      // this row is the only signal the user gets that the build is
-      // incomplete.
-      notConfiguredTitle: 'Server status unavailable',
-      notConfiguredDetail:
-        'The launcher was built without an internal API key. Counts cannot be fetched.',
     },
     settings: {
       general: {

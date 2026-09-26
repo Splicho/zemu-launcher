@@ -8,18 +8,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Spinner } from '@/components/ui/spinner'
 import { Europe } from '@/components/icons'
-import { Badge } from '@/components/ui/badge'
-import { useServerStatus } from '@/hooks/use-server-status'
-import {
-  SERVERS,
-  getInternalApiKey,
-  type ServerRegion,
-} from '@/lib/server-status'
+import { SERVERS, type ServerRegion } from '@/lib/server-status'
 
 /**
- * Server-status dropdown anchored to the home-screen header.
+ * Server-status pill anchored to the home-screen header.
  *
  * Sits to the LEFT of `<AccountDropdown />` (rendered before it
  * inside `Header`'s `justify-end` flex row). The trigger pill
@@ -28,12 +21,11 @@ import {
  * the avatar trigger 1:1 — using the shared `<Button>` here gave
  * a visibly chunkier outline that didn't sit well in the header.
  *
- * The pill surfaces the default region's live player count plus
- * a green/red status dot (pulsing when the upstream is reachable,
- * solid red when the api's `source === 'unavailable'` or the
- * fetch errored). Clicking it opens a small menu listing every
- * declared server region with the same status-dot + count
- * treatment per row.
+ * The pill surfaces the default region's flag + label plus a
+ * static green status dot. The launcher no longer probes the api
+ * for a live player count, so the dot is decorative — it tells the
+ * user which region the header is referring to without implying a
+ * freshness signal that isn't being measured.
  *
  * Today only EU is wired in. The structure is region-array-driven
  * so NA + APAC can be added without changing the dropdown
@@ -41,13 +33,8 @@ import {
  */
 export function ServerStatusDropdown() {
   const { t } = useTranslation()
-  const hasKey = getInternalApiKey().length > 0
-  const configured = hasKey && SERVERS.some((s) => s.playercountUrl !== null)
 
-  // Default region is the first entry in SERVERS (EU today). Its
-  // count + status drive the trigger pill so the home screen
-  // surfaces the most relevant playercount without forcing the
-  // user to open the menu.
+  // Default region is the first entry in SERVERS (EU today).
   const defaultRegion = SERVERS[0]!
 
   // Only render a dropdown when there are other regions to switch to.
@@ -63,14 +50,11 @@ export function ServerStatusDropdown() {
     return (
       <button
         type="button"
-        // Same pill appearance as the interactive version but not
-        // wrapped in a dropdown — no chevron, no dropdown affordance.
         className="flex h-8 items-center gap-2 rounded-full border border-border bg-background px-3 text-sm transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus-visible:outline-none"
       >
-        <StatusDot region={defaultRegion} />
+        <StatusDot />
         {renderRegionIcon(defaultRegion)}
         <span className="font-medium">{defaultRegion.label}</span>
-        <DefaultRegionCount region={defaultRegion} />
       </button>
     )
   }
@@ -96,10 +80,9 @@ export function ServerStatusDropdown() {
           // ring because it never closes a popover.
           className="flex h-8 items-center gap-2 rounded-full border border-border bg-background px-3 text-sm transition-colors hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground focus:outline-none focus-visible:outline-none"
         >
-          <StatusDot region={defaultRegion} />
+          <StatusDot />
           {renderRegionIcon(defaultRegion)}
           <span className="font-medium">{defaultRegion.label}</span>
-          <DefaultRegionCount region={defaultRegion} />
           <ChevronDown
             className={
               'size-3.5 text-muted-foreground transition-transform ' +
@@ -109,13 +92,9 @@ export function ServerStatusDropdown() {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="min-w-40">
-        {!configured ? (
-          <ServerStatusNotConfiguredRow />
-        ) : (
-          SERVERS.filter((r) => r.id !== defaultRegion.id).map((region) => (
-            <ServerStatusRow key={region.id} region={region} />
-          ))
-        )}
+        {SERVERS.filter((r) => r.id !== defaultRegion.id).map((region) => (
+          <ServerStatusRow key={region.id} region={region} />
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -153,162 +132,31 @@ function renderRegionIcon(region: ServerRegion) {
   return null
 }
 
-type ServerStatusState = 'live' | 'unavailable' | 'pending'
-
 /**
- * Resolve the trigger's status from the underlying query. Three
- * buckets, ordered worst-to-best:
- *   - `unavailable`: fetch errored OR data.source === 'unavailable'
- *                    OR data.ok === false. Rendered as a solid red
- *                    dot — the user can see at a glance the server
- *                    is unreachable.
- *   - `pending`:     still on the first fetch, no data yet. Rendered
- *                    as a gray static dot so the user sees the
- *                    status indicator is there but isn't yet
- *                    authoritative.
- *   - `live`:        fresh data (source 'live' or 'cache'), ok=true.
- *                    Rendered as a green pulsing dot.
+ * Static green dot rendered next to each region's flag. Decorative —
+ * the launcher no longer probes the api for a live player count, so
+ * the dot no longer reflects a freshness signal. It's kept (with a
+ * gentle pulse) so the pill still reads as "the launcher is alive
+ * and aware of this region" rather than as a plain label.
  */
-function useServerStatusState(region: ServerRegion): ServerStatusState {
-  const query = useServerStatus(region)
-  if (query.isPending && !query.data) return 'pending'
-  if (query.isError) return 'unavailable'
-  const data = query.data
-  if (!data || !data.ok || data.source === 'unavailable') {
-    return 'unavailable'
-  }
-  return 'live'
-}
-
-function StatusDot({ region }: { region: ServerRegion }) {
-  const state = useServerStatusState(region)
+function StatusDot() {
   return (
     <span
       aria-hidden="true"
-      // 8 px circle. `animate-pulse` is a built-in Tailwind keyframe
-      // (opacity 100 → 50 → 100, ~2 s cycle). The pulse only fires
-      // in the `live` and `unavailable` states so the user gets a
-      // heartbeat only when the upstream status is meaningful —
-      // pending stays static to avoid implying online-ness before
-      // we've actually heard back from the api.
-      className={
-        'inline-block size-2 rounded-full ' +
-        (state === 'live'
-          ? 'bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.7)]'
-          : state === 'unavailable'
-            ? 'bg-red-500 animate-pulse shadow-[0_0_6px_rgba(239,68,68,0.7)]'
-            : 'bg-muted-foreground/60')
-      }
+      className="inline-block size-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.7)]"
     />
   )
 }
 
-/**
- * Live count baked into the trigger pill so the home-screen header
- * surfaces the most relevant region's playercount without opening
- * the menu. Mirrors the same "unavailable / not configured"
- * semantics as the row itself, and renders the count inside a
- * `<Badge>` so it reads as a chip rather than a bare number —
- * which keeps the trigger visually grouped (icon · label · count)
- * and gives the count its own bounded block against the pill's
- * neutral background.
- */
-function DefaultRegionCount({ region }: { region: ServerRegion }) {
-  const query = useServerStatus(region)
-  const placeholder = '—'
-
-  let displayCount: string
-  if (query.isPending && !query.data) {
-    displayCount = placeholder
-  } else if (
-    query.isError ||
-    !query.data ||
-    !query.data.ok ||
-    query.data.source === 'unavailable'
-  ) {
-    displayCount = placeholder
-  } else {
-    displayCount = query.data.total.toLocaleString()
-  }
-
-  const isPlaceholder = displayCount === placeholder
-
-  return (
-    <Badge
-      variant="secondary"
-      className="rounded-sm!"
-    >
-      {query.isPending && !query.data ? (
-        <Spinner className="size-3" />
-      ) : null}
-      <span className={isPlaceholder ? 'text-muted-foreground' : 'text-foreground'}>
-        {displayCount}
-      </span>
-    </Badge>
-  )
-}
-
-function ServerStatusNotConfiguredRow() {
-  const { t } = useTranslation()
-  return (
-    <DropdownMenuItem disabled className="flex flex-col items-start gap-0.5">
-      <span className="text-sm font-medium">
-        {t('serverStatus.notConfiguredTitle')}
-      </span>
-      <span className="text-xs text-muted-foreground">
-        {t('serverStatus.notConfiguredDetail')}
-      </span>
-    </DropdownMenuItem>
-  )
-}
-
-function ServerStatusRow({
-  region,
-}: {
-  region: ServerRegion
-}) {
-  const query = useServerStatus(region)
-  const count = query.data
-  const placeholder = '—'
-
-  let displayCount: string
-  if (query.isPending && !count) {
-    displayCount = placeholder
-  } else if (
-    query.isError ||
-    !count ||
-    !count.ok ||
-    count.source === 'unavailable'
-  ) {
-    displayCount = placeholder
-  } else {
-    displayCount = count.total.toLocaleString()
-  }
-
+function ServerStatusRow({ region }: { region: ServerRegion }) {
   return (
     <DropdownMenuItem
       disabled
-      className="flex items-center justify-between gap-3"
+      className="flex items-center gap-2 truncate text-sm font-medium"
     >
-      <span className="flex items-center gap-2 truncate text-sm font-medium">
-        <StatusDot region={region} />
-        {renderRegionIcon(region)}
-        <span className="truncate">{region.label}</span>
-      </span>
-      <Badge variant="outline" className="rounded-sm!">
-        {query.isPending && !count ? (
-          <Spinner className="size-3" />
-        ) : null}
-        <span
-          className={
-            displayCount === placeholder
-              ? 'text-muted-foreground'
-              : 'text-foreground'
-          }
-        >
-          {displayCount}
-        </span>
-      </Badge>
+      <StatusDot />
+      {renderRegionIcon(region)}
+      <span className="truncate">{region.label}</span>
     </DropdownMenuItem>
   )
 }

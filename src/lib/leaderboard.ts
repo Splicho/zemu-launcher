@@ -64,6 +64,19 @@ function getStatsApiBaseUrl(): string {
 
 const STATS_API_BASE = getStatsApiBaseUrl()
 
+// Clantags live under `/v1/clans` on the api, NOT under `/v1/stats` —
+// the clans controller owns the `GET /clantags` batch endpoint used by
+// the leaderboard table. The dev override (`VITE_API_URL`) is shared
+// with the rest of the api surface, so we mirror the resolution rule
+// from `src/lib/clan.ts`.
+function getClantagsBaseUrl(): string {
+  const fromEnv = import.meta.env.VITE_API_URL as string | undefined
+  if (import.meta.env.DEV && fromEnv) return `${fromEnv}/v1/clans`
+  return LAUNCHER_CONFIG.friendsApiBaseUrl.replace(/\/$/, '') + '/v1/clans'
+}
+
+const CLANTAGS_BASE = getClantagsBaseUrl()
+
 export const TIER_COLORS: Record<LeaderboardTier, string> = {
   bronze: '#CD7F32',
   silver: '#C0C0C0',
@@ -154,7 +167,7 @@ export async function fetchClantags(
 ): Promise<Map<string, ClanTagEntry>> {
   if (names.length === 0) return new Map()
   const qs = encodeURIComponent(names.join(','))
-  const response = await fetchPublicApi(`${STATS_API_BASE}/clans/clantags?names=${qs}`)
+  const response = await fetchPublicApi(`${CLANTAGS_BASE}/clantags?names=${qs}`)
   if (!response.ok) throw new Error(`Clantags failed (HTTP ${response.status})`)
   const list = (await response.json()) as ClanTagEntry[]
   return new Map(list.map(entry => [entry.key, entry]))

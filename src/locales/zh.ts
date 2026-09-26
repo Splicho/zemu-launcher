@@ -179,8 +179,6 @@ export default {
     },
     serverStatus: {
       openMenu: '打开服务器状态菜单',
-      notConfiguredTitle: '服务器状态不可用',
-      notConfiguredDetail: '启动器在构建时缺少内部 API 密钥,无法获取在线人数。',
     },
     friends: {
       title: '好友',

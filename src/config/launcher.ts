@@ -34,19 +34,6 @@ export const LAUNCHER_CONFIG = {
   // Stats API for leaderboards and player data. In dev, set
   // VITE_API_URL=http://localhost:3002 in `.env.local`.
   statsApiBaseUrl: 'https://api.zemu.uk/v1/stats',
-  // Internal API base URL for endpoints behind the api's
-  // `InternalApiGuard`. Today this is only `GET /v1/playercount`,
-  // which feeds the header's server-status dropdown. The
-  // `Authorization: Bearer API_INTERNAL_KEY` header is added by
-  // `src/lib/internal-api.ts`.
-  //
-  // The dev override is `VITE_LAUNCHER_INTERNAL_PLAYERCOUNT_URL`;
-  // in production builds the URL is bundled from this constant. If
-  // the matching `VITE_LAUNCHER_INTERNAL_API_KEY` is empty (dev or
-  // build), the server-status dropdown renders in a "not
-  // configured" state instead of attempting an unauthenticated call
-  // that the api would 401.
-  internalPlayercountUrl: 'https://api.zemu.uk/v1/playercount',
   // Public zemu.uk website. The launcher uses this for player
   // profile pages and the clan directory — both are public, no
   // auth. JSON shapes mirror the web app's /api routes exactly.

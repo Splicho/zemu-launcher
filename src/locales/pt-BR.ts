@@ -182,9 +182,6 @@ export default {
     },
     serverStatus: {
       openMenu: 'Abrir menu de status dos servidores',
-      notConfiguredTitle: 'Status dos servidores indisponível',
-      notConfiguredDetail:
-        'O launcher foi compilado sem uma chave interna da API. Não é possível buscar as contagens.',
     },
     friends: {
       title: 'Amigos',

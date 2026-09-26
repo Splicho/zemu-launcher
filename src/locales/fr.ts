@@ -187,9 +187,6 @@ export default {
     },
     serverStatus: {
       openMenu: "Ouvrir le menu d'état des serveurs",
-      notConfiguredTitle: "État des serveurs indisponible",
-      notConfiguredDetail:
-        "Le launcher a été compilé sans clé API interne. Les compteurs ne peuvent pas être récupérés.",
     },
     friends: {
       title: 'Amis',
