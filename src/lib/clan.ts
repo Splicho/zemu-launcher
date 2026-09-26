@@ -24,8 +24,8 @@
  * createdByUserId, joinQuestions).
  */
 
+import { httpFetch } from '@/lib/http-fetch'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
-import { fetchPublicApi } from '@/lib/public-api'
 import { readPersistedToken } from '@/lib/auth'
 
 function getClanApiBaseUrl(): string {
@@ -197,14 +197,9 @@ export type ClanTooltip = ClanProfile
  * missing) the request still goes through anonymously and the
  * role comes back null.
  *
- * Anonymous reads route through `fetchPublicApi` (Rust transport
- * on Linux, `fetch` elsewhere) — same posture as the launcher's
- * other public endpoints. Authed reads bypass the Rust transport
- * for the same reason `mutateClan` does: the Rust bridge doesn't
- * forward custom headers, so the `Authorization` header would be
- * stripped and `OptionalAuthedUser` would fall through to
- * anonymous. The api's CORS allowlist accepts Tauri's webview
- * origin, so the direct `fetch` is fine.
+ * Both anonymous and authenticated reads use the shared HTTP transport:
+ * Rust on desktop, browser fetch in previews. Bearer headers are supplied
+ * explicitly for authenticated requests.
  */
 export async function fetchClanBySlug(
   slug: string,
@@ -212,7 +207,7 @@ export async function fetchClanBySlug(
   const url = `${CLAN_API_BASE}/${encodeURIComponent(slug)}/tooltip`
   const bearer = getBearerToken()
   if (!bearer) {
-    const res = await fetchPublicApi(url)
+    const res = await httpFetch(url, { headers: { Accept: 'application/json' } })
     if (res.status === 404) return null
     if (!res.ok) {
       throw new Error(`Clan tooltip request failed (HTTP ${res.status})`)
@@ -220,7 +215,7 @@ export async function fetchClanBySlug(
     const body = (await res.json()) as ClanProfile | null
     return body ?? null
   }
-  const res = await fetch(url, {
+  const res = await httpFetch(url, {
     headers: {
       accept: 'application/json',
       authorization: `Bearer ${bearer}`,
@@ -257,7 +252,7 @@ export async function fetchClanMembers(
   const url = qs
     ? `${CLAN_API_BASE}/${encodeURIComponent(slug)}/members?${qs}`
     : `${CLAN_API_BASE}/${encodeURIComponent(slug)}/members`
-  const res = await fetchPublicApi(url)
+  const res = await httpFetch(url, { headers: { Accept: 'application/json' } })
   if (res.status === 404) {
     throw new Error('Clan not found')
   }
@@ -293,7 +288,7 @@ export async function fetchClanFollowers(
   const url = qs
     ? `${CLAN_API_BASE}/${encodeURIComponent(slug)}/followers?${qs}`
     : `${CLAN_API_BASE}/${encodeURIComponent(slug)}/followers`
-  const res = await fetchPublicApi(url)
+  const res = await httpFetch(url, { headers: { Accept: 'application/json' } })
   if (res.status === 404) {
     throw new Error('Clan not found')
   }
@@ -317,8 +312,9 @@ export async function fetchClanFollowers(
 export async function fetchClanFounder(
   slug: string,
 ): Promise<ClanFounderBadge | null> {
-  const res = await fetchPublicApi(
+  const res = await httpFetch(
     `${CLAN_API_BASE}/${encodeURIComponent(slug)}/founder`,
+    { headers: { Accept: 'application/json' } },
   )
   if (res.status === 404) return null
   if (!res.ok) {
@@ -392,7 +388,7 @@ export async function fetchClanDirectory(
   if (options.sort) params.set('sort', options.sort)
   const qs = params.toString()
   const url = qs ? `${CLAN_API_BASE}?${qs}` : CLAN_API_BASE
-  const res = await fetchPublicApi(url)
+  const res = await httpFetch(url, { headers: { Accept: 'application/json' } })
   if (!res.ok) {
     throw new Error(`Clan directory request failed (HTTP ${res.status})`)
   }
@@ -427,11 +423,8 @@ function getBearerToken(): string | null {
  * server's `message` (Nest's standard error body shape) on
  * non-2xx.
  *
- * Uses a direct `fetch()` (not `fetchPublicApi`) because the
- * renderer's anonymous-fetch Rust bridge doesn't forward custom
- * headers — we need the `Authorization` header to reach the api's
- * `SessionGuard`. Tauri's webview sets the `Origin` header that
- * the api's CORS allowlist accepts.
+ * Uses the shared HTTP transport with an explicit Authorization header.
+ * Desktop requests go through Rust to avoid WebView CORS restrictions.
  *
  * Accepts either `path` (relative to `CLAN_API_BASE`) OR an
  * absolute `urlOverride` (for endpoints whose path doesn't match
@@ -449,7 +442,7 @@ async function mutateClan<T>(
     throw new Error('Sign in to do that.')
   }
   const url = urlOverride ?? `${CLAN_API_BASE}${path}`
-  const res = await fetch(url, {
+  const res = await httpFetch(url, {
     method,
     headers: {
       accept: 'application/json',
@@ -679,7 +672,7 @@ export async function fetchClanApplications(
   const url = `${CLAN_API_BASE}/${encodeURIComponent(slug)}/applications`
   const bearer = getBearerToken()
   if (!bearer) throw new Error('Sign in to do that.')
-  const res = await fetch(url, {
+  const res = await httpFetch(url, {
     headers: { accept: 'application/json', authorization: `Bearer ${bearer}` },
   })
   if (!res.ok) {
@@ -707,7 +700,7 @@ export async function countClanApplications(
   const url = `${CLAN_API_BASE}/${encodeURIComponent(slug)}/applications/count`
   const bearer = getBearerToken()
   if (!bearer) return 0
-  const res = await fetch(url, {
+  const res = await httpFetch(url, {
     headers: { accept: 'application/json', authorization: `Bearer ${bearer}` },
   })
   if (!res.ok) return 0
@@ -720,7 +713,7 @@ export async function fetchInvitesForMe(): Promise<ClanInviteForMe[]> {
   const url = `${CLAN_API_BASE}/invites-for-me`
   const bearer = getBearerToken()
   if (!bearer) return []
-  const res = await fetch(url, {
+  const res = await httpFetch(url, {
     headers: { accept: 'application/json', authorization: `Bearer ${bearer}` },
   })
   if (!res.ok) return []
@@ -732,7 +725,7 @@ export async function fetchInvitesISent(): Promise<ClanSentInvite[]> {
   const url = `${CLAN_API_BASE}/invites-i-sent`
   const bearer = getBearerToken()
   if (!bearer) return []
-  const res = await fetch(url, {
+  const res = await httpFetch(url, {
     headers: { accept: 'application/json', authorization: `Bearer ${bearer}` },
   })
   if (!res.ok) return []
@@ -751,7 +744,7 @@ async function mutateClanPatch<T>(
 ): Promise<T> {
   const bearer = getBearerToken()
   if (!bearer) throw new Error('Sign in to do that.')
-  const res = await fetch(url, {
+  const res = await httpFetch(url, {
     method: 'PATCH',
     headers: {
       accept: 'application/json',
@@ -794,7 +787,7 @@ export interface PresignedClanUpload {
 
 /**
  * Mint a presigned PUT URL for a clan-avatar or clan-cover
- * upload. The webview then PUTs the file body directly to the
+ * upload. The shared HTTP transport PUTs the file body directly to the
  * returned `url` and hands `objectKey` to `updateClan`.
  *
  * The api's `/v1/clans/r2/presign` endpoint is session-gated; the
@@ -810,7 +803,7 @@ export async function presignClanAsset(input: {
   const url = `${CLAN_API_BASE}/r2/presign`
   const bearer = getBearerToken()
   if (!bearer) throw new Error('Sign in to do that.')
-  const res = await fetch(url, {
+  const res = await httpFetch(url, {
     method: 'POST',
     headers: {
       accept: 'application/json',
@@ -835,8 +828,8 @@ export async function presignClanAsset(input: {
 }
 
 /**
- * PUT the file bytes to a presigned R2 URL. The webview does the
- * upload directly so the api never sees the file body. Returns
+ * PUT the file bytes to a presigned R2 URL through the shared HTTP
+ * transport, so the api never sees the file body. Returns
  * the `objectKey` the caller hands to `updateClan` to commit the
  * change.
  */
@@ -850,7 +843,7 @@ export async function uploadClanAsset(
   if (presigned.contentDisposition) {
     headers['content-disposition'] = presigned.contentDisposition
   }
-  const res = await fetch(presigned.url, {
+  const res = await httpFetch(presigned.url, {
     method: 'PUT',
     headers,
     body: blob,

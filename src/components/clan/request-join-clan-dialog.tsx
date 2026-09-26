@@ -19,7 +19,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 
 import { useRequestJoinClan } from '@/hooks/use-clan'
-import { fetchPublicApi } from '@/lib/public-api'
+import { httpFetch } from '@/lib/http-fetch'
 import { getClanJoinFormUrl } from '@/lib/clan'
 import type { ClanProfile, JoinQuestion } from '@/lib/clan'
 
@@ -86,7 +86,7 @@ export function RequestJoinClanDialog({
     setErrors({})
     void (async () => {
       try {
-        const res = await fetchPublicApi(getClanJoinFormUrl(slug))
+        const res = await httpFetch(getClanJoinFormUrl(slug), { headers: { Accept: 'application/json' } })
         if (cancelled) return
         if (res.status === 404 || res.status === 204) {
           // Clan is gone or the join-form endpoint declined

@@ -13,6 +13,7 @@ mod friends_realtime;
 mod game;
 mod hardware;
 mod hardware_api;
+mod http;
 mod launch_args;
 mod models;
 mod oauth_server;

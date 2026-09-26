@@ -2,13 +2,8 @@ use anyhow::{anyhow, Result};
 use base64::Engine;
 use serde::Serialize;
 use std::time::Duration;
-use url::Url;
 
-#[derive(Debug, Serialize)]
-pub struct PublicApiResponse {
-    pub status: u16,
-    pub body: String,
-}
+use crate::http::parse_url;
 
 /// Successful image download. Bytes are returned as base64 because
 /// Tauri's IPC layer is text-based and raw `Vec<u8>` would force the
@@ -31,44 +26,6 @@ pub struct PublicImageResponse {
     pub body_base64: String,
 }
 
-pub async fn get(url: &str) -> Result<PublicApiResponse> {
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(20))
-        .build()?;
-    get_with_client(&client, url).await
-}
-
-fn parse_url(raw: &str) -> Result<Url> {
-    let url = Url::parse(raw)?;
-    if !matches!(url.scheme(), "http" | "https")
-        || !url.username().is_empty()
-        || url.password().is_some()
-    {
-        return Err(anyhow!(
-            "Public API requests require an HTTP(S) URL without credentials"
-        ));
-    }
-    Ok(url)
-}
-
-async fn get_with_client(client: &reqwest::Client, url: &str) -> Result<PublicApiResponse> {
-    // These endpoints are public: do not attach the launcher bearer, cookies,
-    // or the WebView Origin. Keep HTTP errors for callers (e.g. news 404).
-    let response = client
-        .get(parse_url(url)?)
-        .header(reqwest::header::ACCEPT, "application/json")
-        .send()
-        .await
-        .map_err(|error| anyhow!("Public API request failed: {error}"))?;
-    let status = response.status().as_u16();
-    let body = response
-        .text()
-        .await
-        .map_err(|error| anyhow!("Public API response read failed: {error}"))?;
-    Ok(PublicApiResponse { status, body })
-}
-
 /// Download an arbitrary remote file as raw bytes. No CORS check
 /// (runs natively), no JSON / UTF-8 assumption (`response.text()`
 /// would corrupt binary bytes).
@@ -81,10 +38,27 @@ async fn get_with_client(client: &reqwest::Client, url: &str) -> Result<PublicAp
 /// entirely so the avatar upload completes regardless of the
 /// CDN's headers.
 ///
+/// This stays separate from `http::request` because that transport
+/// serves the renderer's `httpFetch` shim: it forwards caller
+/// headers verbatim and returns the body unbounded. Avatar
+/// downloads are anonymous and need the size cap below, so they
+/// get their own narrow entry point.
+///
 /// Returns the response content-type alongside the base64 bytes
 /// so the renderer can build a `Blob` with the correct MIME for
 /// `createImageBitmap`.
 pub async fn get_image(url: &str) -> Result<PublicImageResponse> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(20))
+        .build()?;
+    get_image_with_client(&client, url).await
+}
+
+async fn get_image_with_client(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<PublicImageResponse> {
     // 10 MiB cap matches `apps/api/src/r2/r2.service.ts`
     // `AVATAR_MAX_BYTES` (6 MiB) with some headroom — the launcher
     // downsamples whatever it gets to 64x64 PNG before POSTing,
@@ -93,10 +67,6 @@ pub async fn get_image(url: &str) -> Result<PublicImageResponse> {
     // upload pipeline and pinning a network connection).
     const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(20))
-        .build()?;
     let response = client
         .get(parse_url(url)?)
         .send()
@@ -133,59 +103,43 @@ mod tests {
     use super::*;
     use tiny_http::{Response, Server};
 
-    #[test]
-    fn accepts_public_and_development_urls_without_credentials() {
-        for url in [
-            "https://api.zemu.uk/v1/news",
-            "http://localhost:3002/streams",
-        ] {
-            assert!(parse_url(url).is_ok());
-        }
-        for url in [
-            "file:///etc/passwd",
-            "ftp://example.com/data",
-            "https://user:secret@example.com",
-        ] {
-            assert!(parse_url(url).is_err());
-        }
-    }
-
     #[tokio::test]
-    async fn anonymous_get_preserves_paths_queries_and_http_statuses() {
-        for (path, status, body) in [
-            ("/v1/news", 200, "[{\"slug\":\"hello\"}]"),
-            ("/v1/news/missing", 404, "not found"),
-            (
-                "/v1/stats/leaderboards?limit=5&tier=gold",
-                200,
-                "{\"entries\":[]}",
-            ),
-            ("/streams", 503, "service unavailable"),
-        ] {
-            let server = Server::http("127.0.0.1:0").unwrap();
-            let address = server.server_addr().to_ip().unwrap();
-            let worker = std::thread::spawn(move || {
-                let request = server
-                    .recv_timeout(Duration::from_secs(5))
-                    .unwrap()
-                    .unwrap();
-                assert_eq!(request.method(), &tiny_http::Method::Get);
-                assert_eq!(request.url(), path);
-                for header in request.headers() {
-                    assert!(!header.field.equiv("Origin"));
-                    assert!(!header.field.equiv("Authorization"));
-                    assert!(!header.field.equiv("Cookie"));
-                }
-                // No CORS response headers: native requests must still work.
-                request
-                    .respond(Response::from_string(body).with_status_code(status))
-                    .unwrap();
-            });
-            let response = get(&format!("http://{address}{path}")).await.unwrap();
-            worker.join().unwrap();
-            assert_eq!(response.status, status);
-            assert_eq!(response.body, body);
-        }
+    async fn image_download_preserves_binary_bytes_and_content_type() {
+        // A PNG magic number followed by bytes that are not valid
+        // UTF-8: `response.text()` would replace them, so this pins
+        // that the transport stays binary end to end.
+        let payload: Vec<u8> = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xFE];
+        let expected = payload.clone();
+        let server = Server::http("127.0.0.1:0").unwrap();
+        let address = server.server_addr().to_ip().unwrap();
+        let worker = std::thread::spawn(move || {
+            let request = server
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap()
+                .unwrap();
+            // Anonymous download: no launcher bearer, no cookies.
+            for header in request.headers() {
+                assert!(!header.field.equiv("Authorization"));
+                assert!(!header.field.equiv("Cookie"));
+            }
+            let mut response = Response::from_data(payload);
+            response.add_header(
+                tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"image/png"[..]).unwrap(),
+            );
+            request.respond(response).unwrap();
+        });
+        let response = get_image(&format!("http://{address}/avatar.png"))
+            .await
+            .unwrap();
+        worker.join().unwrap();
+        assert_eq!(response.status, 200);
+        assert_eq!(response.content_type, "image/png");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(&response.body_base64)
+                .unwrap(),
+            expected,
+        );
     }
 
     #[tokio::test]
@@ -198,28 +152,27 @@ mod tests {
                 .unwrap()
                 .unwrap();
             std::thread::sleep(Duration::from_millis(100));
-            let _ = request.respond(Response::from_string("[]"));
+            let _ = request.respond(Response::from_data(vec![0u8; 4]));
         });
         let client = reqwest::Client::builder()
             .timeout(Duration::from_millis(50))
             .build()
             .unwrap();
-        let error = get_with_client(&client, &format!("http://{address}/streams"))
+        let error = get_image_with_client(&client, &format!("http://{address}/avatar.png"))
             .await
             .unwrap_err();
         worker.join().unwrap();
-        assert!(error.to_string().contains("Public API request failed"));
+        assert!(error.to_string().contains("Image request failed"));
     }
 
     /// `PublicImageResponse` is consumed by the renderer's
     /// `launcherAPI.fetchAvatarBytes`, which destructures
     /// `{ status, contentType, bodyBase64 }`. Serde's default
-    /// snake_case would rename `body_base64` to itself and
-    /// `content_type` to itself — leaving the camelCase keys as
-    /// `undefined` on the JS side and crashing `atob(undefined)`
-    /// inside `fetchAvatarBlob`. This test pins the camelCase
-    /// wire format so future serde refactors can't silently
-    /// regress the IPC bridge.
+    /// snake_case would leave the camelCase keys `undefined` on the
+    /// JS side and crash `atob(undefined)` inside
+    /// `fetchAvatarBlob`. This test pins the camelCase wire format
+    /// so future serde refactors can't silently regress the IPC
+    /// bridge.
     #[test]
     fn image_response_serializes_in_camel_case() {
         let response = PublicImageResponse {
@@ -239,9 +192,7 @@ mod tests {
             Some("aGVsbG8="),
         );
         // And — equally importantly — that the snake_case forms
-        // do NOT leak through. If they did, the renderer's
-        // `result.bodyBase64` would be `undefined` because the JS
-        // destructure would see only `body_base64`.
+        // do NOT leak through.
         assert!(object.get("body_base64").is_none());
         assert!(object.get("content_type").is_none());
     }

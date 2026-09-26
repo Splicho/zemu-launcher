@@ -9,7 +9,7 @@
  */
 
 import { LAUNCHER_CONFIG } from '@/config/launcher'
-import { fetchPublicApi } from '@/lib/public-api'
+import { httpFetch } from '@/lib/http-fetch'
 
 export type LeaderboardTier =
   | 'bronze'
@@ -101,7 +101,7 @@ export async function fetchTopLeaderboard(
   // This endpoint returns the full standings and ignores tier/limit query
   // parameters. Filter before taking the top rows, including players outside
   // the overall top five, and preserve the server's order and positions.
-  const response = await fetchPublicApi(`${STATS_API_BASE}/leaderboards`)
+  const response = await httpFetch(`${STATS_API_BASE}/leaderboards`, { headers: { Accept: 'application/json' } })
   if (!response.ok) {
     throw new Error(`Leaderboard request failed (HTTP ${response.status})`)
   }
@@ -128,7 +128,7 @@ export async function fetchTopLeaderboard(
 
 /** Fetch all standings for the leaderboard page. Server pre-sorts by top10TotalScore. */
 export async function fetchLeaderboardEntries(): Promise<LeaderboardEntry[]> {
-  const response = await fetchPublicApi(`${STATS_API_BASE}/leaderboards`)
+  const response = await httpFetch(`${STATS_API_BASE}/leaderboards`, { headers: { Accept: 'application/json' } })
   if (!response.ok) throw new Error(`Leaderboard request failed (HTTP ${response.status})`)
   const data = await response.json()
   const entries = (data.entries ?? []) as Array<
@@ -139,8 +139,9 @@ export async function fetchLeaderboardEntries(): Promise<LeaderboardEntry[]> {
 
 /** Fetch a single player's top-10 match history. */
 export async function fetchPlayerTopMatches(name: string): Promise<MatchData[]> {
-  const response = await fetchPublicApi(
-    `${STATS_API_BASE}/player/${encodeURIComponent(name)}`
+  const response = await httpFetch(
+    `${STATS_API_BASE}/player/${encodeURIComponent(name)}`,
+    { headers: { Accept: 'application/json' } },
   )
   if (!response.ok) throw new Error(`Player matches failed (HTTP ${response.status})`)
   const data = await response.json()
@@ -167,7 +168,7 @@ export async function fetchClantags(
 ): Promise<Map<string, ClanTagEntry>> {
   if (names.length === 0) return new Map()
   const qs = encodeURIComponent(names.join(','))
-  const response = await fetchPublicApi(`${CLANTAGS_BASE}/clantags?names=${qs}`)
+  const response = await httpFetch(`${CLANTAGS_BASE}/clantags?names=${qs}`, { headers: { Accept: 'application/json' } })
   if (!response.ok) throw new Error(`Clantags failed (HTTP ${response.status})`)
   const list = (await response.json()) as ClanTagEntry[]
   return new Map(list.map(entry => [entry.key, entry]))

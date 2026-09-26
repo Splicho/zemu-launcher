@@ -683,21 +683,16 @@ pub fn log_to_terminal(message: String) {
 }
 
 #[tauri::command]
-pub async fn public_api_get(
-    app: tauri::AppHandle,
+pub async fn http_fetch(
     url: String,
-) -> Result<Option<crate::public_api::PublicApiResponse>, String> {
-    // Returning None preserves browser fetch on Windows and macOS.
-    if !cfg!(target_os = "linux") {
-        return Ok(None);
-    }
-    let result = crate::public_api::get(&url).await;
-    let message = match &result {
-        Ok(response) => format!("GET {url} status={}", response.status),
-        Err(error) => format!("GET {url} error={error}"),
-    };
-    let _ = debug_log::append(&app, "public-api", &message);
-    result.map(Some).map_err(|error| error.to_string())
+    method: String,
+    headers: Vec<(String, String)>,
+    body: Option<Vec<u8>>,
+    redirect: String,
+) -> Result<crate::http::HttpResponse, String> {
+    crate::http::request(&url, &method, headers, body, &redirect)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 /// Download a remote image as raw bytes via `reqwest` and return
@@ -1086,7 +1081,7 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         debug_log_clear,
         log_to_terminal,
         api_get,
-        public_api_get,
+        http_fetch,
         avatar_fetch_bytes,
         api_post,
         launcher_get_autostart_enabled,

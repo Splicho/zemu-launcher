@@ -38,6 +38,7 @@
  * (the friends 304 path) to avoid spamming the log.
  */
 import { invoke, isTauri } from '@tauri-apps/api/core'
+import { httpFetch } from '@/lib/http-fetch'
 
 // Per the LAUNCHER-API doc, the game server is `http://217.160.250.198:8126`.
 // Kept as a single constant so a future env override (stage / tunnel) lands
@@ -103,7 +104,19 @@ function safeStringify(value: unknown): string {
   }
 }
 
-export interface GameFetchOptions extends Omit<RequestInit, 'body'> {
+export interface GameFetchOptions {
+  method?: string
+  headers?: HeadersInit
+  /**
+   * Redirect policy. Narrower than `RequestInit` because desktop
+   * requests are executed by Rust (`httpFetch`), which supports
+   * `follow` and `error` only. The rest of `RequestInit` (`mode`,
+   * `cache`, `credentials`, `signal`, …) is deliberately absent:
+   * it has no meaning once the request leaves the WebView, and
+   * accepting it here would let callers pass options that are
+   * silently dropped.
+   */
+  redirect?: 'follow' | 'error'
   /** Pre-serialised JSON body. Strings / Blobs are forwarded verbatim. */
   body?: BodyInit | null
   /** When true, skip success-path logging. Failures still log. */
@@ -226,7 +239,7 @@ export async function gameFetch<T = unknown>(
 
   let response: Response
   try {
-    response = await fetch(url, {
+    response = await httpFetch(url, {
       ...rest,
       method,
       headers,
@@ -301,7 +314,7 @@ export async function gameFetchWithEtag<T = unknown>(
 
   const startedAt = performance.now()
   try {
-    const response = await fetch(url, { method: 'GET', headers })
+    const response = await httpFetch(url, { method: 'GET', headers })
     const elapsed = Math.round(performance.now() - startedAt)
     const etag = response.headers.get('etag')
     if (response.status === 304) {

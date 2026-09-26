@@ -65,6 +65,7 @@ import {
   GAME_API_BASE_URL,
   mapGameApiAuthReason,
 } from '@/lib/zemu-game-api'
+import { httpFetch } from '@/lib/http-fetch'
 
 // ─── Constants ───────────────────────────────────────────────────────────
 
@@ -358,11 +359,13 @@ export async function uploadFromSourceUrl(
     }
   }
 
-  // Use a direct `fetch` here rather than `gameFetch` because the
+  // Use `httpFetch` directly rather than `gameFetch` because the
   // body is binary (PNG bytes), not JSON. `gameFetch`'s default
   // Content-Type negotiation doesn't apply; we set it ourselves.
+  // Still `httpFetch` and not `fetch`: on desktop the upload has
+  // to go through Rust or the WebView rejects it on CORS.
   try {
-    const response = await fetch(`${GAME_API_BASE_URL}/avatar`, {
+    const response = await httpFetch(`${GAME_API_BASE_URL}/avatar`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${authKey}`,

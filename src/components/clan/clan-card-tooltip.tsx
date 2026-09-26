@@ -11,7 +11,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Spinner } from '@/components/ui/spinner'
 import { ClanCard, type ClanCardData } from '@/components/clan/clan-card'
 import { ClantagBadge } from '@/components/leaderboard/clantag-badge'
-import { fetchPublicApi } from '@/lib/public-api'
+import { httpFetch } from '@/lib/http-fetch'
 import { CLAN_API_BASE } from '@/lib/clan'
 import type { ClanTooltipMember } from '@/lib/clan'
 
@@ -75,7 +75,7 @@ async function fetchClanTooltip(
 
   const promise = (async () => {
     try {
-      const res = await fetchPublicApi(tooltipUrl(slug))
+      const res = await httpFetch(tooltipUrl(slug), { headers: { Accept: 'application/json' } })
       if (!res.ok) {
         if (res.status === 404) notFoundCache.set(slug, Date.now())
         return null

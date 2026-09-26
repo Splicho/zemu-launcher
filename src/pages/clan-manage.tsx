@@ -108,7 +108,7 @@ import {
   type ClanInviteForMe,
   type ClanSentInvite,
 } from '@/hooks/use-clan'
-import { fetchPublicApi } from '@/lib/public-api'
+import { httpFetch } from '@/lib/http-fetch'
 import { CLAN_API_BASE } from '@/lib/clan'
 
 /**
@@ -1034,7 +1034,7 @@ function InviteMemberDialog({
     const timer = setTimeout(async () => {
       try {
         const url = `${CLAN_API_BASE}/search-users?q=${encodeURIComponent(query.trim())}`
-        const res = await fetchPublicApi(url)
+        const res = await httpFetch(url, { headers: { Accept: 'application/json' } })
         if (cancelled) return
         if (!res.ok) {
           setHits([])

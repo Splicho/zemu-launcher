@@ -12,7 +12,7 @@
  *     (`LAUNCHER_CONFIG.friendsApiBaseUrl`). A separate Rust
  *     command would duplicate both of those.
  *   - The heartbeat is fire-and-forget HTTP — a single fetch
- *     with a 5s timeout, no auth flow coupling, no retry queue.
+ *     through the shared transport, no auth flow coupling, no retry queue.
  *
  * Status mapping:
  *   - `isRunning === true`  → `status: 'in_game'`, `currentGame: 'ZEmu'`
@@ -36,6 +36,7 @@
  *     needed.
  */
 
+import { httpFetch } from '@/lib/http-fetch'
 import { useEffect, useRef } from 'react'
 import { readPersistedToken } from '@/lib/auth'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
@@ -85,7 +86,7 @@ async function sendHeartbeat(
 ): Promise<boolean> {
   const url = `${baseUrl.replace(/\/+$/, '')}/v1/presence/heartbeat`
   try {
-    const res = await fetch(url, {
+    const res = await httpFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
