@@ -387,7 +387,7 @@ const handleProgress = (status: UpdateStatus) => {
       const hasUpdates =
         status.totalFiles > 0
       if (!status.isUpdating && status.overallProgress === 100 && gameDirectory && hasUpdates) {
-        // Patch just finished. The Rust side has written `version.json`
+        // Patch just finished. The Rust side has written `manifest.json`
         // for the new install, so we can confidently mark the game as
         // installed *now* — no need to wait for the 500ms isInstalled
         // round-trip. Without this, the state machine's CDN_UNAVAILABLE
@@ -399,10 +399,10 @@ const handleProgress = (status: UpdateStatus) => {
         setUpdateInfo((prev) =>
           prev ? { ...prev, hasUpdate: false } : { hasUpdate: false, cdnAvailable: true }
         )
-        // Schedule a deferred re-check so `version.json` on disk and
+        // Schedule a deferred re-check so `manifest.json` on disk and
         // any cloud-side state get re-read. We guard both writes with
         // `justCompletedUpdateRef.current` because Rust may still be
-        // finishing the `version.json` write when this fires — if we
+        // finishing the `manifest.json` write when this fires — if we
         // trust its `isInstalled()` reply unconditionally, a transient
         // `false` here flips the state machine back to `NOT_INSTALLED`
         // and traps the user on the "Install" button until they
@@ -750,11 +750,11 @@ const handleProgress = (status: UpdateStatus) => {
     }
 
     // First-time install flow: the user just located a PS3 folder that
-    // has files but no `version.json` (which `isInstalled` checks for).
+    // has files but no `manifest.json` (which `isInstalled` checks for).
     // Show "Install Patch" — they need the patch applied on top of the
     // existing base game. This is independent of `updateInfo`: even if
     // the CDN check hasn't completed or is stale, the local "no
-    // version.json" state is enough to know the patch is needed.
+    // manifest.json" state is enough to know the patch is needed.
     if (!isInstalled) {
       return {
         type: 'UPDATE_AVAILABLE',

@@ -646,7 +646,7 @@ async fn drive_download(
         }),
     );
 
-    // Persist `version.json` so the launcher knows the game is installed
+    // Persist `manifest.json` so the launcher knows the game is installed
     // and can transition to "Install Patch" / "Play" without requiring
     // the user to re-locate the folder. Without this, every user who
     // completes the depot download is stuck on "Locate PS3 Folder" even

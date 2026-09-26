@@ -248,7 +248,11 @@ pub fn is_game_installed(app: &AppHandle) -> Result<bool> {
         return Ok(false);
     }
 
-    Ok(path.join("version.json").exists())
+    // The on-disk "installed" marker is the compressor-format
+    // `manifest.json` written by both the depot download and the
+    // updater's finalize phase. The earlier `version.json` sentinel
+    // is no longer written anywhere in the codebase.
+    Ok(path.join("manifest.json").exists())
 }
 
 pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
