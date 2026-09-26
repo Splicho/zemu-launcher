@@ -375,6 +375,7 @@ export default {
       colTier: 'Divisão',
       colTotalScore: 'Pontuação Total',
       noPlayersFound: 'Nenhum jogador encontrado.',
+      viewFull: 'Ver leaderboard completo',
     },
     leaderboardPage: {
       title: 'Classificação',

@@ -430,6 +430,7 @@ export default {
       colTier: 'Tier',
       colTotalScore: 'Total Score',
       noPlayersFound: 'No players found.',
+      viewFull: 'View full leaderboard',
     },
     leaderboardPage: {
       title: 'Leaderboard',

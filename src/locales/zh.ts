@@ -432,6 +432,7 @@ export default {
       colTier: '段位',
       colTotalScore: '总分',
       noPlayersFound: '未找到玩家。',
+      viewFull: '查看完整排行榜',
     },
     leaderboardPage: {
       title: '排行榜',

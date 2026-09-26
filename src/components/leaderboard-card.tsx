@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { ArrowRight } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { useHashRouter } from '@/hooks/use-hash'
 import {
   Table,
   TableHeader,
@@ -69,6 +72,7 @@ function SkeletonRow() {
 
 export function LeaderboardCard() {
   const { t } = useTranslation()
+  const { navigate } = useHashRouter()
   const [tierFilter, setTierFilterRaw] = useState<LeaderboardTier | 'all'>('all')
   const setTierFilter = (value: string) => {
     if (value === 'all' || TIER_VALUES.includes(value as LeaderboardTier)) {
@@ -127,6 +131,15 @@ export function LeaderboardCard() {
               <SelectItem value="Fives">{t('leaderboard.modeFives')}</SelectItem>
             </SelectContent>
           </Select>
+
+          <Button
+            variant="gradient"
+            className="group/view-full"
+            onClick={() => navigate('/leaderboard')}
+          >
+            {t('leaderboard.viewFull')}
+            <ArrowRight className="size-4 transition-transform duration-200 ease-out group-hover/view-full:translate-x-0.5" />
+          </Button>
         </div>
       </CardHeader>
       <CardContent>

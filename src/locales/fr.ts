@@ -429,6 +429,7 @@ export default {
       colTier: "Division",
       colTotalScore: "Score Total",
       noPlayersFound: "Aucun joueur trouvé.",
+      viewFull: 'Voir le classement complet',
     },
     leaderboardPage: {
       title: "Classement",
