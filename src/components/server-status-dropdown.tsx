@@ -271,7 +271,7 @@ function ServerStatusRow({
         {renderRegionIcon(region)}
         <span className="truncate">{region.label}</span>
       </span>
-      <Badge variant="outline">
+      <Badge variant="outline" className="rounded-sm!">
         {query.isPending && !count ? (
           <Spinner className="size-3" />
         ) : null}
