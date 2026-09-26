@@ -49,7 +49,31 @@ export function ServerStatusDropdown() {
   // surfaces the most relevant playercount without forcing the
   // user to open the menu.
   const defaultRegion = SERVERS[0]!
+
+  // Only render a dropdown when there are other regions to switch to.
+  // With a single-region setup the trigger is display-only.
+  const hasSwitchableRegions = SERVERS.filter(
+    (r) => r.id !== defaultRegion.id,
+  ).length > 0
+
+  // `useState` must be called unconditionally before any early returns.
   const [open, setOpen] = React.useState(false)
+
+  if (!hasSwitchableRegions) {
+    return (
+      <button
+        type="button"
+        // Same pill appearance as the interactive version but not
+        // wrapped in a dropdown — no chevron, no dropdown affordance.
+        className="flex h-8 items-center gap-2 rounded-full border border-border bg-background px-3 text-sm transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus-visible:outline-none"
+      >
+        <StatusDot region={defaultRegion} />
+        {renderRegionIcon(defaultRegion)}
+        <span className="font-medium">{defaultRegion.label}</span>
+        <DefaultRegionCount region={defaultRegion} />
+      </button>
+    )
+  }
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -88,7 +112,7 @@ export function ServerStatusDropdown() {
         {!configured ? (
           <ServerStatusNotConfiguredRow />
         ) : (
-          SERVERS.map((region) => (
+          SERVERS.filter((r) => r.id !== defaultRegion.id).map((region) => (
             <ServerStatusRow key={region.id} region={region} />
           ))
         )}
