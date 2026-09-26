@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
 import Filter, { DEFAULT_FILTERS, type LeaderboardFilters } from '@/components/leaderboard/filter'
 import LeaderboardTable from '@/components/leaderboard/leaderboard-table'
+import { HeroRow } from '@/components/leaderboard/hero-row'
 import { useAuthContext } from '@/contexts/auth-context'
 import { useLeaderboardEntries, useClantags } from '@/hooks/use-leaderboard'
 import type { LeaderboardEntry } from '@/lib/leaderboard'
@@ -69,14 +70,15 @@ export default function LeaderboardTableWrapper() {
     })
   }, [entries, filters])
 
-  // Check whether the hero row would be filtered out so we can show it separately.
+  // Check whether the hero row would be filtered out so we can
+  // dim it on the standalone hero strip. The main table is
+  // unaffected — it only renders `visibleEntries` (which already
+  // excludes the user's entry when their filter combination hides
+  // them).
   const heroFilteredOut = useMemo(() => {
     if (!heroEntry) return false
     return !filtered.includes(heroEntry)
   }, [filtered, heroEntry])
-
-  // The hero entry is always pinned at the top.
-  const heroRow = heroFilteredOut ? heroEntry : heroEntry ?? null
 
   // Page math.
   const pageSize = filters.pageSize
@@ -110,12 +112,18 @@ export default function LeaderboardTableWrapper() {
         availableCountries={uniqueCountries}
       />
 
+      {heroEntry && (
+        <HeroRow
+          entry={heroEntry}
+          clanTags={clanTagRecord}
+          dimmed={heroFilteredOut}
+        />
+      )}
+
       <LeaderboardTable
         entries={visibleEntries}
         clanTags={clanTagRecord}
         isLoading={isLoading}
-        heroRow={heroRow}
-        heroFilteredOut={heroFilteredOut}
         filters={filters}
       />
 

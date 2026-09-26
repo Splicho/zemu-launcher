@@ -19,7 +19,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
 import type { LeaderboardEntry } from '@/lib/leaderboard'
 import { PlayerGames } from '@/components/leaderboard/player-games'
 import { leaderboardColumns } from '@/components/leaderboard/leaderboard-columns'
@@ -44,19 +43,13 @@ interface LeaderboardTableProps {
     pageSize: number
   }
   clanTags?: Record<string, { clanSlug: string; clanName: string; clantag: string }>
-  heroRow?: LeaderboardEntry | null
-  heroFilteredOut?: boolean
 }
-
-const HERO_ROW_ID = '__hero__'
 
 export default function LeaderboardTable({
   entries,
   columns = leaderboardColumns,
   isLoading = false,
   clanTags = {},
-  heroRow = null,
-  heroFilteredOut = false,
 }: LeaderboardTableProps) {
   const { t } = useTranslation()
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
@@ -68,13 +61,8 @@ export default function LeaderboardTable({
   const [sorting, setSorting] = useState([{ id: 'top10TotalScore', desc: true }])
 
   const tableData = useMemo(
-    () =>
-      heroRow
-        ? ([{ ...heroRow, __id: HERO_ROW_ID }] as Array<LeaderboardEntry & { __id?: string }>).concat(
-            entries as unknown as Array<LeaderboardEntry & { __id?: string }>,
-          )
-        : (entries as unknown as Array<LeaderboardEntry & { __id?: string }>),
-    [heroRow, entries],
+    () => entries as unknown as Array<LeaderboardEntry & { __id?: string }>,
+    [entries],
   )
 
   const handleRowClick = useCallback(
@@ -108,10 +96,7 @@ export default function LeaderboardTable({
     columns,
     state: { sorting },
     onSortingChange: setSorting,
-    getRowId: (row, index) => {
-      const r = row as LeaderboardEntry & { __id?: string }
-      return r.__id ?? `row-${index}`
-    },
+    getRowId: (_row, index) => `row-${index}`,
     meta: { clanTags },
   })
 
@@ -148,60 +133,21 @@ export default function LeaderboardTable({
           ) : table.getRowModel().rows.length ? (
             table.getRowModel().rows.map(row => {
               const entry = row.original as LeaderboardEntry
-              const isHero = row.id === HERO_ROW_ID
               const isExpanded = expandedRow === row.id
-
-              const heroClasses = isHero
-                ? cn(
-                    'bg-amber-500/10 hover:bg-amber-500/15',
-                    'border-y-2 border-amber-500/60',
-                    heroFilteredOut && 'opacity-60 hover:opacity-80',
-                  )
-                : 'cursor-pointer hover:bg-foreground/5'
-
               return (
                 <Fragment key={row.id}>
                   <TableRow
-                    onClick={() => !isHero && handleRowClick(row.id, entry.name)}
-                    onMouseEnter={() => !isHero && prefetchMatches(entry.name)}
-                    className={heroClasses}
-                    data-hero-row={isHero ? 'true' : undefined}
+                    onClick={() => handleRowClick(row.id, entry.name)}
+                    onMouseEnter={() => prefetchMatches(entry.name)}
+                    className="cursor-pointer hover:bg-foreground/5"
                   >
-                    {row.getAllCells().map(cell => {
-                      if (isHero && cell.column.id === 'name') {
-                        return (
-                          <TableCell key={cell.id}>
-                            <div className="flex items-center gap-2 font-medium">
-                              <span>{entry.name}</span>
-                              <span className="inline-flex shrink-0 items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold tracking-wide uppercase text-amber-700 dark:text-amber-300">
-                                {t('leaderboardPage.heroYou')}
-                              </span>
-                            </div>
-                          </TableCell>
-                        )
-                      }
-                      if (isHero && cell.column.id === 'position' && heroFilteredOut) {
-                        return (
-                          <TableCell key={cell.id}>
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span className="font-mono font-semibold tabular-nums">
-                                #{entry.position}
-                              </span>
-                              <span className="text-[10px] tracking-wide uppercase text-foreground/60">
-                                {t('leaderboardPage.heroFilteredOut')}
-                              </span>
-                            </div>
-                          </TableCell>
-                        )
-                      }
-                      return (
-                        <TableCell key={cell.id}>
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </TableCell>
-                      )
-                    })}
+                    {row.getAllCells().map(cell => (
+                      <TableCell key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
                   </TableRow>
-                  {isExpanded && !isHero && (
+                  {isExpanded && (
                     <TableRow>
                       <TableCell
                         colSpan={columns.length}
