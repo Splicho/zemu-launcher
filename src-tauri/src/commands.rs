@@ -700,6 +700,38 @@ pub async fn public_api_get(
     result.map(Some).map_err(|error| error.to_string())
 }
 
+/// Authenticated GET against an `InternalApiGuard`-protected
+/// endpoint. Linux-only — returns `None` on Windows and macOS so
+/// the renderer falls back to its plain `fetch` path (matching the
+/// `public_api_get` posture, since WebView2 / WKWebView have a
+/// working CORS origin for `api.zemu.uk`).
+///
+/// The key comes from the renderer's `VITE_LAUNCHER_INTERNAL_API_KEY`
+/// (inlined at build time) and is therefore already public to any
+/// launcher binary. Trust model matches `API_INTERNAL_KEY` for
+/// every other internal service in the Zemu stack.
+#[tauri::command]
+pub async fn internal_api_get(
+    app: tauri::AppHandle,
+    url: String,
+    key: String,
+) -> Result<Option<crate::public_api::PublicApiResponse>, String> {
+    if !cfg!(target_os = "linux") {
+        return Ok(None);
+    }
+    let trimmed_key = key.trim();
+    if trimmed_key.is_empty() {
+        return Err("Internal API key is not configured.".to_string());
+    }
+    let result = crate::public_api::get_with_internal_key(&url, trimmed_key).await;
+    let message = match &result {
+        Ok(response) => format!("GET {url} status={}", response.status),
+        Err(error) => format!("GET {url} error={error}"),
+    };
+    let _ = debug_log::append(&app, "internal-api", &message);
+    result.map(Some).map_err(|error| error.to_string())
+}
+
 /// Download a remote image as raw bytes via `reqwest` and return
 /// them to the renderer as a base64 string alongside the response
 /// Content-Type.
@@ -1087,6 +1119,7 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         log_to_terminal,
         api_get,
         public_api_get,
+        internal_api_get,
         avatar_fetch_bytes,
         api_post,
         launcher_get_autostart_enabled,

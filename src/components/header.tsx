@@ -1,10 +1,14 @@
 import { AccountDropdown } from '@/components/account-dropdown'
+import { ServerStatusDropdown } from '@/components/server-status-dropdown'
 
 /**
  * Secondary top bar of the home screen.
  *
  * Sits directly below `TitleBar` (which is the OS chrome row at the
- * very top of the window). Holds only one slot:
+ * very top of the window). Holds two slots, right-aligned:
+ *   - left → server-status dropdown (region list + live player
+ *             counts; "not configured" when the api internal key
+ *             isn't baked in)
  *   - right → account dropdown (avatar trigger + sign-out item)
  *
  * The launcher logo lives in the sidebar. Intentionally minimal —
@@ -14,7 +18,8 @@ import { AccountDropdown } from '@/components/account-dropdown'
  */
 export function Header() {
   return (
-    <header className="flex shrink-0 items-center justify-end px-8 py-3">
+    <header className="flex shrink-0 items-center justify-end gap-2 px-8 py-3">
+      <ServerStatusDropdown />
       <AccountDropdown />
     </header>
   )

@@ -266,6 +266,39 @@ export function Eye({ ...props }: IconProps) {
   )
 }
 
+export function Europe({ ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" width="1.34em" height="1em" viewBox="0 0 640 480" {...props}>
+	<defs>
+		<g id="SVGEMZ5HduN">
+			<g id="SVGGTty7bMH">
+				<path id="SVGwkBBpcNU" d="m0-1l-.3 1l.5.1z"></path>
+				<use href="#SVGwkBBpcNU" transform="scale(-1 1)"></use>
+			</g>
+			<g id="SVGlgVBhBlu">
+				<use href="#SVGGTty7bMH" transform="rotate(72)"></use>
+				<use href="#SVGGTty7bMH" transform="rotate(144)"></use>
+			</g>
+			<use href="#SVGlgVBhBlu" transform="scale(-1 1)"></use>
+		</g>
+	</defs>
+	<path fill="#039" d="M0 0h640v480H0z"></path>
+	<g fill="#fc0" transform="translate(320 242.3)scale(23.7037)">
+		<use width="100%" height="100%" y={-6} href="#SVGEMZ5HduN"></use>
+		<use width="100%" height="100%" y={6} href="#SVGEMZ5HduN"></use>
+		<g id="SVGCH9N7c3I">
+			<use width="100%" height="100%" x={-6} href="#SVGEMZ5HduN"></use>
+			<use width="100%" height="100%" href="#SVGEMZ5HduN" transform="rotate(-144 -2.3 -2.1)"></use>
+			<use width="100%" height="100%" href="#SVGEMZ5HduN" transform="rotate(144 -2.1 -2.3)"></use>
+			<use width="100%" height="100%" href="#SVGEMZ5HduN" transform="rotate(72 -4.7 -2)"></use>
+			<use width="100%" height="100%" href="#SVGEMZ5HduN" transform="rotate(72 -5 .5)"></use>
+		</g>
+		<use width="100%" height="100%" href="#SVGCH9N7c3I" transform="scale(-1 1)"></use>
+	</g>
+</svg>
+  )
+}
+
 export function Play({ ...props }: IconProps) {
   
   return (

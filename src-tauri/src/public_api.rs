@@ -69,6 +69,44 @@ async fn get_with_client(client: &reqwest::Client, url: &str) -> Result<PublicAp
     Ok(PublicApiResponse { status, body })
 }
 
+/// Authenticated GET against an `InternalApiGuard`-protected
+/// endpoint. The api's `InternalApiGuard` accepts the call when
+/// `Authorization: Bearer API_INTERNAL_KEY` matches the server-
+/// side key.
+///
+/// Today the only consumer is the server-status dropdown's
+/// `GET /v1/playercount` probe, which is gated by the api the same
+/// way as the Discord bot, the moderation proxy, and the
+/// authkeys proxy. The renderer hands us the key verbatim (it
+/// comes from `VITE_LAUNCHER_INTERNAL_API_KEY` baked at build
+/// time and is therefore already public to anyone with the
+/// launcher binary — the same trust model as `API_INTERNAL_KEY`
+/// for every other Zemu internal service).
+///
+/// Same return shape and same Linux-only-fallback posture as
+/// `get()` so the renderer's wrapper mirrors `fetchPublicApi`
+/// 1:1.
+pub async fn get_with_internal_key(url: &str, key: &str) -> Result<PublicApiResponse> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(20))
+        .build()?;
+
+    let response = client
+        .get(parse_url(url)?)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .bearer_auth(key)
+        .send()
+        .await
+        .map_err(|error| anyhow!("Internal API request failed: {error}"))?;
+    let status = response.status().as_u16();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| anyhow!("Internal API response read failed: {error}"))?;
+    Ok(PublicApiResponse { status, body })
+}
+
 /// Download an arbitrary remote file as raw bytes. No CORS check
 /// (runs natively), no JSON / UTF-8 assumption (`response.text()`
 /// would corrupt binary bytes).
