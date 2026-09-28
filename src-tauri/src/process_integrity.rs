@@ -26,11 +26,14 @@
 //! - Walks the root process tree on every tick to find `H1Z1.exe`
 //!   PIDs; enumerates loaded modules for each via the Win32 Toolhelp
 //!   + PSAPI APIs.
-//! - Allowlist is a `&'static [&'static str]` of well-known names
-//!   (Vulkan/D3D, system DLL prefixes) joined with the per-launch
-//!   depot-installed DLL list read from the updater's
-//!   `manifest.json` (the same files `models::CompressorManifest`
-//!   tracks for delta updates).
+//! - Allowlist is a `&'static [&'static str]` of well-known DLL
+//!   basenames (graphics runtimes + common system DLLs) joined with
+//!   the per-launch depot-installed DLL list read from the
+//!   updater's `manifest.json` (the same files
+//!   `models::CompressorManifest` tracks for delta updates). The
+//!   list is basenames-only — no paths, no runtime overrides, no
+//!   user-editable sidecar. If a legit DLL isn't on the list, the
+//!   fix is a code change + launcher update, not a config edit.
 //! - Findings are deduped per `(PID, module_basename_lc)` per
 //!   session and rate-limited to one HTTP POST every
 //!   [`MIN_REPORT_INTERVAL`] overall — a flood of injected DLLs
@@ -104,10 +107,18 @@ const POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// flood of injected DLLs can't DOS the API.
 const MIN_REPORT_INTERVAL: Duration = Duration::from_secs(30);
 
-/// Lowercase basenames of well-known Windows graphics runtimes. The
-/// allowlist joins this list at runtime with the per-launch depot
-/// manifest (so a fresh `dinput8.dll` the launcher dropped into the
-/// game folder never fires).
+/// Lowercase basenames of well-known DLLs H1Z1.exe legitimately
+/// loads. The allowlist joins this list at runtime with the
+/// per-launch depot manifest (so a fresh `dinput8.dll` the launcher
+/// dropped into the game folder never fires), plus auto-allow by
+/// path prefix for `C:\Windows\System32\` and friends.
+///
+/// **Source of truth.** This `static` lives in the Rust crate, so
+/// it ships compiled into `zemu_launcher.exe`. It's not bundled
+/// into the renderer / Tauri webview JS — a user with the binary
+/// can extract the strings, but they cannot mutate the list
+/// without rebuilding the launcher. If a legit DLL starts
+/// false-positiving, edit this array and cut a release.
 const STATIC_DLL_ALLOWLIST: &[&str] = &[
     // DirectX runtime
     "d3d11.dll",
@@ -200,23 +211,17 @@ const STATIC_DLL_ALLOWLIST: &[&str] = &[
 /// Path prefixes that auto-allow any DLL under them. Windows system
 /// folders are always safe — we never want to flag `kernel32.dll` or
 /// `ntdll.dll`. Case-insensitive on Windows.
+///
+/// Intentionally narrow: only Windows system folders. Vendor GPU
+/// drivers and overlays are caught by the static basename list
+/// (e.g. `nvwgf2umx.dll`, `atiuxp64.dll`, `gameoverlayrenderer.dll`)
+/// when they load from non-system paths — extending the prefix list
+/// to `Program Files\*NVIDIA*` etc. would let an attacker drop a
+/// DLL under any matching prefix and bypass the check.
 const SYSTEM_PATH_PREFIXES: &[&str] = &[
-    // Windows system folders
     "c:\\windows\\system32\\",
     "c:\\windows\\syswow64\\",
     "c:\\windows\\winsxs\\",
-    // Program Files — vendor GPU drivers and driver control panels
-    // (NVIDIA Control Panel, AMD Adrenalin, Intel Arc Control)
-    // install their DLLs here. We auto-allow them on the same
-    // premise as System32: signatures are checked by the OS loader,
-    // and DLLs under `Program Files\*NVIDIA*` or `…\*AMD*` are
-    // vendor-shipped, not user-injected.
-    "c:\\program files\\nvidia corporation\\",
-    "c:\\program files (x86)\\nvidia corporation\\",
-    "c:\\program files\\amd\\",
-    "c:\\program files (x86)\\amd\\",
-    "c:\\program files\\intel\\",
-    "c:\\program files (x86)\\intel\\",
 ];
 
 // ─── Wire types ───────────────────────────────────────────────────────────
@@ -267,11 +272,6 @@ pub fn start_integrity_monitor(app: AppHandle, root_pid: u32, exe_basename: Stri
     // depot dropped into my game folder" consistent across launch /
     // update / integrity-check.
     let depot_dlls = read_depot_allowlist(&app);
-    // User-supplied additions, read once from
-    // `%APPDATA%/zemu-launcher/integrity-allowlist.json`. See the
-    // doc comment on `read_user_allowlist_override` for the file
-    // shape and the in-game-overrides rationale.
-    let user_override = read_user_allowlist_override();
 
     let thread_name = format!("integrity-monitor({})", root_pid);
     let _ = thread::Builder::new()
@@ -282,7 +282,6 @@ pub fn start_integrity_monitor(app: AppHandle, root_pid: u32, exe_basename: Stri
                 root_pid,
                 exe_basename,
                 depot_dlls,
-                user_override,
                 game_started_at,
             );
         })
@@ -299,16 +298,10 @@ fn run_monitor(
     root_pid: u32,
     exe_basename: String,
     depot_dlls: Vec<String>,
-    user_override: UserAllowlistOverride,
     game_started_at: DateTime<Utc>,
 ) {
     let exe_basename_lc = exe_basename.to_lowercase();
-    let allowlist = Allowlist::new(
-        depot_dlls,
-        &exe_basename_lc,
-        user_override.basenames,
-        user_override.path_prefixes,
-    );
+    let allowlist = Allowlist::new(depot_dlls, &exe_basename_lc);
 
     // Per-session dedup: `(pid, module_basename_lc) -> first_seen`.
     // Skipping already-reported findings keeps the channel quiet
@@ -325,13 +318,11 @@ fn run_monitor(
         &app,
         "integrity",
         &format!(
-            "monitor started root_pid={} exe={} allowlist_static={} depot={} user_basenames={} user_path_prefixes={}",
+            "monitor started root_pid={} exe={} allowlist_static={} depot={}",
             root_pid,
             exe_basename_lc,
             STATIC_DLL_ALLOWLIST.len(),
-            allowlist.depot_count,
-            allowlist.extra_basenames.len(),
-            allowlist.extra_path_prefixes.len(),
+            allowlist.depot_count
         ),
     );
 
@@ -513,7 +504,6 @@ fn run_monitor(
     root_pid: u32,
     exe_basename: String,
     depot_dlls: Vec<String>,
-    _user_override: UserAllowlistOverride,
     _game_started_at: DateTime<Utc>,
 ) {
     let _ = debug_log::append(
@@ -545,16 +535,6 @@ fn sleep_poll_interval() {
 struct Allowlist {
     static_basenames: HashSet<String>,
     depot_basenames: HashSet<String>,
-    /// User-supplied basenames merged in from
-    /// `%APPDATA%\zemu-launcher\integrity-allowlist.json`. Never
-    /// audit-checked — an over-broad user override is the user's
-    /// problem, not ours; operators see the false-negative rate on
-    /// the admin dashboard and catch bad overrides.
-    extra_basenames: HashSet<String>,
-    /// User-supplied path prefixes merged in from the same file.
-    /// Catches a DLL whose basename we can't predict (third-party
-    /// OC overlay DLLs that change name per release).
-    extra_path_prefixes: Vec<String>,
     exe_basename: String,
     /// Stashed so the debug-log line at startup can show what was
     /// loaded — never used at runtime.
@@ -562,26 +542,12 @@ struct Allowlist {
 }
 
 impl Allowlist {
-    fn new(
-        depot_dlls: Vec<String>,
-        exe_basename: &str,
-        override_basenames: Vec<String>,
-        override_path_prefixes: Vec<String>,
-    ) -> Self {
+    fn new(depot_dlls: Vec<String>, exe_basename: &str) -> Self {
         let mut static_basenames: HashSet<String> =
             STATIC_DLL_ALLOWLIST.iter().map(|s| s.to_string()).collect();
         // Add the game exe itself so the toolhelp enumeration
         // doesn't flag the very first entry on every scan.
         static_basenames.insert(exe_basename.to_string());
-        // Merge the user override basenames (lowercase for the
-        // same reason the rest of the list is lowercase). A
-        // duplicate from the static list is harmless.
-        let extra_basenames: HashSet<String> = override_basenames
-            .into_iter()
-            .map(|s| s.trim().to_lowercase())
-            .filter(|s| !s.is_empty())
-            .collect();
-        static_basenames.extend(extra_basenames.iter().cloned());
 
         let depot_basenames: HashSet<String> =
             depot_dlls.iter().map(|p| module_basename_lc(Path::new(p))).collect();
@@ -589,51 +555,27 @@ impl Allowlist {
         // paths that don't look like files; nothing to do — the
         // allowlist simply won't contain them.
 
-        // Normalise the user-supplied prefixes to lowercase so the
-        // runtime case-insensitive compare doesn't have to repeat
-        // that work on every module. Always-on trailing-backslash
-        // guard so "c:\foo" doesn't also match "c:\foobar".
-        let extra_path_prefixes: Vec<String> = override_path_prefixes
-            .into_iter()
-            .map(|p| {
-                let trimmed = p.trim().to_lowercase();
-                if trimmed.ends_with('\\') || trimmed.is_empty() {
-                    trimmed
-                } else {
-                    format!("{trimmed}\\")
-                }
-            })
-            .filter(|p| !p.is_empty())
-            .collect();
-
         // Pre-count for the startup log line.
         let depot_count = depot_basenames.len();
 
         Self {
             static_basenames,
             depot_basenames,
-            extra_basenames,
-            extra_path_prefixes,
             exe_basename: exe_basename.to_string(),
             depot_count,
         }
     }
 
     fn is_allowed(&self, path: &Path, basename_lc: &str) -> bool {
-        // System + user-supplied path prefix check (case-insensitive
-        // on Windows; the constants are already lowercase and we
-        // normalise user input the same way).
+        // System folder prefix check (case-insensitive on Windows;
+        // the constants are already lowercase).
         let path_lc = path.to_string_lossy().to_lowercase();
-        if SYSTEM_PATH_PREFIXES.iter().any(|p| path_lc.starts_with(p)) {
-            return true;
-        }
-        if self.extra_path_prefixes.iter().any(|p| path_lc.starts_with(p)) {
-            return true;
+        for prefix in SYSTEM_PATH_PREFIXES {
+            if path_lc.starts_with(prefix) {
+                return true;
+            }
         }
 
-        // Static basename set already contains the merged
-        // user-supplied override (see `Allowlist::new`), so the
-        // check below catches both.
         if self.static_basenames.contains(basename_lc) {
             return true;
         }
@@ -734,105 +676,6 @@ fn wide_to_path(raw: &[u16]) -> PathBuf {
 #[cfg(not(target_os = "windows"))]
 fn enumerate_modules(_pid: u32) -> Result<Vec<PathBuf>, EnumError> {
     Err(EnumError::Empty)
-}
-
-// ─── User allowlist override ──────────────────────────────────────────────
-
-/// Per-user additions to the integrity allowlist. Read once on
-/// monitor startup from `<appdata>/zemu-launcher/integrity-allowlist.json`
-/// (or platform equivalent). Shape:
-///
-/// ```json
-/// {
-///   "basenames": ["rtworkq.dll", "msi_mallocator.dll"],
-///   "pathPrefixes": ["C:\\Tools\\MyOCOverlay"]
-/// }
-/// ```
-///
-/// Why this lives in the launcher's data dir rather than the
-/// registry / an env var: it travels with the user's profile, can
-/// be backed up / synced via OneDrive, and is one file a user can
-/// hand to support when an "unknown DLL" alert turns out to be a
-/// legit overlay.
-///
-/// **Trust model.** A user can shoot themselves in the foot by
-/// whitelisting too aggressively — that's their call. Operators
-/// catch over-broad overrides via the false-negative rate on the
-/// admin dashboard. We never expand this surface to "wildcard
-/// paths" or "skip subtree"; the existing per-basename /
-/// per-prefix shape keeps every entry auditable.
-#[derive(Debug, Default, Clone)]
-struct UserAllowlistOverride {
-    basenames: Vec<String>,
-    path_prefixes: Vec<String>,
-}
-
-#[derive(serde::Deserialize, Default)]
-struct UserAllowlistFile {
-    #[serde(default)]
-    basenames: Vec<String>,
-    #[serde(default, rename = "pathPrefixes")]
-    path_prefixes: Vec<String>,
-}
-
-fn read_user_allowlist_override() -> UserAllowlistOverride {
-    let Some(path) = user_allowlist_path() else {
-        return UserAllowlistOverride::default();
-    };
-    let text = match std::fs::read_to_string(&path) {
-        Ok(t) => t,
-        // File absent is the expected case for fresh installs —
-        // quieter than a debug log line.
-        Err(_) => return UserAllowlistOverride::default(),
-    };
-    match serde_json::from_str::<UserAllowlistFile>(&text) {
-        Ok(file) => UserAllowlistOverride {
-            basenames: file.basenames,
-            path_prefixes: file.path_prefixes,
-        },
-        Err(err) => {
-            // A malformed sidecar is a user-visible error: the
-            // override they configured doesn't take effect, and they
-            // have no way to know unless we tell them.
-            eprintln!(
-                "[integrity] user allowlist at {} is malformed: {err}",
-                path.display()
-            );
-            UserAllowlistOverride::default()
-        }
-    }
-}
-
-/// Locate the per-user override file, paralleling
-/// `candidate_depot_roots` so a user-moved appdata dir works
-/// without code changes. We only read one — the platform-native
-/// appdata — not the cross-platform alternatives the depot list
-/// tries first.
-fn user_allowlist_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(base) = dirs::config_dir() {
-            return Some(base.join("zemu-launcher").join("integrity-allowlist.json"));
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(home) = dirs::home_dir() {
-            return Some(
-                home.join("Library")
-                    .join("Application Support")
-                    .join("zemu-launcher")
-                    .join("integrity-allowlist.json"),
-            );
-        }
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        if let Some(base) = dirs::config_dir() {
-            return Some(base.join("zemu-launcher").join("integrity-allowlist.json"));
-        }
-    }
-    None
 }
 
 // ─── Depot allowlist reading ──────────────────────────────────────────────
@@ -1000,23 +843,10 @@ fn post_event(app: &AppHandle, event: &ProcessIntegrityEvent) -> Result<(), ApiP
 /// without spinning up the thread.
 #[cfg(test)]
 fn classify_for_test(path: &str, depot_dlls: &[&str], exe_basename: &str) -> bool {
-    classify_for_test_with(path, depot_dlls, &[], &[], exe_basename)
-}
-
-#[cfg(test)]
-fn classify_for_test_with(
-    path: &str,
-    depot_dlls: &[&str],
-    user_basenames: &[&str],
-    user_path_prefixes: &[&str],
-    exe_basename: &str,
-) -> bool {
     let path_buf = PathBuf::from(path);
     let basename = module_basename_lc(&path_buf);
     let depot: Vec<String> = depot_dlls.iter().map(|s| s.to_string()).collect();
-    let basenames: Vec<String> = user_basenames.iter().map(|s| s.to_string()).collect();
-    let prefixes: Vec<String> = user_path_prefixes.iter().map(|s| s.to_string()).collect();
-    let allowlist = Allowlist::new(depot, exe_basename, basenames, prefixes);
+    let allowlist = Allowlist::new(depot, exe_basename);
     allowlist.is_allowed(&path_buf, &basename)
 }
 
@@ -1100,88 +930,6 @@ mod tests {
             &["Bin64/steam_api64.dll"],
             "h1z1.exe"
         ));
-    }
-
-    #[test]
-    fn allows_user_basename_override() {
-        // User whitelisted `rtworkq.dll` (RivaTuner Statistics
-        // Server) via the sidecar file — it's a legit OC overlay.
-        assert!(classify_for_test_with(
-            "C:\\Tools\\RivaTuner\\RTSS\\RTWorkQ.dll",
-            &[],
-            &["rtworkq.dll"],
-            &[],
-            "h1z1.exe",
-        ));
-    }
-
-    #[test]
-    fn allows_user_path_prefix_override() {
-        // User whitelisted an entire vendor folder because the
-        // overlay DLL ships under a per-release random name.
-        assert!(classify_for_test_with(
-            "C:\\Tools\\MyOCOverlay\\x64\\release\\thing.dll",
-            &[],
-            &[],
-            &["C:\\Tools\\MyOCOverlay"],
-            "h1z1.exe",
-        ));
-        // Prefix guard: a DLL that lives one folder higher than
-        // the override must NOT be auto-allowed.
-        assert!(!classify_for_test_with(
-            "C:\\Tools\\MyOCOverlaySibling\\thing.dll",
-            &[],
-            &[],
-            &["C:\\Tools\\MyOCOverlay"],
-            "h1z1.exe",
-        ));
-    }
-
-    #[test]
-    fn user_basename_override_is_case_insensitive() {
-        // Override written as `GameOverlayRenderer.DLL` should
-        // still match a disk entry of `gameoverlayrenderer.dll`.
-        assert!(classify_for_test_with(
-            "C:\\Game\\gameoverlayrenderer.dll",
-            &[],
-            &["GameOverlayRenderer.DLL"],
-            &[],
-            "h1z1.exe",
-        ));
-    }
-
-    #[test]
-    fn parses_user_allowlist_sidecar() {
-        let dir = std::env::temp_dir().join("zemu_integrity_override_test");
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("integrity-allowlist.json");
-        let body = r#"{
-            "basenames": ["  RTWorkQ.dll  ", "nahimicosd.dll"],
-            "pathPrefixes": ["C:\\Tools\\MyOCOverlay", "C:\\Drivers\\Spooky\\"]
-        }"#;
-        std::fs::write(&path, body).unwrap();
-        let original = std::env::var("XDG_CONFIG_HOME").ok();
-        // Force the reader to use the temp dir on every platform by
-        // setting every env var it might consult. (The reader
-        // actually uses `dirs::config_dir()`, which on Windows reads
-        // `APPDATA`. The test runs the function directly via the
-        // helper that returns the override structure; we check the
-        // sidecar content separately.)
-        let parsed: UserAllowlistFile = serde_json::from_str(body).unwrap();
-        assert_eq!(parsed.basenames, vec!["  RTWorkQ.dll  ", "nahimicosd.dll"]);
-        assert_eq!(parsed.path_prefixes.len(), 2);
-        let _ = original;
-        let _ = std::fs::remove_file(path);
-        let _ = std::fs::remove_dir(dir);
-    }
-
-    #[test]
-    fn user_allowlist_override_defaults_on_missing_file() {
-        // The reader swallows the not-found case; verify the
-        // empty default it returns is well-formed.
-        let o = UserAllowlistOverride::default();
-        assert!(o.basenames.is_empty());
-        assert!(o.path_prefixes.is_empty());
     }
 
     #[test]
