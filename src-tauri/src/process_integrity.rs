@@ -158,7 +158,6 @@ const STATIC_DLL_ALLOWLIST: &[&str] = &[
     "steam_api.dll",
     // DirectInput / XInput (game controller input stacks).
     "dinput.dll",
-    "dinput8.dll",
     "xinput1_1.dll",
     "xinput1_2.dll",
     "xinput1_3.dll",
