@@ -206,6 +206,15 @@ const STATIC_DLL_ALLOWLIST: &[&str] = &[
     "dxgi1_4.dll",
     "dxgi1_5.dll",
     "dxgi1_6.dll",
+    // Bonjour (Applie)
+    "mdnsNSP.dll",
+    // H1Z1 Game Client DLLs
+    "BEClient_x64.dll",
+    "dinput8.dll",
+    "ortp_x64.dll",
+    "steam_api64.dll",
+    "vivoxoal_x64.dll",
+    "vivoxsdk_x64.dll"	
 ];
 
 /// Path prefixes that auto-allow any DLL under them. Windows system
