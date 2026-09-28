@@ -220,6 +220,10 @@ const STATIC_DLL_ALLOWLIST: &[&str] = &[
     "libsndfile_x64-1.dll",
     // RivaTuner Statistics Server
     "RTSSHooks64.dll",
+    // Medal TV
+    "medal-hook64.dll",
+    // Windows Defender
+    "MpOav.dll"
 ];
 
 /// Path prefixes that auto-allow any DLL under them. Windows system
