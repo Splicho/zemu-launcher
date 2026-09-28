@@ -214,8 +214,12 @@ const STATIC_DLL_ALLOWLIST: &[&str] = &[
     "steam_api64.dll",
     "vivoxoal_x64.dll",
     "vivoxsdk_x64.dll",
+    // Audio decoder the launcher drops into the game folder. Lives
+    // under `C:\ZEmu\<dep>` so it never appears under a system
+    // path prefix — allowed by basename here.
+    "libsndfile_x64-1.dll",
     // RivaTuner Statistics Server
-    "RTSSHooks64.dll"	
+    "RTSSHooks64.dll",
 ];
 
 /// Path prefixes that auto-allow any DLL under them. Windows system
@@ -553,11 +557,17 @@ struct Allowlist {
 
 impl Allowlist {
     fn new(depot_dlls: Vec<String>, exe_basename: &str) -> Self {
-        let mut static_basenames: HashSet<String> =
-            STATIC_DLL_ALLOWLIST.iter().map(|s| s.to_string()).collect();
+        // Lowercase at insertion. `is_allowed` is called with the
+        // basename already lowered by `module_basename_lc`, so a
+        // mixed-case entry like `"mdnsNSP.dll"` in the static list
+        // would otherwise never match a lowered lookup.
+        let mut static_basenames: HashSet<String> = STATIC_DLL_ALLOWLIST
+            .iter()
+            .map(|s| s.to_lowercase())
+            .collect();
         // Add the game exe itself so the toolhelp enumeration
         // doesn't flag the very first entry on every scan.
-        static_basenames.insert(exe_basename.to_string());
+        static_basenames.insert(exe_basename.to_lowercase());
 
         let depot_basenames: HashSet<String> =
             depot_dlls.iter().map(|p| module_basename_lc(Path::new(p))).collect();
@@ -571,7 +581,7 @@ impl Allowlist {
         Self {
             static_basenames,
             depot_basenames,
-            exe_basename: exe_basename.to_string(),
+            exe_basename: exe_basename.to_lowercase(),
             depot_count,
         }
     }
@@ -938,6 +948,30 @@ mod tests {
         assert!(classify_for_test(
             "C:\\Game\\Bin64\\steam_api64.dll",
             &["Bin64/steam_api64.dll"],
+            "h1z1.exe"
+        ));
+    }
+
+    #[test]
+    fn allows_bonjour_mdns_via_path_prefix() {
+        // `mdnsNSP.dll` is on the static list AND lives under
+        // `C:\Program Files\Bonjour\` — verify the static-list
+        // path matches even without system-folder context.
+        assert!(classify_for_test(
+            "C:\\Program Files\\Bonjour\\mdnsNSP.dll",
+            &[],
+            "h1z1.exe"
+        ));
+    }
+
+    #[test]
+    fn allows_libsndfile_dropped_into_launcher_dir() {
+        // `libsndfile_x64-1.dll` is shipped by the launcher under
+        // its install root. Not a system path, not on the depot
+        // manifest — it's static-list-only.
+        assert!(classify_for_test(
+            "C:\\ZEmu\\libsndfile_x64-1.dll",
+            &[],
             "h1z1.exe"
         ));
     }
