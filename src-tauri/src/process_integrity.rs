@@ -214,7 +214,9 @@ const STATIC_DLL_ALLOWLIST: &[&str] = &[
     "ortp_x64.dll",
     "steam_api64.dll",
     "vivoxoal_x64.dll",
-    "vivoxsdk_x64.dll"	
+    "vivoxsdk_x64.dll",
+    // RivaTuner Statistics Server
+    "RTSSHooks64.dll"	
 ];
 
 /// Path prefixes that auto-allow any DLL under them. Windows system
