@@ -268,17 +268,6 @@ function FriendsListPage({
               className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
             >
               {errorMessage}
-              {/* Append the raw reason code in a comment-like style —
-               * the localized copy above is the user-facing message,
-               * but the underlying identifier is what support needs
-               * to debug. Hidden behind text-muted so it doesn't
-               * dominate the visual but is right there if the user
-               * quotes their screen. */}
-              {result.reason ? (
-                <span className="ml-2 text-destructive/60">
-                  ({result.reason})
-                </span>
-              ) : null}
             </p>
           ) : null}
 
@@ -464,17 +453,6 @@ function AddFriendsPage({ onBack }: AddFriendsPageProps) {
               className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
             >
               {errorMessage}
-              {/* Append the raw reason code in a comment-like style —
-               * the localized copy above is the user-facing message,
-               * but the underlying identifier is what support needs
-               * to debug. Hidden behind text-muted so it doesn't
-               * dominate the visual but is right there if the user
-               * quotes their screen. */}
-              {result.reason ? (
-                <span className="ml-2 text-destructive/60">
-                  ({result.reason})
-                </span>
-              ) : null}
             </p>
           ) : null}
 
