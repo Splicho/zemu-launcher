@@ -56,8 +56,11 @@ export function NewsPage() {
       </div>
 
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-8 pb-8 pt-4">
-        <header className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight">{t('news.allNews')}</h1>
+        <header>
+          <h1 className="text-3xl tracking-tight">{t('news.allNews')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('news.subtitle')}
+          </p>
         </header>
 
         {error && (

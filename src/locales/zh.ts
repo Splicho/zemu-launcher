@@ -171,14 +171,12 @@ export default {
       streams: '直播',
       leaderboard: '排行榜',
       clans: '战队',
+      servers: '服务器',
       play: '开始游戏',
       settings: '设置',
       socialize: '社交',
       friends: '好友',
       account: '账户',
-    },
-    serverStatus: {
-      openMenu: '打开服务器状态菜单',
     },
     friends: {
       title: '好友',
@@ -391,6 +389,7 @@ export default {
     },
     news: {
       allNews: '全部新闻',
+      subtitle: 'ZEmu 团队的最新动态与公告。',
       failedLoadNews: "无法加载新闻：{{error}}",
       noNews: '暂无新闻发布，敬请期待。',
       backToNews: '返回新闻',
@@ -409,6 +408,15 @@ export default {
       tabKick: 'Kick',
       noStreams: '当前没有用户在直播 ZEmu，敬请期待！',
       liveBadge: '直播中',
+    },
+    servers: {
+      placeholderSubtitle: '查看我们的服务器及其状态。',
+      placeholderBody: '服务器浏览器即将推出。',
+      regions: {
+        europe: { label: '欧洲' },
+        northAmerica: { label: '北美' },
+        asia: { label: '亚洲' },
+      },
     },
     leaderboard: {
       topPlayers: '前五名玩家',

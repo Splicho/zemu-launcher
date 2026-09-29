@@ -12,6 +12,7 @@ import {
   Play,
   Clans,
   Socialize,
+  Servers,
   Twitch,
   Twitter,
   YouTube,
@@ -245,6 +246,12 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
                   <a href="#/news">
                     <News className="size-5!" />
                     <span>{t('nav.news')}</span>
+                  </a>
+                </SidebarMenuButton>
+                <SidebarMenuButton asChild isActive={isActive('/servers')} size="lg" className="px-4">
+                  <a href="#/servers">
+                    <Servers className="size-5!" />
+                    <span>{t('nav.servers')}</span>
                   </a>
                 </SidebarMenuButton>
                 {/* The Streams row carries a static red dot right after

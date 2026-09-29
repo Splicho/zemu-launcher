@@ -103,14 +103,14 @@ export function ClansPage() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex shrink-0 flex-col gap-4 px-8 pt-6 pb-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+        <header>
+          <h1 className="text-3xl tracking-tight">
             {t('clan.directoryTitle')}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {t('clan.directorySubtitle')}
           </p>
-        </div>
+        </header>
 
         <ClanFiltersBar
           value={filters}

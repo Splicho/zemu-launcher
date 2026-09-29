@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 
 import { fetchStreams } from '@/api/streams'
 import { StreamsTabs } from '@/components/streams/streams-tabs'
-import { Separator } from '@/components/ui/separator'
 
 /**
  * Streams page — mounted at `#/streams`.
@@ -34,8 +33,6 @@ export function StreamsPage() {
           {t('streams.subtitle')}
         </p>
       </header>
-
-      <Separator />
 
       {isLoading ? (
         <StreamsGridSkeleton />

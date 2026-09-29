@@ -443,3 +443,23 @@ export function Streams({ ...props }: IconProps) {
 </svg>
   )
 }
+
+/**
+ * Server-rack icon used by the "Servers" sidebar entry. Matches
+ * the visual weight of the other sidebar icons (lucide-style,
+ * stroke 1.5, no fill). Two stacked rack units with status dots
+ * and a third slim unit on top, signalling a fleet rather than a
+ * single machine.
+ */
+export function Servers({ ...props }: IconProps) {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" {...props}>
+	<g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}>
+		<rect x="3" y="4" width="18" height="6" rx="2"></rect>
+		<rect x="3" y="14" width="18" height="6" rx="2"></rect>
+		<path d="M7 7h.01M7 17h.01"></path>
+		<path d="M11 7h6M11 17h6"></path>
+	</g>
+</svg>
+  )
+}

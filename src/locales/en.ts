@@ -186,15 +186,12 @@ export default {
       streams: 'Streams',
       leaderboard: 'Leaderboard',
       clans: 'Clans',
+      servers: 'Servers',
       play: 'Play',
       settings: 'Settings',
       socialize: 'Socialize',
       friends: 'Friends',
       account: 'Account',
-    },
-    serverStatus: {
-      // Accessibility label for the trigger button.
-      openMenu: 'Open server status menu',
     },
     settings: {
       general: {
@@ -573,6 +570,7 @@ export default {
     },
     news: {
       allNews: 'All news',
+      subtitle: 'Latest updates and announcements from the ZEmu team.',
       failedLoadNews: "Couldn't load news: {{error}}",
       noNews: 'No news published yet — check back later.',
       backToNews: 'Back to news',
@@ -591,6 +589,15 @@ export default {
       tabKick: 'Kick',
       noStreams: "Nobody is streaming ZEmu right now. Check back later!",
       liveBadge: 'LIVE',
+    },
+    servers: {
+      placeholderSubtitle: 'Check out our servers and their status.',
+      placeholderBody: 'The server browser is coming soon.',
+      regions: {
+        europe: { label: 'Europe' },
+        northAmerica: { label: 'North America' },
+        asia: { label: 'Asia' },
+      },
     },
     license: {
       redeem: 'Redeem',

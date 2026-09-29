@@ -16,6 +16,7 @@ import { PlayerPage } from '@/pages/player'
 import { ClanPage } from '@/pages/clan'
 import { ClanManagePage } from '@/pages/clan-manage'
 import { ClansPage } from '@/pages/clans'
+import { ServersPage } from '@/pages/servers'
 import { GeneralPage } from '@/pages/settings'
 import { AppearancePage } from '@/pages/appearance'
 import { AdvancedPage } from '@/pages/advanced'
@@ -69,6 +70,7 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
 
   if (hash === '/news') return { page: 'news' }
   if (hash === '/clans') return { page: 'clans' }
+  if (hash === '/servers') return { page: 'servers' }
   if (hash === '/onboarding') return { page: 'onboarding' }
   if (hash === '/install-check') return { page: 'install-check' }
   if (hash === '/play') return { page: 'play' }
@@ -371,6 +373,7 @@ function AuthedApp() {
         {route.page === 'clan' && route.params && <ClanPage slug={route.params.slug} />}
         {route.page === 'clan-manage' && route.params && <ClanManagePage slug={route.params.slug} />}
         {route.page === 'clans' && <ClansPage />}
+        {route.page === 'servers' && <ServersPage />}
         {route.page === 'settings' && <GeneralPage />}
         {route.page === 'appearance' && <AppearancePage />}
         {route.page === 'advanced' && <AdvancedPage />}

@@ -174,14 +174,12 @@ export default {
       streams: 'Transmissões',
       leaderboard: 'Ranking',
       clans: 'Clãs',
+      servers: 'Servidores',
       play: 'Jogar',
       settings: 'Configurações',
       socialize: 'Socializar',
       friends: 'Amigos',
       account: 'Conta',
-    },
-    serverStatus: {
-      openMenu: 'Abrir menu de status dos servidores',
     },
     friends: {
       title: 'Amigos',
@@ -496,6 +494,7 @@ export default {
     // News pages
     news: {
       allNews: 'Todas as notícias',
+      subtitle: 'Últimas atualizações e anúncios da equipe ZEmu.',
       failedLoadNews: 'Não foi possível carregar as notícias: {{error}}',
       noNews: 'Nenhuma notícia publicada ainda — volte mais tarde.',
       backToNews: 'Voltar às notícias',
@@ -515,6 +514,15 @@ export default {
       tabKick: 'Kick',
       noStreams: 'Ninguém está transmitindo ZEmu agora. Volte mais tarde!',
       liveBadge: 'AO VIVO',
+    },
+    servers: {
+      placeholderSubtitle: 'Confira nossos servidores e o status deles.',
+      placeholderBody: 'O navegador de servidores está chegando em breve.',
+      regions: {
+        europe: { label: 'Europa' },
+        northAmerica: { label: 'América do Norte' },
+        asia: { label: 'Ásia' },
+      },
     },
     // Download progress
     download: {
