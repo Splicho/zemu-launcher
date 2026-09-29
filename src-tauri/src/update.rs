@@ -1,7 +1,7 @@
 use crate::debug_log;
 use crate::models::{
-    CompressorManifest, CompressorManifestEntry, FileProgress, FileUpdateItem, UpdateCheckResult,
-    UpdateStatus,
+    CompressorManifest, CompressorManifestEntry, FileProgress, FileUpdateItem, TamperedFile,
+    UpdateCheckResult, UpdateStatus,
 };
 use crate::state::AppState;
 use crate::storage::save_version_cache;
@@ -19,20 +19,20 @@ use tauri::{AppHandle, Emitter, Manager};
 /// `https://assets.zemu.uk/manifest.json` is the canonical entry point
 /// the launcher hits; `<base>/<path>.zst` is the per-file artifact.
 #[derive(Clone)]
-struct UpdateClient {
+pub(crate) struct UpdateClient {
     base_url: String,
     http: reqwest::Client,
 }
 
 impl UpdateClient {
-    fn new(base_url: String) -> Self {
+    pub(crate) fn new(base_url: String) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             http: reqwest::Client::new(),
         }
     }
 
-    async fn get_manifest(&self) -> Result<CompressorManifest> {
+    pub(crate) async fn get_manifest(&self) -> Result<CompressorManifest> {
         let url = format!("{}/manifest.json", self.base_url);
         let response = self.http.get(url).send().await?;
         if !response.status().is_success() {
@@ -391,6 +391,170 @@ async fn download_and_install(
         &skip_files,
         files_to_update.len(),
     )?;
+    Ok(())
+}
+
+/// Repair-only download pipeline used by `crate::integrity` when a
+/// pre-launch blake3 verification surfaces tampering. Re-uses the
+/// same `UpdateClient` + per-file downloader as the full
+/// `start_download_and_install` so the wire format, progress events,
+/// and blake3 verification all stay in sync — but skips the manifest
+/// refetch, the skip-list filter, the `removed[]` delete phase, and
+/// the final manifest rewrite, because the local manifest is already
+/// the authoritative baseline for everything except the listed
+/// tampered entries.
+///
+/// Caller must guarantee `state.update_runtime.is_updating == false`
+/// — we acquire it here.
+pub async fn run_repair_pipeline(
+    app: &AppHandle,
+    state: &AppState,
+    game_directory: &str,
+    tampered: &[TamperedFile],
+    local_manifest: &CompressorManifest,
+) -> Result<()> {
+    if tampered.is_empty() {
+        return Ok(());
+    }
+
+    let base_url = state.get_update_base_url().ok_or_else(|| {
+        anyhow!("Update service is not configured. Call launcher_set_runtime_update_url first.")
+    })?;
+
+    let _ = debug_log::append(
+        app,
+        "integrity",
+        &format!("repair_pipeline start count={}", tampered.len()),
+    );
+
+    // Take the same update-runtime lock `start_download_and_install`
+    // uses. If a full update is already in flight (e.g. the user
+    // double-clicked), bail rather than interleave progress events.
+    {
+        let mut runtime = state
+            .update_runtime
+            .lock()
+            .map_err(|_| anyhow!("failed to lock update runtime"))?;
+        if runtime.is_updating {
+            return Err(anyhow!("Update is already running"));
+        }
+        runtime.is_updating = true;
+        runtime.cancel_requested = false;
+        runtime.status = Some(UpdateStatus::default());
+    }
+
+    let result = run_repair_pipeline_inner(app, state, game_directory, tampered, local_manifest, &base_url).await;
+
+    // Release the runtime lock — matches `start_download_and_install`'s
+    // terminal update of the status struct.
+    {
+        if let Ok(mut runtime) = state.update_runtime.lock() {
+            runtime.is_updating = false;
+            runtime.cancel_requested = false;
+            if let Some(status) = runtime.status.as_mut() {
+                status.is_updating = false;
+                if result.is_ok() {
+                    status.overall_progress = 100.0;
+                    status.completed_files = status.total_files;
+                }
+            }
+        }
+    }
+
+    if let Some(status) = get_update_status(state) {
+        emit_status(app, &status);
+    }
+
+    result
+}
+
+async fn run_repair_pipeline_inner(
+    app: &AppHandle,
+    state: &AppState,
+    game_directory: &str,
+    tampered: &[TamperedFile],
+    local_manifest: &CompressorManifest,
+    base_url: &str,
+) -> Result<()> {
+    let client = UpdateClient::new(base_url.to_string());
+
+    let mut status = UpdateStatus {
+        is_updating: true,
+        current_file: Some(tampered[0].path.clone()),
+        total_files: tampered.len(),
+        completed_files: 0,
+        overall_progress: 0.0,
+        files: Some(
+            tampered
+                .iter()
+                .map(|t| FileProgress {
+                    file_path: t.path.clone(),
+                    stage: "downloading".to_string(),
+                    progress: 0.0,
+                    downloaded: 0,
+                    total: 0,
+                    speed: Some(0.0),
+                })
+                .collect(),
+        ),
+        error: None,
+    };
+    update_runtime_status(state, &status, true);
+    emit_status(app, &status);
+
+    for (index, tampered_file) in tampered.iter().enumerate() {
+        ensure_not_cancelled(state)?;
+
+        // Re-resolve the local manifest entry for this path. The
+        // verifier already proved the file on disk doesn't match
+        // this entry's blake3, so the entry is definitely present —
+        // but a defensive lookup keeps us safe against a manifest
+        // edited out from under us between verify and repair.
+        let entry = local_manifest
+            .files
+            .iter()
+            .find(|e| e.path == tampered_file.path)
+            .cloned()
+            .ok_or_else(|| {
+                anyhow!(
+                    "manifest no longer lists tampered path: {}",
+                    tampered_file.path
+                )
+            })?;
+
+        let item = FileUpdateItem {
+            path: tampered_file.path.clone(),
+            entry,
+        };
+
+        status.current_file = Some(tampered_file.path.clone());
+        status.completed_files = index;
+        update_runtime_status(state, &status, true);
+        emit_status(app, &status);
+
+        download_and_apply_single_file(
+            app,
+            state,
+            &client,
+            game_directory,
+            &item,
+            &mut status,
+            index,
+        )
+        .await
+        .with_context(|| format!("repair single-file {}", tampered_file.path))?;
+
+        status.completed_files = index + 1;
+        status.overall_progress = calculate_overall_progress(&status);
+        update_runtime_status(state, &status, true);
+        emit_status(app, &status);
+    }
+
+    let _ = debug_log::append(
+        app,
+        "integrity",
+        &format!("repair_pipeline done count={}", tampered.len()),
+    );
     Ok(())
 }
 

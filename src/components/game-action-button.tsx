@@ -27,6 +27,7 @@ type _LocalGameStateForNarrowing =
   | { type: 'PLAYING' }
   | { type: 'UPDATE_COMPLETE' }
   | { type: 'UP_TO_DATE' }
+  | { type: 'VERIFYING_INTEGRITY' }
   | { type: 'ERROR'; error: string }
   | { type: 'AUTH_KEY_REQUIRED' }
 
@@ -104,6 +105,8 @@ export function GameActionButton({ className }: GameActionButtonProps) {
       case 'UPDATE_COMPLETE':
       case 'UP_TO_DATE':
         return t('play.play')
+      case 'VERIFYING_INTEGRITY':
+        return t('play.verifying')
       case 'ERROR':
         return t('play.retry')
       default:
@@ -117,8 +120,8 @@ export function GameActionButton({ className }: GameActionButtonProps) {
   }, [type])
 
   // Disabled when an action is already in flight or when there's
-  // nothing for the user to click (checking, launching, playing,
-  // already downloading).
+  // nothing for the user to click (checking, verifying integrity,
+  // launching, playing, already downloading).
   const disabled = useMemo(() => {
     return (
       type === 'CHECKING_FOR_UPDATE' ||
@@ -126,7 +129,8 @@ export function GameActionButton({ className }: GameActionButtonProps) {
       type === 'APPLYING_PATCH' ||
       type === 'CDN_UNAVAILABLE' ||
       type === 'LAUNCHING_GAME' ||
-      type === 'PLAYING'
+      type === 'PLAYING' ||
+      type === 'VERIFYING_INTEGRITY'
     )
   }, [type])
 

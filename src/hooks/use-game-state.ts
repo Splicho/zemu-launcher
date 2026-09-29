@@ -69,6 +69,27 @@ export interface UpdateInfo {
   filesToUpdate?: Array<{ path: string; entry: CompressorManifestEntry }>
 }
 
+export interface TamperedFile {
+  path: string
+  reason: 'hashMismatch' | 'missing' | 'sizeMismatch'
+  expectedBlake3: string
+  actualBlake3?: string | null
+}
+
+export type VerifyStatus = 'clean' | 'repaired' | 'tamperedCdnDown'
+
+export interface VerifyOutcome {
+  status: VerifyStatus
+  tampered: TamperedFile[]
+  /**
+   * True when the CDN was reachable during this check. Surfaced
+   * separately from `status === 'tamperedCdnDown'` so the renderer
+   * can show a distinct "CDN is offline" toast on a clean-but-offline
+   * install.
+   */
+  cdnAvailable: boolean
+}
+
 export type GameState =
   | { type: 'NEEDS_DESTINATION' }
   | { type: 'CHECKING_FOR_UPDATE' }
@@ -80,6 +101,7 @@ export type GameState =
   | { type: 'PLAYING' }
   | { type: 'UPDATE_COMPLETE' }
   | { type: 'UP_TO_DATE' }
+  | { type: 'VERIFYING_INTEGRITY' }
   | { type: 'ERROR'; error: string }
   | { type: 'AUTH_KEY_REQUIRED' }
 
@@ -115,6 +137,14 @@ export function useGameState() {
   const [gameLaunchState, setGameLaunchState] = useState<GameLaunchState>(DEFAULT_GAME_LAUNCH_STATE)
   const [error, setError] = useState<string | null>(null)
   const [justCompletedUpdate, setJustCompletedUpdate] = useState(false)
+  // True between Play click and `verifyAndRepair` resolution. Drives
+  // the `VERIFYING_INTEGRITY` state branch so the user sees a
+  // non-clickable label ("Verifying files…") instead of a frozen
+  // Play button while Rust hashes the depot. Mirrors the
+  // `isUpdating`/`updateStatus` pair: Rust already emits
+  // `update-progress` events for the repair download itself, so the
+  // `DOWNLOADING_UPDATE` label takes over once repair kicks in.
+  const [isVerifyingIntegrity, setIsVerifyingIntegrity] = useState(false)
 
   const isLoadingRef = useRef(false)
   const hasLoadedRef = useRef(false)
@@ -136,6 +166,14 @@ export function useGameState() {
   // synchronously on entry and cleared on terminal success/error,
   // so the second click no-ops cleanly with no toast spam.
   const startUpdateInFlightRef = useRef(false)
+  // Synchronous re-entry guard for the integrity verifier. Same
+  // shape as `startUpdateInFlightRef` — React's `isVerifyingIntegrity`
+  // lags by one render, so a fast double-click on Play could fire
+  // `launchGame` twice and ask Rust to verify a 50 GB install twice.
+  // The ref is set synchronously on entry and cleared once the
+  // verify call resolves (success or failure) so the user can retry
+  // after a CDN error without the guard swallowing their next click.
+  const verifyIntegrityInFlightRef = useRef(false)
   // Dedupes the error toasts fired from `handleProgress`. Without
   // this, a single Rust-side error string would re-toast on every
   // subsequent progress event (download errors fire many emits per
@@ -562,10 +600,83 @@ const handleProgress = (status: UpdateStatus) => {
       throw new Error('gameAPI not available')
     }
 
+    // Synchronous re-entry guard. The `disabled` memo on the play
+    // button disables the click once the state machine flips to
+    // VERIFYING_INTEGRITY, but React commits that on the next
+    // render — a fast double-click can still fire this callback
+    // twice before the disable takes effect. Without this guard
+    // the user would see two concurrent `verifyAndRepair` calls
+    // round-trip to Rust, doubling the work and producing two
+    // competing progress events. The ref is cleared once the
+    // verify call resolves (success, failure, or CDN-down) so the
+    // user can retry after a network error without the guard
+    // swallowing their next click.
+    if (verifyIntegrityInFlightRef.current) {
+      return
+    }
+    verifyIntegrityInFlightRef.current = true
+
     try {
       setJustCompletedUpdate(false)
       setError(null)
+
+      // Pre-launch integrity gate. We run this BEFORE flipping the
+      // launch state so a `tamperedCdnDown` outcome doesn't
+      // transiently surface a `LAUNCHING_GAME` event to the
+      // renderer. The verifier itself runs synchronously inside
+      // the Tauri command — Rust only returns when it's done (or
+      // has re-downloaded whatever was tampered). The UI sees
+      // VERIFYING_INTEGRITY for the duration of the walk +
+      // download, then DOWNLOADING_UPDATE briefly while Rust
+      // republishes progress events for the repair, then this
+      // callback proceeds to launchGame.
+      setIsVerifyingIntegrity(true)
       setGameLaunchState({ isLaunching: true, isRunning: false })
+
+      let outcome: VerifyOutcome
+      try {
+        outcome = await window.gameAPI.verifyAndRepair()
+      } finally {
+        // Clear the verifying flag regardless of outcome so the
+        // state machine can resolve to the right next state on
+        // the render after this callback returns. Without this
+        // the user would see a frozen "Verifying files…" label
+        // even after a successful repair.
+        setIsVerifyingIntegrity(false)
+      }
+
+      if (outcome.status === 'tamperedCdnDown') {
+        // Refuse to launch. The on-disk bytes cannot be
+        // proven authentic and the CDN is unreachable, so the
+        // only safe action is to surface the problem and let
+        // the user retry once they're back online. We also
+        // roll back the optimistic `isLaunching: true` so the
+        // state machine drops back to UP_TO_DATE / UPDATE_COMPLETE
+        // rather than LAUNCHING_GAME — without this the next
+        // click on Play would have to wait for the launch state
+        // listener to time out before the button became
+        // interactive again.
+        setGameLaunchState(DEFAULT_GAME_LAUNCH_STATE)
+        const files = outcome.tampered.map((f) => f.path).join(', ')
+        toast.error(t('toasts.integrityCdnDown'), {
+          description: t('toasts.integrityCdnDownDescription', { files }),
+        })
+        setError(t('toasts.integrityCdnDown'))
+        return
+      }
+
+      if (outcome.status === 'repaired') {
+        // A successful repair means Rust has already overwritten
+        // the tampered files with blake3-verified bytes from the
+        // CDN — no need to re-run `checkForUpdates` before
+        // launching. The existing post-launch listener in the
+        // hook will pick up the disk state the next time it
+        // runs.
+        toast.success(
+          t('toasts.integrityRepaired', { count: outcome.tampered.length })
+        )
+      }
+
       const result = await window.gameAPI.launchGame()
       if (!result || (typeof result === 'object' && !result.success)) {
         throw new Error(
@@ -584,6 +695,8 @@ const handleProgress = (status: UpdateStatus) => {
       setError(errorMsg)
       toast.error(t('toasts.failedToLaunchGame'))
       throw err
+    } finally {
+      verifyIntegrityInFlightRef.current = false
     }
   }, [t])
 
@@ -729,6 +842,16 @@ const handleProgress = (status: UpdateStatus) => {
       return { type: 'PLAYING' }
     }
 
+    // Pre-launch integrity check is in flight. Show "Verifying
+    // files…" instead of a frozen Play button. The flag is also
+    // flipped during the brief window between Play click and the
+    // first `update-progress` event from a repair download, so
+    // the user sees a single coherent label while the verifier
+    // walks the manifest.
+    if (isVerifyingIntegrity && !isApplyingPatch && !(isUpdating && updateStatus && updateStatus.isUpdating)) {
+      return { type: 'VERIFYING_INTEGRITY' }
+    }
+
     if (isApplyingPatch) {
       return { type: 'APPLYING_PATCH' }
     }
@@ -787,6 +910,7 @@ const handleProgress = (status: UpdateStatus) => {
     error,
     justCompletedUpdate,
     isApplyingPatch,
+    isVerifyingIntegrity,
     authKey,
   ])
 

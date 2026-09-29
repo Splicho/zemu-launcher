@@ -14,6 +14,7 @@ mod game;
 mod hardware;
 mod hardware_api;
 mod http;
+mod integrity;
 mod launch_args;
 mod models;
 mod oauth_server;

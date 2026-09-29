@@ -333,6 +333,9 @@ export default {
       browseGameFiles: '浏览游戏文件',
       checkForUpdates: '检查更新',
       gameSize: '15GB',
+      // 启动前补丁完整性检查。在用户点击 Play 之后、磁盘上
+      // blake3 校验完成(或开始修复下载)之前显示在 Play 按钮上。
+      verifying: '正在验证文件…',
     },
     authKey: {
       loadFailed: '无法加载已保存的密钥。',
@@ -550,6 +553,12 @@ export default {
       updateFailed: '更新失败:{{error}}',
       gameLaunched: '游戏已启动!',
       failedToLaunchGame: '启动游戏失败',
+      // 启动前完整性检查的吐司。在 `gameAPI.verifyAndRepair`
+      // 返回后由 `useGameState.launchGame` 触发。count 使用
+      // i18next 插值语法,方便日后按单/复数拆分。
+      integrityRepaired: '启动前已重新下载 {{count}} 个被修改的文件',
+      integrityCdnDown: '无法启动 — 游戏文件被修改且 CDN 不可用',
+      integrityCdnDownDescription: '被修改的文件:{{files}}。请重新连接互联网后重试。',
     },
     videoPlayer: {
       ariaLabel: '视频播放器',

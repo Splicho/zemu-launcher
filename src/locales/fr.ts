@@ -337,6 +337,10 @@ export default {
       browseGameFiles: "Parcourir les fichiers du jeu",
       checkForUpdates: "Vérifier les mises à jour",
       gameSize: "15 Go",
+      // Pre-launch patch integrity check. Surfaced on the Play button
+      // between the click and the on-disk blake3 verification
+      // completing (or starting its repair download).
+      verifying: 'Vérification des fichiers…',
     },
     authKey: {
       loadFailed: "Impossible de charger la clé enregistrée.",
@@ -576,6 +580,13 @@ export default {
       updateFailed: 'Échec de la mise à jour : {{error}}',
       gameLaunched: 'Jeu lancé !',
       failedToLaunchGame: 'Échec du lancement du jeu',
+      // Pre-launch integrity check toasts. Fired from
+      // `useGameState.launchGame` after `gameAPI.verifyAndRepair`
+      // returns. Count uses the i18next interpolation syntax so the
+      // singular case ('fichier') can be split out later if needed.
+      integrityRepaired: '{{count}} fichier(s) modifié(s) retéléchargé(s) avant le lancement',
+      integrityCdnDown: 'Lancement impossible — fichiers du jeu modifiés et CDN indisponible',
+      integrityCdnDownDescription: 'Fichiers modifiés : {{files}}. Reconnectez-vous à Internet puis réessayez.',
     },
     videoPlayer: {
       ariaLabel: "Lecteur vidéo",

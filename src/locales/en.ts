@@ -364,6 +364,10 @@ export default {
       browseGameFiles: 'Browse game files',
       checkForUpdates: 'Check for updates',
       gameSize: '15GB',
+      // Pre-launch patch integrity check. Surfaced on the Play button
+      // between the click and the on-disk blake3 verification
+      // completing (or starting its repair download).
+      verifying: 'Verifying files…',
     },
     authKey: {
       loadFailed: "Could not load the saved key.",
@@ -636,6 +640,13 @@ export default {
       updateFailed: 'Update failed: {{error}}',
       gameLaunched: 'Game launched!',
       failedToLaunchGame: 'Failed to launch game',
+      // Pre-launch integrity check toasts. Fired from
+      // `useGameState.launchGame` after `gameAPI.verifyAndRepair`
+      // returns. Count uses the i18next interpolation syntax so the
+      // singular case ('file') can be split out later if needed.
+      integrityRepaired: 'Re-downloaded {{count}} modified file(s) before launching',
+      integrityCdnDown: 'Cannot launch — game files modified and CDN unavailable',
+      integrityCdnDownDescription: 'Modified files: {{files}}. Reconnect to the internet and try again.',
     },
     videoPlayer: {
       ariaLabel: 'Video player',

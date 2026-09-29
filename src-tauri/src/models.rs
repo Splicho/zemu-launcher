@@ -510,3 +510,82 @@ mod tests {
         assert_eq!(reloaded.wine, config.wine);
     }
 }
+
+// ─── Pre-launch integrity check ──────────────────────────────────────────
+//
+// Wire types for the on-demand patch integrity verification that runs
+// when the user clicks Play. See `crate::integrity` for the
+// implementation and `commands::game_verify_and_repair` for the IPC
+// entry point.
+
+/// Why a single manifest entry was reported as tampered. `SizeMismatch`
+/// is collapsed into `HashMismatch` because a correct-size, wrong-content
+/// file with the right blake3 hash is impossible — `SizeMismatch` would
+/// only show up if a future field added size checking back, so the
+/// variant is reserved for forward compatibility.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TamperReason {
+    HashMismatch,
+    Missing,
+    SizeMismatch,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TamperedFile {
+    pub path: String,
+    pub reason: TamperReason,
+    pub expected_blake3: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_blake3: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum VerifyStatus {
+    /// All manifest entries match the on-disk blake3 hash. Safe to launch.
+    Clean,
+    /// Tampering was detected and successfully repaired by re-downloading
+    /// the affected entries from the CDN. Safe to launch.
+    Repaired,
+    /// Tampering was detected but the CDN was unreachable, so the
+    /// affected entries could not be replaced. The launch must be refused
+    /// because we cannot prove the on-disk bytes are still authentic.
+    TamperedCdnDown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyOutcome {
+    pub status: VerifyStatus,
+    pub tampered: Vec<TamperedFile>,
+    /// True when the CDN was reachable during this check. `false`
+    /// means either `update_base_url` was unset or the manifest fetch
+    /// failed. Surfaced separately from `status == TamperedCdnDown` so
+    /// the renderer can show a distinct "CDN is offline" toast on a
+    /// clean-but-offline install.
+    pub cdn_available: bool,
+}
+
+/// Per-file mtime/size cache used to skip the blake3 read on the common
+/// "nothing has changed since last Play" path. Persisted as a sidecar
+/// JSON file next to `manifest.json` (the manifest itself stays a
+/// verbatim mirror of the CDN payload).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrityCache {
+    pub entries: std::collections::HashMap<String, IntegrityCacheEntry>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrityCacheEntry {
+    /// File size in bytes at the time the cache entry was written.
+    pub size: u64,
+    /// File mtime in milliseconds since the unix epoch. We keep ms to
+    /// dodge the 1-second resolution that NTFS exposes via
+    /// `mtime`/`Modified` and which would collide on rapid edits.
+    pub mtime_unix_ms: i64,
+}
+

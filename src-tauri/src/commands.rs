@@ -383,6 +383,25 @@ pub fn game_cancel_download(state: tauri::State<'_, AppState>) {
     update::cancel_update(state.inner());
 }
 
+/// Pre-launch patch integrity check. Walks every file the local
+/// `manifest.json` lists, blake3-hashes it against the recorded
+/// hash, and re-downloads any tampered or missing entry from the
+/// CDN. If the CDN is unreachable while tampering is detected,
+/// returns `VerifyStatus::TamperedCdnDown` so the renderer can
+/// refuse to launch.
+#[tauri::command]
+pub async fn game_verify_and_repair(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::models::VerifyOutcome, String> {
+    let directory = game::get_game_directory(&app).map_err(|e| e.to_string())?;
+    let directory = directory
+        .ok_or_else(|| "No game directory set".to_string())?;
+    crate::integrity::verify_and_repair(&app, state.inner(), &directory)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn game_launch(
     app: tauri::AppHandle,
@@ -1053,6 +1072,7 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         game_get_local_version,
         game_check_update,
         game_download_update,
+        game_verify_and_repair,
         game_get_update_status,
         game_cancel_download,
         game_launch,

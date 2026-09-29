@@ -82,6 +82,35 @@ export interface DepotProgress {
   etaSeconds?: number | null
 }
 
+// ─── Pre-launch integrity check ──────────────────────────────────────────
+//
+// Wire types for `gameAPI.verifyAndRepair`. Mirrors the Rust types in
+// `src-tauri/src/models.rs` (camelCase field names).
+
+export type TamperReason = 'hashMismatch' | 'missing' | 'sizeMismatch'
+
+export interface TamperedFile {
+  path: string
+  reason: TamperReason
+  expectedBlake3: string
+  actualBlake3?: string | null
+}
+
+export type VerifyStatus = 'clean' | 'repaired' | 'tamperedCdnDown'
+
+export interface VerifyOutcome {
+  status: VerifyStatus
+  tampered: TamperedFile[]
+  /**
+   * True when the CDN was reachable during this check. `false`
+   * means either `update_base_url` was unset or the manifest fetch
+   * failed. Surfaced separately from `status === 'tamperedCdnDown'`
+   * so the renderer can show a distinct "CDN is offline" toast on a
+   * clean-but-offline install.
+   */
+  cdnAvailable: boolean
+}
+
 export interface SteamAuthStatus {
   authed: boolean
   accountName?: string | null
@@ -205,6 +234,7 @@ function setupCompatibilityBridge() {
       }
     },
     launchGame: () => invoke<{ success: boolean; error?: string }>('game_launch'),
+    verifyAndRepair: () => invoke<VerifyOutcome>('game_verify_and_repair'),
     detectBaseGameInstalled: (directory: string) =>
       invoke<boolean>('game_detect_base_game_installed', { directory }),
     pathExists: (path: string) => invoke<boolean>('game_path_exists', { path }),
@@ -658,6 +688,15 @@ declare global {
       onUpdateProgress: (callback: (status: UpdateStatus) => void) => () => void
       onLaunchState: (callback: (state: GameLaunchState) => void) => () => void
       launchGame: () => Promise<{ success: boolean; error?: string }>
+      /**
+       * Pre-launch patch integrity check. Walks every manifest
+       * entry on disk, blake3-hashes it against the recorded hash,
+       * and re-downloads any tampered or missing entry from the
+       * CDN. The launch button on the renderer must await this
+       * before calling `launchGame`; if the result status is
+       * `tamperedCdnDown` the renderer must refuse to launch.
+       */
+      verifyAndRepair: () => Promise<VerifyOutcome>
     }
     steamApi: {
       isAvailable: () => Promise<boolean>

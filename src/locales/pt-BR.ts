@@ -324,6 +324,10 @@ export default {
       alreadyInstalled: 'Já instalado?',
       locateFolder: 'Localizar pasta',
       cancelDownload: 'Cancelar download',
+      // Pre-launch patch integrity check. Surfaced on the Play button
+      // between the click and the on-disk blake3 verification
+      // completing (or starting its repair download).
+      verifying: 'Verificando arquivos…',
       // Play header
       gameDescription: 'ZEmu: King of the Kill é um battle royale competitivo e frenético. Paraquede e busque armas, munição, veículos e suprimentos para sobreviver. Enquanto o gás tóxico comprime o mapa, desenvolva uma estratégia vencedora e prepare-se para o confronto final.',
     },
@@ -550,6 +554,13 @@ export default {
       updateFailed: 'Falha na atualização: {{error}}',
       gameLaunched: 'Jogo iniciado!',
       failedToLaunchGame: 'Falha ao iniciar o jogo',
+      // Pre-launch integrity check toasts. Fired from
+      // `useGameState.launchGame` after `gameAPI.verifyAndRepair`
+      // returns. Count uses the i18next interpolation syntax so the
+      // singular case ('arquivo') can be split out later if needed.
+      integrityRepaired: 'Re-baixado(s) {{count}} arquivo(s) modificado(s) antes de iniciar',
+      integrityCdnDown: 'Não foi possível iniciar — arquivos do jogo modificados e CDN indisponível',
+      integrityCdnDownDescription: 'Arquivos modificados: {{files}}. Reconecte-se à internet e tente novamente.',
     },
     videoPlayer: {
       ariaLabel: 'Reprodutor de vídeo',
