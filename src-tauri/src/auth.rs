@@ -8,6 +8,7 @@ use anyhow::{anyhow, Result};
 use chrono::Utc;
 use rand::RngCore;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_opener;
 use url::Url;
 
 const API_BASE_URL_FALLBACK: &str = "https://id.zemu.uk";
@@ -302,8 +303,29 @@ pub fn open_oauth(app: &AppHandle, provider: String, is_dev_runtime: bool) -> Co
             // Bind before opening the browser, and surface port conflicts to the UI.
             crate::oauth_server::start_oauth_callback_server(app, &state)?;
         }
-        if let Err(error) = webbrowser::open(oauth_url.as_str()) {
+        // `webbrowser::open` is the historical choice, but on Linux it
+        // shells out to `xdg-open` and returns `Ok` the moment that
+        // fork succeeds — even if `xdg-open` itself can't reach the
+        // user's D-Bus session and silently fails to launch anything.
+        // The renderer-side log line `open_oauth browser_opened=true`
+        // was therefore a lie: it told the user a browser was open
+        // when nothing happened. Tauri 2 ships a first-party opener
+        // plugin (`tauri-plugin-opener`) that does the same job with
+        // proper platform-aware fallback — direct binary exec on
+        // Windows, GIO/D-Bus launch on Linux via the bundled
+        // `open-uri` crate — and actually surfaces failures as
+        // `Err`. We prefer it for that reason: a missing-D-Bus
+        // environment now produces a real error message we can
+        // bubble to the user instead of a silent dead click.
+        if let Err(error) =
+            tauri_plugin_opener::open_url(oauth_url.as_str(), None::<&str>)
+        {
             let _ = crate::oauth_server::stop_oauth_callback_server(app, &state);
+            let _ = debug_log::append(
+                app,
+                "auth",
+                &format!("open_oauth opener_error={error}"),
+            );
             return Err(anyhow!(error.to_string()));
         }
         let _ = debug_log::append(app, "auth", "open_oauth browser_opened=true");
