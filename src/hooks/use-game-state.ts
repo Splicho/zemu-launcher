@@ -635,7 +635,14 @@ const handleProgress = (status: UpdateStatus) => {
 
       let outcome: VerifyOutcome
       try {
-        outcome = await window.gameAPI.verifyAndRepair()
+        // Pass the renderer's skip list so files the launcher
+        // rewrites (e.g. `ClientConfig.ini`) and files the user
+        // installs alongside the game (e.g. `dinput8.dll`) are
+        // excluded from both the blake3 walk and the CDN
+        // re-download. See `LAUNCHER_CONFIG.updateSkipFiles`.
+        outcome = await window.gameAPI.verifyAndRepair([
+          ...LAUNCHER_CONFIG.updateSkipFiles,
+        ])
       } finally {
         // Clear the verifying flag regardless of outcome so the
         // state machine can resolve to the right next state on

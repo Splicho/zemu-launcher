@@ -29,18 +29,23 @@ use tauri::AppHandle;
 /// `(size, mtime_ms)` for the fast-path stat-only check.
 const INTEGRITY_CACHE_FILENAME: &str = ".zemu-integrity-cache.json";
 
-/// Files the launcher rewrites at runtime that we should never
-/// complain about if they've drifted from the manifest. Mirrors the
-/// renderer's `LAUNCHER_CONFIG.updateSkipFiles` baseline. Case-
-/// insensitive basename match.
-const ALWAYS_SKIP: &[&str] = &["ClientConfig.ini"];
-
 /// Drive a full verify-and-repair pass. See module docs for the
 /// state-machine contract.
+///
+/// `skip_files` is a list of basenames (case-insensitive) the
+/// renderer wants excluded from both the verify walk and the
+/// repair pipeline — typically files the launcher itself
+/// rewrites at runtime, or files the user has intentionally
+/// installed alongside the game. Anything matching a basename
+/// in this list is treated as `Clean` without hashing and is
+/// never re-downloaded. See
+/// `LAUNCHER_CONFIG.updateSkipFiles` on the renderer side for
+/// the source of truth.
 pub async fn verify_and_repair(
     app: &AppHandle,
     state: &AppState,
     game_directory: &str,
+    skip_files: &[String],
 ) -> Result<VerifyOutcome> {
     if game_directory.trim().is_empty() {
         return Err(anyhow!("Game directory is required to verify integrity"));
@@ -67,7 +72,7 @@ pub async fn verify_and_repair(
 
     let total = manifest.files.len();
     for (index, entry) in manifest.files.iter().enumerate() {
-        if should_skip_entry(&entry.path) {
+        if should_skip_entry(&entry.path, skip_files) {
             continue;
         }
         let target = PathBuf::from(game_directory).join(&entry.path);
@@ -383,15 +388,24 @@ pub fn save_integrity_cache(game_directory: &str, cache: &IntegrityCache) -> Res
     Ok(())
 }
 
-fn should_skip_entry(path: &str) -> bool {
+/// True when `path` matches any name in `skip_files` by basename,
+/// case-insensitively. `path` is expected to be a manifest entry's
+/// relative path (forward or back slashes). Empty / whitespace-only
+/// skip entries are ignored. Mirrors the same logic in
+/// `update::should_skip_path` so the two surfaces stay in sync.
+fn should_skip_entry(path: &str, skip_files: &[String]) -> bool {
+    if skip_files.is_empty() {
+        return false;
+    }
     let basename = match path.rsplit(['/', '\\']).next() {
         Some(name) => name,
         None => return false,
     };
     let basename_lower = basename.to_lowercase();
-    ALWAYS_SKIP
-        .iter()
-        .any(|entry| entry.to_lowercase() == basename_lower)
+    skip_files.iter().any(|entry| {
+        let trimmed = entry.trim();
+        !trimmed.is_empty() && trimmed.to_lowercase() == basename_lower
+    })
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────
@@ -525,11 +539,33 @@ mod tests {
 
     #[test]
     fn should_skip_entry_matches_basename_case_insensitive() {
-        assert!(should_skip_entry("ClientConfig.ini"));
-        assert!(should_skip_entry("nested/ClientConfig.ini"));
-        assert!(should_skip_entry("nested\\clientconfig.INI"));
-        assert!(!should_skip_entry("NotClientConfig.ini"));
-        assert!(!should_skip_entry(""));
+        let list = vec!["ClientConfig.ini".to_string(), "dinput8.dll".to_string()];
+        assert!(should_skip_entry("ClientConfig.ini", &list));
+        assert!(should_skip_entry("nested/ClientConfig.ini", &list));
+        assert!(should_skip_entry("nested\\clientconfig.INI", &list));
+        assert!(should_skip_entry("dinput8.dll", &list));
+        assert!(should_skip_entry("DINPUT8.DLL", &list));
+        assert!(!should_skip_entry("NotClientConfig.ini", &list));
+        assert!(!should_skip_entry("dinput.dll", &list));
+        assert!(!should_skip_entry("", &list));
+    }
+
+    #[test]
+    fn should_skip_entry_ignores_empty_and_whitespace_entries() {
+        let list = vec![
+            "".to_string(),
+            "   ".to_string(),
+            "\t".to_string(),
+            "ClientConfig.ini".to_string(),
+        ];
+        assert!(should_skip_entry("ClientConfig.ini", &list));
+        assert!(!should_skip_entry("anything-else.dll", &list));
+    }
+
+    #[test]
+    fn should_skip_entry_empty_list_is_never_skipped() {
+        assert!(!should_skip_entry("ClientConfig.ini", &[]));
+        assert!(!should_skip_entry("any/file/path.dll", &[]));
     }
 
     #[test]

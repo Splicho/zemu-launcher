@@ -355,13 +355,27 @@ pub fn game_cancel_download(state: tauri::State<'_, AppState>) {
 pub async fn game_verify_and_repair(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
+    // Files the renderer wants excluded from the verify walk and
+    // the repair pipeline — typically files the launcher itself
+    // rewrites at runtime (e.g. `ClientConfig.ini`) or files
+    // users install alongside the game (e.g. `dinput8.dll`).
+    // Matched case-insensitively against the basename of each
+    // manifest entry's path. See
+    // `LAUNCHER_CONFIG.updateSkipFiles` on the renderer side for
+    // the source of truth.
+    skip_files: Option<Vec<String>>,
 ) -> Result<crate::models::VerifyOutcome, String> {
     let directory = game::get_game_directory(&app).map_err(|e| e.to_string())?;
     let directory = directory
         .ok_or_else(|| "No game directory set".to_string())?;
-    crate::integrity::verify_and_repair(&app, state.inner(), &directory)
-        .await
-        .map_err(|e| e.to_string())
+    crate::integrity::verify_and_repair(
+        &app,
+        state.inner(),
+        &directory,
+        &skip_files.unwrap_or_default(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

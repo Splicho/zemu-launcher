@@ -49,15 +49,23 @@ export const LAUNCHER_CONFIG = {
   oauthCallbackProtocol: 'zemu-launcher://',
   // Executable the launcher spawns after a successful install + launch.
   gameExecutable: 'H1Z1.exe',
-  // Files the update check should ignore when computing "Update
-  // available" — typically files the launcher itself writes to at
+  // Files the update check + pre-launch integrity verifier should
+  // ignore — typically files the launcher itself writes to at
   // runtime, so a hash mismatch with the remote manifest doesn't
-  // trip a false positive. Matched by exact filename (case
-  // insensitive), relative to the game install root.
+  // trip a false positive, and files the user installs alongside
+  // the game that aren't part of the curated depot. Matched by
+  // exact filename (case insensitive), relative to the game
+  // install root.
   //
   // `ClientConfig.ini` is in here because the launcher's locale
   // picker writes `[Internationalization] Locale=` into it on
   // every launch — without this filter, that local edit would
   // look like a tampered file forever.
-  updateSkipFiles: ['ClientConfig.ini'],
+  //
+  // `dinput8.dll` is in here because users commonly drop a custom
+  // build (graphics fix, ultrawide patch, FPS-unlocker, etc.)
+  // into the install root to override the depot's copy. The
+  // launcher has no business re-downloading the original over
+  // the top of it.
+  updateSkipFiles: ['ClientConfig.ini', 'dinput8.dll'],
 } as const

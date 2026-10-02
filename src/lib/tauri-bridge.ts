@@ -234,7 +234,8 @@ function setupCompatibilityBridge() {
       }
     },
     launchGame: () => invoke<{ success: boolean; error?: string }>('game_launch'),
-    verifyAndRepair: () => invoke<VerifyOutcome>('game_verify_and_repair'),
+    verifyAndRepair: (skipFiles: string[] = []) =>
+      invoke<VerifyOutcome>('game_verify_and_repair', { skipFiles }),
     detectBaseGameInstalled: (directory: string) =>
       invoke<boolean>('game_detect_base_game_installed', { directory }),
     pathExists: (path: string) => invoke<boolean>('game_path_exists', { path }),
@@ -692,7 +693,7 @@ declare global {
        * before calling `launchGame`; if the result status is
        * `tamperedCdnDown` the renderer must refuse to launch.
        */
-      verifyAndRepair: () => Promise<VerifyOutcome>
+      verifyAndRepair: (skipFiles?: string[]) => Promise<VerifyOutcome>
     }
     steamApi: {
       isAvailable: () => Promise<boolean>
