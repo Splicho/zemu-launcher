@@ -507,6 +507,11 @@ fn run_monitor(
         last_report_at = Some(Instant::now());
         continue;
 
+        // Unreachable while the report is disabled. Left in place
+        // so the diff vs. the enabled version stays small and the
+        //   continue; /  sleep_poll_interval();
+        // pair is obvious when the rework re-enables the post.
+        #[allow(unreachable_code)]
         sleep_poll_interval();
     }
 }
@@ -847,6 +852,9 @@ fn hex_lower(bytes: &[u8]) -> String {
 /// launcher-JWT helper from `hardware_api` so auth/host/error
 /// handling stay consistent with the rest of the launcher's
 /// server-facing requests.
+// TEMP-DISABLE: report is suppressed at the call site until the
+// process-integrity rework lands. Allow the dead_code warning.
+#[allow(dead_code)]
 fn post_event(app: &AppHandle, event: &ProcessIntegrityEvent) -> Result<(), ApiPostError> {
     let path = "/v1/moderation/integrity/events";
     let body = serde_json::to_vec(event).map_err(|err| {

@@ -168,6 +168,10 @@ impl std::error::Error for ApiPostError {}
 /// `POST /v1/moderation/integrity/events` doesn't return any data
 /// the launcher needs; it only needs to know "did the server accept
 /// the report".
+// TEMP-DISABLE: only `process_integrity::post_event` calls this,
+// and the report is currently suppressed. Allow the dead_code
+// warning until the process-integrity rework re-enables it.
+#[allow(dead_code)]
 pub fn api_post_json(
     app: &AppHandle,
     path: &str,
