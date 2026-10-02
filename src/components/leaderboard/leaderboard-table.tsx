@@ -74,19 +74,17 @@ export default function LeaderboardTable({
       }
       setExpandedRow(rowId)
       setExpandedPlayer(playerName)
-      void topMatchesQuery.refetch()
     },
-    [expandedRow, topMatchesQuery],
+    [expandedRow],
   )
 
   const prefetchMatches = useCallback(
     (playerName: string) => {
       if (expandedRow && expandedPlayer !== playerName) return
-      if (expandedPlayer === playerName && topMatchesQuery.data) return
+      if (expandedPlayer === playerName) return
       setExpandedPlayer(playerName)
-      void topMatchesQuery.refetch()
     },
-    [expandedRow, expandedPlayer, topMatchesQuery],
+    [expandedRow, expandedPlayer],
   )
 
   const table = useTable({

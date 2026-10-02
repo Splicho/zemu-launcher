@@ -47,16 +47,25 @@ export function useLeaderboardEntries(
 /**
  * Per-player top-matches query.
  *
- * `enabled: false` means it never fires on its own — callers trigger it
- * manually via `refetch()`. Hover prefetch and click-to-expand both use
- * this same hook. The cache is keyed on the player name so expanding
- * Player A then Player B leaves A's matches cached.
+ * Auto-fires whenever `playerName` is non-null, so consumers just
+ * set the player name and the matches load. We avoid `refetch()` in
+ * click handlers because the closure would still be holding the
+ * previous render's query observer (keyed on the prior player name,
+ * often `null`) — calling `refetch()` on that stale observer would
+ * fetch the wrong player or no-op. Letting TanStack auto-fetch on
+ * key change sidesteps the closure issue entirely.
+ *
+ * The cache is keyed on the player name so expanding Player A then
+ * Player B leaves A's matches cached for 60s.
  */
 export function usePlayerTopMatches(playerName: string | null) {
   return useQuery({
     queryKey: ['player', 'topMatches', playerName],
-    queryFn: () => fetchPlayerTopMatches(playerName ?? ''),
-    enabled: false,
+    queryFn: () => {
+      if (!playerName) return Promise.resolve([])
+      return fetchPlayerTopMatches(playerName)
+    },
+    enabled: !!playerName,
     staleTime: 60_000,
     retry: 1,
   })

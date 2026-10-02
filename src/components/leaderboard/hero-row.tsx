@@ -48,8 +48,7 @@ export function HeroRow({
     }
     setExpanded(true)
     setExpandedPlayer(entry.name)
-    void topMatchesQuery.refetch()
-  }, [expanded, entry.name, topMatchesQuery])
+  }, [expanded, entry.name])
 
   const clan = clanTags[entry.name.toLowerCase()] ?? null
 
