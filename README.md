@@ -154,6 +154,4 @@ zemu-launcher/
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a pull request. All contributors must agree to the [CONTRIBUTOR_LICENSE_AGREEMENT.md](CONTRIBUTOR_LICENSE_AGREEMENT.md).
 
-## License
-
 See [LICENSE](LICENSE). By contributing to this project, you agree to the [CONTRIBUTOR_LICENSE_AGREEMENT.md](CONTRIBUTOR_LICENSE_AGREEMENT.md).
