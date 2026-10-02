@@ -727,14 +727,15 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
       // with the rest of the Steam-instructions modal entry point;
       // see the file-level doc comment for rationale.
       //
-      // We mark the auth flow as "initiated" *only* when the saved
-      // token belongs to the user who is currently sitting in the
-      // wizard — i.e. it was present on Step 3 mount. That way a
-      // fresh install that happens to have a stale keychain entry
-      // (which previously caused the green "Signed in as X" card
-      // to flash before the user clicked anything) falls through
-      // to the QR gate. Returning users with their own real token
-      // still see the card immediately.
+      // The Rust side gates `authed` on the persisted
+      // `onboarding_completed` flag (see `depot::get_status` and
+      // `depot::compute_auth_status`), so a brand-new install that
+      // happens to find a stale refresh token in the OS keychain
+      // (e.g. a leftover from a previous launcher install) reports
+      // `authed: false` and the wizard falls through to the QR
+      // gate. Returning users with their own real token still see
+      // the "Signed in as X" card immediately, because their
+      // previous wizard pass wrote the flag.
       if (status.authed) {
         setAlreadyAuthed(true)
         setAuthInitiated(true)

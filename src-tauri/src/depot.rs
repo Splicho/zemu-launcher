@@ -121,15 +121,50 @@ pub fn is_available(_app: &AppHandle) -> bool {
     true
 }
 
+/// Pure decision function for the wizard's `loginStatus` probe.
+///
+/// The bug this prevents: a brand-new install that happens to find
+/// a leftover refresh token in the OS keychain (a stale entry from
+/// a previous launcher install, a Steam client side-effect, or
+/// anything else that wrote to the keychain slot) used to report
+/// `authed: true` and surface the green "Signed in as X" card
+/// before the user had scanned a QR code. The React side
+/// `authInitiated` flag is set purely on `authed`, so a stale
+/// `true` from the Rust layer was indistinguishable from a real
+/// returning-user session.
+///
+/// We now gate `authed` on the persisted `onboarding_completed`
+/// flag. On first run the launcher hasn't written the flag yet,
+/// so `has_completed_onboarding` returns `false` and we report
+/// `authed: false` regardless of what the keychain has — the
+/// wizard falls through to the QR gate as the React-side
+/// comment promises. The cached account name still surfaces so
+/// the QR-gate subheader can show "Signed in as X (token stale
+/// — sign out to start fresh)" if there is one; that part
+/// doesn't grant the renderer any privileged status, it's just
+/// a label.
+fn compute_auth_status(
+    token_present: bool,
+    onboarding_completed: bool,
+) -> (bool, bool) {
+    // (authed, account_visible). `authed` is the privileged bit;
+    // `account_visible` is purely cosmetic and safe to surface
+    // even on a fresh install.
+    let authed = token_present && onboarding_completed;
+    let account_visible = token_present;
+    (authed, account_visible)
+}
+
 pub fn get_status(app: &AppHandle) -> SteamAuthStatus {
-    match read_refresh_token(app) {
-        Ok(Some(_)) => SteamAuthStatus {
-            authed: true,
-            account_name: read_account_name(app),
-        },
-        _ => SteamAuthStatus {
-            authed: false,
-            account_name: None,
+    let token_present = read_refresh_token(app).unwrap_or(None).is_some();
+    let onboarding_completed = crate::storage::has_completed_onboarding(app).unwrap_or(false);
+    let (authed, account_visible) = compute_auth_status(token_present, onboarding_completed);
+    SteamAuthStatus {
+        authed,
+        account_name: if account_visible {
+            read_account_name(app)
+        } else {
+            None
         },
     }
 }
@@ -984,5 +1019,56 @@ fn forward_download_event(
         }
         // Forward-compat: future variants fall through silently.
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_auth_status;
+
+    /// Regression test for the "fresh install shows Signed in as X"
+    /// bug: a leftover keychain entry on a brand-new install must
+    /// not be promoted to `authed: true`. Before the gate was added
+    /// `get_status` returned `authed: true` whenever the keychain
+    /// had any refresh token at all, which surfaced the green card
+    /// in `BaseGameStep` on a fresh install.
+    #[test]
+    fn fresh_install_with_stale_keychain_token_is_not_authed() {
+        let (authed, account_visible) = compute_auth_status(true, false);
+        assert!(!authed, "onboarding not yet completed → must not be authed");
+        assert!(
+            account_visible,
+            "account name can still surface so the QR-gate subheader can mention it"
+        );
+    }
+
+    #[test]
+    fn fresh_install_with_no_token_is_not_authed() {
+        let (authed, account_visible) = compute_auth_status(false, false);
+        assert!(!authed);
+        assert!(!account_visible);
+    }
+
+    /// Returning user who has completed onboarding and still has a
+    /// valid refresh token in the keychain. This is the
+    /// happy-path the React side's "Signed in as X" card is
+    /// designed to render.
+    #[test]
+    fn completed_install_with_token_is_authed() {
+        let (authed, account_visible) = compute_auth_status(true, true);
+        assert!(authed);
+        assert!(account_visible);
+    }
+
+    /// Edge case: user completed onboarding but the keychain
+    /// entry has since been cleared (e.g. they used "Sign out"
+    /// from settings). The launcher must report `authed: false`
+    /// so the wizard falls through to the QR gate, not the green
+    /// card.
+    #[test]
+    fn completed_install_with_no_token_is_not_authed() {
+        let (authed, account_visible) = compute_auth_status(false, true);
+        assert!(!authed);
+        assert!(!account_visible);
     }
 }
