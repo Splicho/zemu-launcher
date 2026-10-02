@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 
 import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 import { AuthKeyModal } from '@/components/auth-key-modal'
 import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { useAuthContext } from '@/contexts/auth-context'
@@ -180,7 +181,11 @@ export function GameActionButton({ className }: GameActionButtonProps) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
+              className="inline-flex items-center gap-2"
             >
+              {type === 'LAUNCHING_GAME' ? (
+                <Spinner className="size-5 shrink-0" aria-hidden="true" />
+              ) : null}
               {label}
             </motion.span>
           </AnimatePresence>
