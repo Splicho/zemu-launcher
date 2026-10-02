@@ -34,8 +34,6 @@ import { useFriendsRealtimeSync } from '@/hooks/use-friends'
 import { useAvatarSync } from '@/hooks/use-avatar-sync'
 import { usePresenceHeartbeat } from '@/hooks/use-presence-heartbeat'
 import { useEnrollHardware } from '@/hooks/use-enroll-hardware'
-import { LAUNCHER_CONFIG } from '@/config/launcher'
-
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
 
 function parseRoute(hash: string | null): { page: string; params?: Record<string, string> } {
@@ -227,13 +225,6 @@ function AuthedApp() {
           : 'app'
     setSidebarType(nextType)
   }, [route.page])
-
-  // Set the update URL in the backend on startup
-  useEffect(() => {
-    if (window.launcherAPI) {
-      void window.launcherAPI.setRuntimeUpdateUrl(LAUNCHER_CONFIG.updateBaseUrl)
-    }
-  }, [])
 
   // Bounce a signed-out user from a deep route back to the landing.
   // The hash state itself is read-only inside React; we mutate the

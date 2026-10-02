@@ -16,7 +16,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 /// Streaming HTTP client + base URL for the compressor CDN.
 ///
-/// `https://assets.zemu.uk/manifest.json` is the canonical entry point
+/// `https://cdn-c.zemu.uk/manifest.json` is the canonical entry point
 /// the launcher hits; `<base>/<path>.zst` is the per-file artifact.
 #[derive(Clone)]
 pub(crate) struct UpdateClient {
@@ -300,7 +300,7 @@ async fn download_and_install(
     game_directory: &str,
 ) -> Result<()> {
     let base_url = state.get_update_base_url().ok_or_else(|| {
-        anyhow!("Update service is not configured. Call launcher_set_runtime_update_url first.")
+        anyhow!("Update service is not configured. Build the launcher with `update-config.json`.")
     })?;
 
     let client = UpdateClient::new(base_url);
@@ -418,7 +418,7 @@ pub async fn run_repair_pipeline(
     }
 
     let base_url = state.get_update_base_url().ok_or_else(|| {
-        anyhow!("Update service is not configured. Call launcher_set_runtime_update_url first.")
+        anyhow!("Update service is not configured. Build the launcher with `update-config.json`.")
     })?;
 
     let _ = debug_log::append(

@@ -13,6 +13,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.5.6", features = [] }
+serde_json = "1.0"
+regex = "1.10"
 
 [dependencies]
 anyhow = "1.0"
@@ -33,7 +35,7 @@ rand = "0.8"
 rust_socketio = { version = "0.6", features = ["async"] }
 # Tracing facade used by rust_socketio internally.
 tracing = "0.1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "blocking", "rustls-tls"] }
 rfd = "0.14"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

@@ -4,11 +4,24 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_keyring_store::{KeyringExt, KeyringStore};
 
 const CONFIG_FILE: &str = "launcher-config.json";
 const VERSION_FILE: &str = "game-version.json";
 const AUTH_STORE_FILE: &str = "auth-store.json";
+
+/// Account name in the OS keychain for the persisted H1Z1
+/// session-key string (the `SessionId=...` argument we hand
+/// the game at launch).
+///
+/// Kept here rather than alongside the refresh-token constants in
+/// `depot.rs` because the two tokens have independent life
+/// cycles and are managed by different modules — the Steam
+/// refresh token lives entirely inside `depot.rs`, the game
+/// session key here.
+const AUTH_KEY_ACCOUNT: &str = "zemu-launcher-auth-key";
 
 pub fn ensure_app_data_dir(app: &AppHandle) -> Result<PathBuf> {
     let dir = app
@@ -97,6 +110,101 @@ pub fn save_auth_store(app: &AppHandle, store: &AuthStore) -> Result<()> {
     write_json(&path, store)
 }
 
+// ─── H1Z1 session-key keyring storage ──────────────────────────────────
+//
+// Historically the H1Z1 game-session key (the `SessionId=...`
+// argument passed on the game process command line at launch)
+// was stored in plaintext inside `launcher-config.json`. That
+// left a copy of the credential on disk in any user's app data
+// directory — recoverable by anyone with file-system access.
+//
+// The OS keychain is the right home for this. We keep an
+// in-config `auth_key` field as a migration carrier for one
+// release (so existing users don't get re-prompted for their key
+// after the update) and read the keyring first whenever a
+// non-empty value is present there.
+
+fn open_auth_key_store(app: &AppHandle) -> Arc<KeyringStore> {
+    let plugin = app.keyring();
+    Arc::clone(&plugin.store)
+}
+
+/// Read the persisted H1Z1 session key. Reads from the OS
+/// keychain first; if the keychain has nothing (typical for a
+/// fresh install or a user migrating from plaintext storage),
+/// falls back to the `auth_key` field in `launcher-config.json`
+/// AND migrates that value into the keychain so the next call
+/// finds it there.
+///
+/// Returns `Ok(None)` when neither source has a value.
+pub fn read_auth_key(app: &AppHandle) -> Result<Option<String>> {
+    let store = open_auth_key_store(app);
+    match store.get_password(AUTH_KEY_ACCOUNT) {
+        Ok(Some(value)) if !value.trim().is_empty() => return Ok(Some(value)),
+        Ok(_) => {}
+        Err(err) => {
+            let _ = crate::debug_log::append(
+                app,
+                "auth",
+                &format!("read_auth_key: keyring error: {err}"),
+            );
+        }
+    }
+
+    // Migration: copy plaintext → keychain, then redact the
+    // plaintext copy. Old users keep their session through the
+    // update; new users never get one written to disk.
+    let config = load_launcher_config(app)?;
+    if let Some(value) = config.auth_key.as_ref().filter(|v| !v.trim().is_empty()) {
+        let value = value.clone();
+        if let Err(err) = store.set_password(AUTH_KEY_ACCOUNT, &value) {
+            let _ = crate::debug_log::append(
+                app,
+                "auth",
+                &format!("read_auth_key: keyring migration write failed: {err}"),
+            );
+            // Still return the value — the user just won't have
+            // the next call hit the fast path. Don't fail the
+            // launch on a keychain-only failure.
+        } else {
+            let _ = redact_auth_key_in_config(app);
+        }
+        return Ok(Some(value));
+    }
+
+    Ok(None)
+}
+
+/// Persist a new H1Z1 session key, replacing any existing one.
+/// An empty / whitespace-only string clears the entry.
+pub fn write_auth_key(app: &AppHandle, key: &str) -> Result<()> {
+    let store = open_auth_key_store(app);
+    if key.trim().is_empty() {
+        let _ = store.delete(AUTH_KEY_ACCOUNT);
+    } else {
+        store
+            .set_password(AUTH_KEY_ACCOUNT, key)
+            .map_err(|e| anyhow!("writing auth key to OS keychain: {e}"))?;
+    }
+    // Also clear the plaintext field in `launcher-config.json`
+    // so the key is never on disk in cleartext, even transiently.
+    redact_auth_key_in_config(app)
+}
+
+/// Drop the plaintext `auth_key` field from `launcher-config.json`.
+///
+/// Called from both `read_auth_key` (after a successful migration
+/// to the keychain) and `write_auth_key` (so the new write path
+/// leaves nothing in the cleartext file).
+fn redact_auth_key_in_config(app: &AppHandle) -> Result<()> {
+    let mut config = load_launcher_config(app)?;
+    if config.auth_key.is_some() {
+        config.auth_key = None;
+        save_launcher_config(app, &config)?;
+    }
+    Ok(())
+}
+
 /// Read the first-run onboarding completed flag from the persisted
 /// `LauncherConfig`. Default `false` on first run or when the
 /// file has not been written yet — that's also the right answer
@@ -117,28 +225,6 @@ pub fn mark_onboarding_completed(app: &AppHandle, completed: bool) -> Result<()>
     save_launcher_config(app, &config)
 }
 
-pub fn detect_oauth_callback_protocol(app: &AppHandle) -> Result<Option<String>> {
-    let launcher_config = load_launcher_config(app)?;
-    if let Some(protocol) = launcher_config.oauth_callback_protocol {
-        if let Some(normalized) = normalize_callback_protocol(&protocol) {
-            return Ok(Some(normalized));
-        }
-    }
-
-    Ok(None)
-}
-
-pub fn detect_api_base_url(app: &AppHandle) -> Result<Option<String>> {
-    let launcher_config = load_launcher_config(app)?;
-    if let Some(url) = launcher_config.api_base_url {
-        let normalized = normalize_api_base_url(&url);
-        if !normalized.is_empty() {
-            return Ok(Some(normalized));
-        }
-    }
-
-    Ok(None)
-}
 
 pub fn detect_game_executable(app: &AppHandle) -> String {
     load_launcher_config(app)
@@ -187,38 +273,6 @@ pub fn detect_base_game_installed(directory: &str) -> Result<bool> {
 /// launcher's `isInstalled()` check.
 pub fn path_exists(path: &str) -> Result<bool> {
     Ok(Path::new(path).exists())
-}
-
-fn trim_base_url(value: &str) -> String {
-    value.trim().trim_end_matches('/').to_string()
-}
-
-fn normalize_api_base_url(value: &str) -> String {
-    let trimmed = trim_base_url(value);
-    if let Some(without_api) = trimmed.strip_suffix("/api") {
-        without_api.to_string()
-    } else {
-        trimmed
-    }
-}
-
-pub fn normalize_callback_protocol(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let mut scheme = trimmed.to_string();
-    if let Some((prefix, _)) = trimmed.split_once("://") {
-        scheme = prefix.to_string();
-    }
-
-    let scheme = scheme.trim().trim_end_matches(':').trim_end_matches('/');
-    if scheme.is_empty() {
-        return None;
-    }
-
-    Some(format!("{scheme}://"))
 }
 
 pub fn is_packaged() -> bool {

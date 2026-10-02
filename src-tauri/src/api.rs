@@ -1,18 +1,11 @@
 use crate::auth;
 use crate::debug_log;
-use crate::storage::detect_api_base_url;
 use anyhow::{anyhow, Result};
 use tauri::AppHandle;
 use url::Url;
 
-const API_BASE_URL_FALLBACK: &str = "https://id.zemu.uk";
-
-fn resolve_api_base_url(app: &AppHandle) -> String {
-    detect_api_base_url(app)
-        .ok()
-        .flatten()
-        .filter(|url| !url.trim().is_empty())
-        .unwrap_or_else(|| API_BASE_URL_FALLBACK.to_string())
+fn resolve_api_base_url(_app: &AppHandle) -> String {
+    crate::config::API_BASE_URL.to_string()
 }
 
 /// Generic bearer-auth passthrough for the launcher's API surface. Each

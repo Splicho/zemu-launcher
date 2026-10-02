@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Side-by-side application manifest for the ZEmu launcher main binary.
+
+  Tauri 2 (via tauri-build / embed-resource) normally embeds a manifest
+  declaring Microsoft.Windows.Common-Controls v6 — but only into the
+  `[[bin]]` target. This crate is a `cdylib + rlib` (`src-tauri/src/lib.rs`)
+  and the `zemu_launcher.exe` is produced from `src/main.rs` (`[[bin]]`).
+  Depending on toolchain, the link step can drop the manifest and the
+  resulting exe binds comctl32 v5 instead of v6. The first call into a
+  comctl6-only export (TaskDialogIndirect, via tao / muda / dialog code
+  transitively pulled in by Tauri) then makes the loader abort with
+  STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139) before `main` runs.
+
+  Embedding this manifest via the linker (`/MANIFEST:EMBED` +
+  `/MANIFESTINPUT`) in `build.rs` covers every link invocation — the
+  app binary, the cargo test harnesses, examples, and any future
+  cdylib dependents all get the v6 side-by-side binding. See
+  tauri-apps/tauri#13419, #13948, #14580 for the upstream reports.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity
+    version="1.0.0.0"
+    processorArchitecture="*"
+    name="ZEmuLauncher"
+    type="win32" />
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*" />
+    </dependentAssembly>
+  </dependency>
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+</assembly>

@@ -61,7 +61,13 @@ pub fn start_oauth_callback_server(app: &AppHandle, expected_state: &str) -> Res
                 CALLBACK_TIMEOUT,
                 receiver,
                 |payload| {
-                    auth::process_oauth_callback(&app, payload.token, payload.state, payload.error)
+                    auth::process_oauth_callback(
+                        &app,
+                        payload.token,
+                        payload.code,
+                        payload.state,
+                        payload.error,
+                    )
                 },
             );
             let _ = debug_log::append(
@@ -184,10 +190,13 @@ fn handle_request(
     };
     let payload = OAuthCallbackPayload {
         token: param("token"),
+        code: param("code"),
         state: param("state"),
         error: param("error"),
     };
-    if payload.state.is_none() || (payload.token.is_none() && payload.error.is_none()) {
+    if payload.state.is_none()
+        || (payload.token.is_none() && payload.code.is_none() && payload.error.is_none())
+    {
         return (400, render_page(false, "Missing OAuth state or token."));
     }
 

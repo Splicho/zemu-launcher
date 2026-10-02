@@ -191,44 +191,6 @@ pub fn wine_select_runtime_executable() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub fn launcher_set_update_base_url(_app: tauri::AppHandle, url: String) -> Result<(), String> {
-    game::set_update_base_url(&_app, url).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn launcher_set_runtime_update_url(
-    _app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
-    url: String,
-) -> Result<(), String> {
-    state.set_runtime_update_url(url);
-    Ok(())
-}
-
-#[tauri::command]
-pub fn launcher_set_realtime_url(
-    _app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
-    url: String,
-) -> Result<(), String> {
-    state.set_realtime_url(url);
-    Ok(())
-}
-
-#[tauri::command]
-pub fn launcher_set_oauth_callback_protocol(
-    app: tauri::AppHandle,
-    protocol: String,
-) -> Result<(), String> {
-    game::set_oauth_callback_protocol(&app, protocol).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn launcher_set_api_base_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    game::set_api_base_url(&app, url).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub fn game_select_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
     game::select_game_directory(&app).map_err(|e| e.to_string())
 }
@@ -791,26 +753,23 @@ pub fn launcher_set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> R
     }
 }
 
-/// Returns the currently saved auth key, if any. The value is stored
-/// locally in `launcher-config.json` and is never validated against
-/// a server — it is passed directly to the game as the session id.
+/// Returns the currently saved auth key, if any. Stored in the
+/// OS keychain (since this commit); never validated against a
+/// server — it is passed directly to the game as the session id.
 #[tauri::command]
 pub fn launcher_get_auth_key(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    let config = storage::load_launcher_config(&app).map_err(|e| e.to_string())?;
-    Ok(config.auth_key)
+    storage::read_auth_key(&app).map_err(|e| e.to_string())
 }
 
-/// Persist a new auth key, replacing any previously saved value.
-/// An empty string clears the key.
+/// Persist a new auth key to the OS keychain, replacing any
+/// previously saved value. An empty string clears the key.
+///
+/// Earlier releases stored the key in `launcher-config.json` in
+/// plaintext. This command has been updated to use the keyring;
+/// existing users transparently migrate on their next read.
 #[tauri::command]
 pub fn launcher_set_auth_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
-    let mut config = storage::load_launcher_config(&app).map_err(|e| e.to_string())?;
-    config.auth_key = if key.trim().is_empty() {
-        None
-    } else {
-        Some(key.trim().to_string())
-    };
-    storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())
+    storage::write_auth_key(&app, &key).map_err(|e| e.to_string())
 }
 
 /// Read the persisted first-run onboarding completed flag. Default
@@ -912,31 +871,26 @@ pub async fn friends_dispatch(
     action: String,
     payload: Option<friends::FriendsPayload>,
 ) -> friends::FriendsActionResult {
-    let payload_summary = match &payload {
-        Some(p) => format!(
-            "(target_id={:?}, query={:?}, display_name={:?})",
-            p.target_id, p.query, p.display_name
-        ),
-        None => String::from("(no payload)"),
-    };
-    friends_debug_log::write_with_app(&app, "ipc", &format!("dispatch: action={action} {payload_summary}"));
-
     let result = friends::friends_dispatch(app.clone(), action.clone(), payload).await;
 
-    let ok_str = if result.ok { "ok" } else { "no" };
-    let reason = result.reason.as_deref().unwrap_or("-");
-    friends_debug_log::write_with_app(
-        &app,
-        "ipc",
-        &format!("dispatch: action={action} -> ok={ok_str} reason={reason}"),
-    );
+    if !result.ok {
+        let reason = result.reason.as_deref().unwrap_or("-");
+        friends_debug_log::write_with_app(
+            &app,
+            "ipc",
+            &format!("dispatch FAILED: action={action} reason={reason}"),
+        );
+    }
     result
 }
 
 #[tauri::command]
 pub async fn friends_list(app: tauri::AppHandle) -> friends::FriendsActionResult {
-    friends_debug_log::write_with_app(&app, "ipc", "list");
-    friends::friends_list(app).await
+    let result = friends::friends_list(app.clone()).await;
+    if !result.ok {
+        friends_debug_log::write_with_app(&app, "ipc", "list FAILED");
+    }
+    result
 }
 
 #[tauri::command]
@@ -944,8 +898,11 @@ pub async fn friends_search(
     app: tauri::AppHandle,
     query: String,
 ) -> friends::FriendsActionResult {
-    friends_debug_log::write_with_app(&app, "ipc", &format!("search: query={query:?}"));
-    friends::friends_search(app, query).await
+    let result = friends::friends_search(app.clone(), query.clone()).await;
+    if !result.ok {
+        friends_debug_log::write_with_app(&app, "ipc", &format!("search FAILED: query={query:?}"));
+    }
+    result
 }
 
 #[tauri::command]
@@ -953,8 +910,11 @@ pub async fn friends_request(
     app: tauri::AppHandle,
     target_id: String,
 ) -> friends::FriendsActionResult {
-    friends_debug_log::write_with_app(&app, "ipc", &format!("request: target_id={target_id}"));
-    friends::friends_request(app, target_id).await
+    let result = friends::friends_request(app.clone(), target_id.clone()).await;
+    if !result.ok {
+        friends_debug_log::write_with_app(&app, "ipc", &format!("request FAILED: target_id={target_id}"));
+    }
+    result
 }
 
 #[tauri::command]
@@ -962,8 +922,11 @@ pub async fn friends_accept(
     app: tauri::AppHandle,
     target_id: String,
 ) -> friends::FriendsActionResult {
-    friends_debug_log::write_with_app(&app, "ipc", &format!("accept: target_id={target_id}"));
-    friends::friends_accept(app, target_id).await
+    let result = friends::friends_accept(app.clone(), target_id.clone()).await;
+    if !result.ok {
+        friends_debug_log::write_with_app(&app, "ipc", &format!("accept FAILED: target_id={target_id}"));
+    }
+    result
 }
 
 #[tauri::command]
@@ -971,8 +934,11 @@ pub async fn friends_decline(
     app: tauri::AppHandle,
     target_id: String,
 ) -> friends::FriendsActionResult {
-    friends_debug_log::write_with_app(&app, "ipc", &format!("decline: target_id={target_id}"));
-    friends::friends_decline(app, target_id).await
+    let result = friends::friends_decline(app.clone(), target_id.clone()).await;
+    if !result.ok {
+        friends_debug_log::write_with_app(&app, "ipc", &format!("decline FAILED: target_id={target_id}"));
+    }
+    result
 }
 
 #[tauri::command]
@@ -980,8 +946,11 @@ pub async fn friends_cancel(
     app: tauri::AppHandle,
     target_id: String,
 ) -> friends::FriendsActionResult {
-    friends_debug_log::write_with_app(&app, "ipc", &format!("cancel: target_id={target_id}"));
-    friends::friends_cancel(app, target_id).await
+    let result = friends::friends_cancel(app.clone(), target_id.clone()).await;
+    if !result.ok {
+        friends_debug_log::write_with_app(&app, "ipc", &format!("cancel FAILED: target_id={target_id}"));
+    }
+    result
 }
 
 #[tauri::command]
@@ -989,8 +958,11 @@ pub async fn friends_remove(
     app: tauri::AppHandle,
     target_id: String,
 ) -> friends::FriendsActionResult {
-    friends_debug_log::write_with_app(&app, "ipc", &format!("remove: target_id={target_id}"));
-    friends::friends_remove(app, target_id).await
+    let result = friends::friends_remove(app.clone(), target_id.clone()).await;
+    if !result.ok {
+        friends_debug_log::write_with_app(&app, "ipc", &format!("remove FAILED: target_id={target_id}"));
+    }
+    result
 }
 
 #[tauri::command]
@@ -998,8 +970,11 @@ pub async fn friends_save_profile(
     app: tauri::AppHandle,
     display_name: String,
 ) -> friends::FriendsActionResult {
-    friends_debug_log::write_with_app(&app, "ipc", &format!("save_profile: display_name={display_name:?}"));
-    friends::friends_save_profile(app, display_name).await
+    let result = friends::friends_save_profile(app.clone(), display_name.clone()).await;
+    if !result.ok {
+        friends_debug_log::write_with_app(&app, "ipc", &format!("save_profile FAILED: display_name={display_name:?}"));
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -1060,11 +1035,6 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         wine_list_runtimes,
         wine_select_prefix_directory,
         wine_select_runtime_executable,
-        launcher_set_update_base_url,
-        launcher_set_runtime_update_url,
-        launcher_set_realtime_url,
-        launcher_set_oauth_callback_protocol,
-        launcher_set_api_base_url,
         launcher_get_app_data_dir,
         launcher_open_app_data_dir,
         game_select_directory,

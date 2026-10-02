@@ -14,9 +14,10 @@
  * exponential back-off (1 s → 30 s cap, `reconnect: true`).
  * The watchdog task detects app exit and stops the task promptly.
  *
- * The URL is read from `AppState.realtime_url`, which the renderer sets
- * once on startup via `launcher_set_realtime_url`. Dev default:
- * ws://localhost:3007. Prod default: wss://socket.zemu.uk.
+ * The URL is read from `AppState.realtime_url`, populated at
+ * construction time from `crate::config::REALTIME_URL` (set by
+ * `build.rs` from `LAUNCHER_CONFIG.realtimeUrl`). Dev override:
+ * `LAUNCHER_REALTIME_URL` env var. Prod default: wss://socket.zemu.uk.
  */
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -27,7 +28,7 @@ use futures_util::FutureExt;
 use rust_socketio::{asynchronous::ClientBuilder, Payload};
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 use crate::auth::get_token;
 use crate::friends_debug_log;
@@ -75,52 +76,44 @@ const PRESENCE_UPDATED_EVENT: &str = "friends:presence-updated";
 /// the snake_case / camelCase mismatch between the api's payload and the
 /// Rust struct fields — not worth the ceremony for a single call site.
 
-/// Wait for the renderer to push a realtime URL via
-/// `launcher_set_realtime_url`. Returns the URL when one arrives, or
-/// `None` on shutdown or timeout.
+/// Read the realtime URL pushed at `AppState::new` time.
 ///
-/// The watcher fires on every `set_realtime_url` call, but we only
-/// care about the first one — the URL is a startup-time config, not
-/// something that changes during the session.
+/// The URL is now compile-time-bundled (`crate::config::REALTIME_URL`,
+/// overridable in dev via the `LAUNCHER_REALTIME_URL` env var) — the
+/// renderer no longer has a setter for it. The receiver here is kept
+/// for API symmetry with `subscribe_realtime_url` (so the realtime
+/// task can wait one tick on construction), but in practice the
+/// initial value is already populated.
 async fn resolve_realtime_url(
     mut url_rx: tokio::sync::watch::Receiver<Option<String>>,
     app: &AppHandle,
     shutdown_flag: &Arc<AtomicBool>,
 ) -> Option<String> {
-    // If the renderer already pushed a URL (e.g. on a re-spawn), use it
-    // without waiting.
     if let Some(url) = url_rx.borrow().clone() {
         if !url.is_empty() {
             return Some(url);
         }
     }
 
-    friends_debug_log::write_with_app(
-        app,
-        "rt-start",
-        "renderer URL not yet pushed — waiting",
-    );
-
+    // Bundled URL was somehow missing — wait briefly for it to
+    // appear. In practice the timeout path below is hit on a broken
+    // build, not on a healthy one.
     let deadline = tokio::time::Instant::now() + REALTIME_URL_WAIT_TIMEOUT;
     loop {
         if shutdown_flag.load(Ordering::SeqCst) {
-            info!("realtime: shutdown while waiting for URL");
             return None;
         }
-        // `changed()` resolves on every value update. We re-check the
-        // value afterwards so we don't miss an update that lands
-        // between the deadline check and the await.
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         if remaining.is_zero() {
             warn!(
-                "realtime: renderer never pushed a URL within {:?}; giving up",
+                "realtime: bundled URL never arrived within {:?}; giving up",
                 REALTIME_URL_WAIT_TIMEOUT
             );
             friends_debug_log::write_with_app(
                 app,
                 "rt-start",
                 &format!(
-                    "renderer never pushed a URL within {:?}; giving up",
+                    "bundled URL never arrived within {:?}; giving up",
                     REALTIME_URL_WAIT_TIMEOUT
                 ),
             );
@@ -143,21 +136,17 @@ async fn resolve_realtime_url(
  * loop handles network outages. The task exits when `shutdown_rx` resolves
  * (sender dropped on app exit).
  *
- * URL resolution: the task **waits** for the renderer to push a URL via
- * `launcher_set_realtime_url` before connecting. This is necessary because
- * Rust's `setup` runs synchronously at app boot — well before the
- * webview has loaded `main.tsx` and executed `syncLauncherRuntimeConfig`.
- * Without the wait, the task would fall back to the dev default
- * (`ws://localhost:3007`) in every production build. The wait is
- * bounded by `REALTIME_URL_WAIT_TIMEOUT` so a renderer that crashed
- * never hangs the socket task forever.
+ * URL resolution: the URL is bundled into `AppState` at
+ * construction time (`crate::config::REALTIME_URL`, overrideable in
+ * dev via `LAUNCHER_REALTIME_URL`). The realtime task subscribes to
+ * the watch channel anyway so it can pick up future updates from
+ * the bundled initial value.
  */
 pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
-    info!("realtime: starting (waiting for renderer to push URL)");
     friends_debug_log::write_with_app(
         &app,
         "rt-start",
-        "realtime task spawning (waiting for renderer to push real URL)",
+        "realtime task spawning (URL bundled into AppState at construction)",
     );
 
     tauri::async_runtime::spawn({
@@ -172,15 +161,12 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
         let _watchdog = tauri::async_runtime::spawn(async move {
             let _ = shutdown_rx.await;
             watchdog_shutdown.store(true, Ordering::SeqCst);
-            info!("realtime: watchdog: app shutting down");
         });
 
-        // Subscribe to the watch channel so the realtime task can wait
-        // for the renderer to push a URL before connecting. Rust's
-        // `setup` runs synchronously at app boot — well before the
-        // webview has loaded `main.tsx` — so without this wait the
-        // task would fall back to the dev default (`ws://localhost:3007`)
-        // in every production build.
+        // Subscribe to the watch channel so the realtime task can
+        // pick up URL updates at boot. The initial value is already
+        // populated (AppState was constructed with the bundled URL),
+        // so no renderer round-trip is needed.
         let url_rx = match app.try_state::<AppState>() {
             Some(state) => state.subscribe_realtime_url(),
             None => {
@@ -199,12 +185,6 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
             Some(u) => u,
             None => return, // shutdown or timeout already logged
         };
-        info!(url = %url, "realtime: using URL");
-        friends_debug_log::write_with_app(
-            &app,
-            "rt-start",
-            &format!("resolved realtime url={url}"),
-        );
 
         // Read the token once. We deliberately do NOT re-read on reconnect:
         // the server verifies the token at handshake time. If the token
@@ -212,14 +192,7 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
         // error handler logs it; a fresh token from the next OAuth flow
         // will be used on the next app restart.
         let token = match get_token(&app) {
-            Ok(Some(auth)) if !auth.token.is_empty() => {
-                friends_debug_log::write_with_app(
-                    &app,
-                    "rt-start",
-                    &format!("auth token loaded: token_len={}", auth.token.len()),
-                );
-                auth.token
-            }
+            Ok(Some(auth)) if !auth.token.is_empty() => auth.token,
             Ok(_) => {
                 warn!("realtime: no auth token yet; connecting without authentication");
                 friends_debug_log::write_with_app(
@@ -247,7 +220,6 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
 
         // Build and connect the socket. `rust_socketio` owns the reconnect
         // loop; we just hold the `Client` and let it run.
-        let url_for_log = url.clone();
         let url_for_connect_log = url.clone();
         let _socket = match ClientBuilder::new(&url)
             .auth(json!({ "token": token }))
@@ -260,20 +232,10 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
             .on("connect", move |_payload: Payload, socket| {
                 let app = app_handle.clone();
                 let token = token_for_connect.clone();
-                let url_log = url_for_log.clone();
                 async move {
                     let room = extract_user_id_from_token(&token)
                         .map(|uid| format!("user:{uid}"))
                         .unwrap_or_default();
-
-                    friends_debug_log::write_with_app(
-                        &app,
-                        "rt-connect",
-                        &format!(
-                            "socket=connected url={url_log} room={}",
-                            if room.is_empty() { "(none — no token)".to_string() } else { room.clone() }
-                        ),
-                    );
 
                     if !room.is_empty() {
                         if let Err(e) = socket.emit("join", json!({ "room": room })).await {
@@ -282,13 +244,6 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
                                 &app,
                                 "rt-connect",
                                 &format!("join emit failed: room={room} err={e}"),
-                            );
-                        } else {
-                            info!(room = %room, "realtime: joined room");
-                            friends_debug_log::write_with_app(
-                                &app,
-                                "rt-connect",
-                                &format!("joined room={room}"),
                             );
                         }
                     }
@@ -318,15 +273,6 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
                         Payload::String(s) => serde_json::Value::String(s),
                     };
 
-                    // Log every raw payload (truncated) before parsing, so
-                    // we can spot malformed events from the realtime
-                    // server at a glance.
-                    friends_debug_log::write_with_app(
-                        &app,
-                        "rt-receive",
-                        &format!("friends:changed raw_payload={json_value}"),
-                    );
-
                     // Parse the `kind` discriminator.
                     let kind = json_value
                         .get("kind")
@@ -345,22 +291,12 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
                                     "avatarUrl": from_user.and_then(|o| o.get("avatarUrl")).and_then(|v| v.as_str()).or(from_user.and_then(|o| o.get("avatar_url")).and_then(|v| v.as_str())),
                                 }
                             });
-                            let log_payload = payload.clone();
-                            info!(?payload, "realtime: incoming_request → friends:incoming-request");
                             if let Err(e) = app.emit(INCOMING_REQUEST_EVENT, payload) {
                                 error!(err = %e, "realtime: emit friends:incoming-request failed");
                                 friends_debug_log::write_with_app(
                                     &app,
                                     "rt-emit",
-                                    &format!(
-                                        "emit friends:incoming-request FAILED payload={log_payload} err={e}"
-                                    ),
-                                );
-                            } else {
-                                friends_debug_log::write_with_app(
-                                    &app,
-                                    "rt-emit",
-                                    &format!("emit friends:incoming-request ok payload={log_payload}"),
+                                    &format!("emit friends:incoming-request FAILED err={e}"),
                                 );
                             }
                             // Also invalidate the friends graph so the
@@ -369,30 +305,17 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
                             // (e.g. logged-out user). Cheap and idempotent.
                             if let Err(e) = app.emit(GRAPH_CHANGED_EVENT, ()) {
                                 error!(err = %e, "realtime: emit friends:graph-changed (alongside incoming-request) failed");
-                            } else {
-                                friends_debug_log::write_with_app(
-                                    &app,
-                                    "rt-emit",
-                                    "emit friends:graph-changed ok kind=incoming_request",
-                                );
                             }
                         }
                         _ => {
                             // All other kinds (accepted, invalidate, decline, cancel, etc.)
                             // are treated as a generic graph invalidation.
-                            info!(kind = %kind, "realtime: graph-changed");
                             if let Err(e) = app.emit(GRAPH_CHANGED_EVENT, ()) {
                                 error!(err = %e, "realtime: emit friends:graph-changed failed");
                                 friends_debug_log::write_with_app(
                                     &app,
                                     "rt-emit",
                                     &format!("emit friends:graph-changed FAILED kind={kind} err={e}"),
-                                );
-                            } else {
-                                friends_debug_log::write_with_app(
-                                    &app,
-                                    "rt-emit",
-                                    &format!("emit friends:graph-changed ok kind={kind}"),
                                 );
                             }
                         }
@@ -415,12 +338,6 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
                         #[allow(deprecated)]
                         Payload::String(s) => serde_json::Value::String(s),
                     };
-
-                    friends_debug_log::write_with_app(
-                        &app,
-                        "rt-receive",
-                        &format!("presence:updated raw_payload={json_value}"),
-                    );
 
                     // Extract the four fields we forward. Any field missing
                     // from the payload is treated as an empty / null default
@@ -458,21 +375,12 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
                         "currentGame": current_game,
                         "lastSeenAt": last_seen_at,
                     });
-                    let log_payload = payload.clone();
                     if let Err(e) = app.emit(PRESENCE_UPDATED_EVENT, payload) {
                         error!(err = %e, "realtime: emit friends:presence-updated failed");
                         friends_debug_log::write_with_app(
                             &app,
                             "rt-emit",
-                            &format!(
-                                "emit friends:presence-updated FAILED payload={log_payload} err={e}"
-                            ),
-                        );
-                    } else {
-                        friends_debug_log::write_with_app(
-                            &app,
-                            "rt-emit",
-                            &format!("emit friends:presence-updated ok payload={log_payload}"),
+                            &format!("emit friends:presence-updated FAILED err={e}"),
                         );
                     }
                 }
@@ -505,15 +413,7 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
             .connect()
             .await
         {
-            Ok(s) => {
-                info!("realtime: socket connected");
-                friends_debug_log::write_with_app(
-                    &app,
-                    "rt-connect",
-                    &format!("initial connect succeeded url={url_for_connect_log}"),
-                );
-                s
-            }
+            Ok(s) => s,
             Err(e) => {
                 error!(err = %e, "realtime: initial connection failed");
                 friends_debug_log::write_with_app(
@@ -531,7 +431,6 @@ pub fn spawn(app: AppHandle, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
         while !shutdown.load(Ordering::SeqCst) {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
-        info!("realtime: shutdown received");
         }
     });
 }

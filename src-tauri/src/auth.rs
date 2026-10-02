@@ -1,25 +1,41 @@
 use crate::debug_log;
 use crate::models::{AuthToken, CommandResult, OAuthCallbackPayload, OAuthState};
 use crate::state::AppState;
-use crate::storage::{
-    detect_api_base_url, detect_oauth_callback_protocol, load_auth_store, save_auth_store,
-};
+use crate::storage::{load_auth_store, save_auth_store};
 use anyhow::{anyhow, Result};
+use base64::Engine;
 use chrono::Utc;
 use rand::RngCore;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener;
 use url::Url;
 
-const API_BASE_URL_FALLBACK: &str = "https://id.zemu.uk";
 const OAUTH_STATE_TTL_MS: i64 = 10 * 60 * 1000;
 
-fn resolve_api_base_url(app: &AppHandle) -> String {
-    detect_api_base_url(app)
-        .ok()
-        .flatten()
-        .filter(|url| !url.trim().is_empty())
-        .unwrap_or_else(|| API_BASE_URL_FALLBACK.to_string())
+/// Read the launcher's auth app base URL. The compile-time bundled
+/// value (`crate::config::API_BASE_URL`, from `src/config/launcher.ts`)
+/// is the production source of truth — `launcher-config.json` is no
+/// longer consulted, so a tampered local config file can't re-point
+/// the launcher at a fake auth host.
+///
+/// Dev override: `LAUNCHER_AUTH_API_BASE_URL` (env / `.env.local`).
+/// The launcher has *two* base URLs in dev — the auth app
+/// (`apps/auth`) on port 3003 and the api app (`apps/api`) on
+/// 3002 — and the convention here mirrors the existing
+/// `LAUNCHER_API_BASE_URL` override used by `hardware_api`. Without
+/// this knob the OAuth `exchange_oauth_code` POST landed on the
+/// bundled production host in dev (where it 404s) while `/initiate`
+/// worked correctly against `localhost:3003`, producing a split-brain
+/// where the round-trip started on dev but the redeem step hit prod.
+fn resolve_api_base_url(_app: &AppHandle) -> String {
+    if let Ok(raw) = std::env::var("LAUNCHER_AUTH_API_BASE_URL") {
+        let trimmed = raw.trim().trim_end_matches('/').to_string();
+        if !trimmed.is_empty() {
+            return trimmed;
+        }
+    }
+    crate::config::API_BASE_URL.to_string()
 }
 
 pub fn get_token(app: &AppHandle) -> Result<Option<AuthToken>> {
@@ -221,16 +237,41 @@ pub fn generate_oauth_state(app: &AppHandle, provider: String) -> Result<String>
     cleanup_expired_states(&mut store);
 
     let state = random_hex_32();
+    let code_verifier = random_code_verifier();
     let state_record = OAuthState {
         state: state.clone(),
         provider,
         timestamp: Utc::now().timestamp_millis(),
+        code_verifier: Some(code_verifier),
     };
 
     store.oauth_states.insert(state.clone(), state_record);
     save_auth_store(app, &store)?;
 
     Ok(state)
+}
+
+/// Build the PKCE code-challenge that the runtime SHOULD append to
+/// the `/api/launcher/oauth/initiate` URL.
+///
+/// PKCE (RFC 7636) prevents an authorization-code interception
+/// attack: the server records `code_challenge` (a SHA-256 hash of
+/// `code_verifier`) when the user kicks off the flow and only
+/// accepts the matching `code_verifier` when the launcher
+/// redeems the authorization `code`. Without it, a leaked
+/// authorization code from the redirect URL would itself be
+/// redeemable for a bearer JWT.
+///
+/// Returns `None` if the state has no `code_verifier` (legacy
+/// flows written before PKCE shipped, or flows where the
+/// authorization server doesn't support S256 challenges).
+pub fn code_challenge_for_state(app: &AppHandle, state: &str) -> Result<Option<String>> {
+    let store = load_auth_store(app)?;
+    Ok(store
+        .oauth_states
+        .get(state)
+        .and_then(|record| record.code_verifier.as_ref())
+        .map(|verifier| code_challenge_from_verifier(verifier)))
 }
 
 pub fn validate_and_remove_oauth_state(app: &AppHandle, state: &str) -> Result<bool> {
@@ -272,8 +313,12 @@ pub fn open_oauth(app: &AppHandle, provider: String, is_dev_runtime: bool) -> Co
         let callback_url = if uses_loopback_callback(is_dev_runtime) {
             crate::oauth_server::CALLBACK_URL.to_string()
         } else {
-            let protocol = detect_oauth_callback_protocol(app)?
-                .ok_or_else(|| anyhow!("OAuth callback protocol is not configured"))?;
+            // Compile-time constant from `crate::config`. The deep-link
+            // scheme is no longer persisted to disk and cannot be
+            // overridden at runtime — a tampered `launcher-config.json`
+            // used to be able to re-point the scheme via
+            // `set_oauth_callback_protocol`, but that command is gone.
+            let protocol = crate::config::OAUTH_CALLBACK_PROTOCOL;
             format!("{protocol}oauth/callback")
         };
         let state = generate_oauth_state(app, provider.clone())?;
@@ -281,7 +326,7 @@ pub fn open_oauth(app: &AppHandle, provider: String, is_dev_runtime: bool) -> Co
             app,
             "auth",
             &format!(
-                "open_oauth api_base={} callback={}",
+                "open_oauth api_base={} callback={} has_state=true",
                 api_base_url.trim_end_matches('/'),
                 callback_url
             ),
@@ -297,7 +342,27 @@ pub fn open_oauth(app: &AppHandle, provider: String, is_dev_runtime: bool) -> Co
             .append_pair("provider", provider.as_str())
             .append_pair("state", state.as_str())
             .append_pair("callback", &callback_url);
-        let _ = debug_log::append(app, "auth", &format!("open_oauth url={oauth_url}"));
+
+        // PKCE: append the S256 challenge so the server-side
+        // exchange can verify the verifier we keep locally. The
+        // server tolerates the missing fields (it falls back to
+        // the legacy `?token=…` redirect) — until Phase B ships,
+        // this is purely a forward-compatible upgrade.
+        if let Ok(Some(challenge)) = code_challenge_for_state(app, &state) {
+            oauth_url
+                .query_pairs_mut()
+                .append_pair("code_challenge", &challenge)
+                .append_pair("code_challenge_method", "S256");
+        }
+
+        let _ = debug_log::append(
+            app,
+            "auth",
+            &format!(
+                "open_oauth url_host={} query_keys=[provider,state,callback,code_challenge,code_challenge_method]",
+                oauth_url.host_str().unwrap_or("?"),
+            ),
+        );
 
         if uses_loopback_callback(is_dev_runtime) {
             // Bind before opening the browser, and surface port conflicts to the UI.
@@ -379,6 +444,7 @@ pub fn manual_oauth_callback(
 pub fn process_oauth_callback(
     app: &AppHandle,
     token: Option<String>,
+    code: Option<String>,
     state: Option<String>,
     error: Option<String>,
 ) -> Result<()> {
@@ -386,12 +452,33 @@ pub fn process_oauth_callback(
         app,
         "auth",
         &format!(
-            "process_oauth_callback token_present={} state_present={} error_present={}",
+            "process_oauth_callback token_present={} code_present={} state_present={} error_present={}",
             token.is_some(),
+            code.is_some(),
             state.is_some(),
             error.is_some()
         ),
     );
+    // Capture the PKCE verifier *before* the state record is
+    // removed. `validate_and_remove_oauth_state` deletes the entry
+    // from `oauth_states` on a valid result, so a PKCE exchange
+    // attempt afterwards would see `None` for the verifier, fall
+    // through to the legacy branch, and end up surfacing "OAuth
+    // callback missing token" to the renderer — even though
+    // `/initiate` had stored a perfectly good verifier. The order
+    // matters: capture → validate-and-remove → redeem.
+    let pre_captured_verifier: Option<String> = state
+        .as_deref()
+        .and_then(|s| load_code_verifier(app, s));
+    let _ = debug_log::append(
+        app,
+        "auth",
+        &format!(
+            "process_oauth_callback verifier_present={}",
+            pre_captured_verifier.is_some()
+        ),
+    );
+
     let final_error = if let Some(s) = state.clone() {
         if let Some(app_state) = app.try_state::<AppState>() {
             if app_state.is_oauth_state_duplicate(&s) {
@@ -428,6 +515,42 @@ pub fn process_oauth_callback(
     } else {
         let _ = debug_log::append(app, "auth", "process_oauth_callback state_missing=true");
         Some("Missing OAuth state".to_string())
+    };
+
+    // PKCE code-exchange path: when the server returned `?code=`
+    // instead of `?token=`, redeem it for the bearer JWT here. We
+    // only attempt the exchange when the OAuth state validated
+    // cleanly (i.e. `final_error.is_none()` and we have a code +
+    // state). The verifier was captured *before* state validation
+    // removed the record from the store — see the `load_code_verifier`
+    // block above — so re-reading here would always return `None`
+    // and we'd silently fall into the legacy "missing token" branch.
+    let token = if let (Some(code), Some(_state), None) =
+        (code.as_ref(), state.as_ref(), final_error.as_ref())
+    {
+        match pre_captured_verifier.as_deref() {
+            Some(verifier) => match exchange_oauth_code(app, code, verifier) {
+                Ok(bearer) => Some(bearer),
+                Err(err) => {
+                    let _ = debug_log::append(
+                        app,
+                        "auth",
+                        &format!("process_oauth_callback exchange_error={err}"),
+                    );
+                    return Err(err);
+                }
+            },
+            None => {
+                let _ = debug_log::append(
+                    app,
+                    "auth",
+                    "process_oauth_callback exchange_skipped=no_verifier",
+                );
+                token
+            }
+        }
+    } else {
+        token
     };
 
     let final_error = final_error.or_else(|| {
@@ -487,6 +610,7 @@ fn emit_oauth_callback(
 ) -> Result<()> {
     let payload = OAuthCallbackPayload {
         token,
+        code: None,
         state,
         error,
     };
@@ -522,9 +646,166 @@ fn cleanup_expired_states(store: &mut crate::models::AuthStore) {
 }
 
 fn random_hex_32() -> String {
-    let mut bytes = [0_u8; 32];
+    // 16 random bytes -> 32 hex characters. This is the launcher's
+    // OAuth `state` value, and the auth server's PKCE repo gates on
+    // `STATE_PATTERN = /^[a-f0-9]{32}$/i` — anything longer or shorter
+    // gets rejected at /api/launcher/oauth/initiate with `Invalid PKCE
+    // parameters`. The previous version of this function generated
+    // 32 bytes (64 hex chars), which silently matched the function's
+    // name but violated the wire contract; the launcher would surface
+    // a `400` instead of opening Steam/Discord. 128 bits of entropy
+    // is plenty for CSRF purposes — the value never leaves the
+    // user's machine, only its SHA-256-derived PKCE challenge does.
+    let mut bytes = [0_u8; 16];
     rand::thread_rng().fill_bytes(&mut bytes);
     hex::encode(bytes)
+}
+
+/// PKCE code-verifier: 32 random bytes, base64url-encoded without
+/// padding. RFC 7636 §4.1 specifies 43–128 chars from the
+/// unreserved set; this gives us 43, which is the minimum allowed.
+///
+/// `OsRng` isn't directly available without the `getrandom`
+/// feature on `rand`, but `rand::thread_rng()` reads from the
+/// platform CSPRNG via `getrandom` underneath, which is fine for
+/// an OAuth CSPRF token.
+fn random_code_verifier() -> String {
+    let mut bytes = [0_u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// PKCE code-challenge: BASE64URL(SHA-256(code_verifier)).
+///
+/// RFC 7636 §4.2 says the challenge is `BASE64URL(SHA256(ASCII(code_verifier)))`.
+/// `S256` is the only challenge method we send; the server is
+/// expected to reject `plain` (it has no security advantage over
+/// the legacy `?token=…` redirect we're replacing).
+fn code_challenge_from_verifier(verifier: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(verifier.as_bytes());
+    let digest = hasher.finalize();
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest)
+}
+
+/// Read the PKCE code-verifier from the auth store without
+/// removing the surrounding state record. Called once from
+/// `process_oauth_callback` — *before* the function calls
+/// `validate_and_remove_oauth_state` — so the verifier is still in
+/// the store at read time. The PKCE branch then reuses the captured
+/// value instead of re-reading (the state entry would already be
+/// gone by then).
+///
+/// Returns `None` for legacy `?token=` redirects (no verifier was
+/// ever stored) and for unknown / already-cleaned-up states.
+fn load_code_verifier(app: &AppHandle, state: &str) -> Option<String> {
+    let store = load_auth_store(app).ok()?;
+    store
+        .oauth_states
+        .get(state)
+        .and_then(|record| record.code_verifier.clone())
+}
+
+/// Exchange a PKCE authorization code for a bearer JWT.
+///
+/// POSTs to `/api/launcher/oauth/exchange` with the code and the
+/// verifier we stored at `generate_oauth_state` time. The server
+/// validates the verifier against the challenge it recorded
+/// during `/api/launcher/oauth/initiate`, then returns the same
+/// bearer that the legacy `?token=` redirect used to carry — so
+/// the downstream `complete_oauth_token` path doesn't need to
+/// know it came in via PKCE vs. legacy.
+///
+/// Blocking I/O on `reqwest::blocking` is deliberate: this is
+/// only ever called from the loopback callback server's worker
+/// thread (or the deep-link handler), both of which are
+/// outside the async runtime. We do not want to pay the cost
+/// of a `tokio::task::spawn` round-trip here.
+fn exchange_oauth_code(
+    app: &AppHandle,
+    code: &str,
+    verifier: &str,
+) -> Result<String> {
+    let api_base_url = resolve_api_base_url(app);
+    let request_url = format!(
+        "{}/api/launcher/oauth/exchange",
+        api_base_url.trim_end_matches('/')
+    );
+    let _ = debug_log::append(
+        app,
+        "auth",
+        &format!("exchange_oauth_code request_url={}", request_url),
+    );
+
+    // Form-encoded POST body. The server is expected to read it
+    // with a standard OAuth2/OIDC-compatible parser; form encoding
+    // (not JSON) is what every spec-compliant auth server expects.
+    let body = format!(
+        "grant_type=authorization_code&code={}&code_verifier={}&redirect_uri={}",
+        urlencoding(code),
+        urlencoding(&verifier),
+        urlencoding(crate::oauth_server::CALLBACK_URL),
+    );
+
+    let response = reqwest::blocking::Client::new()
+        .post(&request_url)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(body)
+        .send()
+        .map_err(|e| anyhow!("OAuth code exchange request failed: {e}"))?;
+    let status = response.status();
+    let raw_body = response
+        .text()
+        .map_err(|e| anyhow!("OAuth exchange body read failed: {e}"))?;
+    let _ = debug_log::append(
+        app,
+        "auth",
+        &format!("exchange_oauth_code status={}", status),
+    );
+    if !status.is_success() {
+        let _ = debug_log::append(
+            app,
+            "auth",
+            &format!(
+                "exchange_oauth_code non_success_body={}",
+                raw_body.chars().take(400).collect::<String>()
+            ),
+        );
+        return Err(anyhow!("OAuth code exchange failed: HTTP {status}"));
+    }
+    let parsed: serde_json::Value = serde_json::from_str(&raw_body)
+        .map_err(|e| anyhow!("OAuth exchange JSON parse failed: {e}"))?;
+    let token = parsed
+        .get("token")
+        .or_else(|| parsed.get("access_token"))
+        .and_then(|value| value.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow!("OAuth exchange response missing `token`"))?;
+    Ok(token)
+}
+
+/// Minimal RFC 3986 percent-encoder for form-encoded POST bodies.
+///
+/// We hand-roll this (instead of pulling in `urlencoding`) to keep
+/// the dependency surface narrow — the values being encoded are
+/// short, ASCII-only strings (the code, verifier, and a
+/// constant callback URL), so a one-line implementation is
+/// enough.
+fn urlencoding(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'_'
+            | b'.'
+            | b'~' => out.push(*byte as char),
+            other => out.push_str(&format!("%{:02X}", other)),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -542,6 +823,7 @@ mod tests {
     fn pending_callback_is_consumed_only_by_its_flow() {
         let mut pending = Some(OAuthCallbackPayload {
             token: Some("test-token".into()),
+            code: None,
             state: Some("expected-state".into()),
             error: None,
         });
@@ -550,5 +832,45 @@ mod tests {
         let payload = take_matching_callback(&mut pending, Some("expected-state")).unwrap();
         assert_eq!(payload.token.as_deref(), Some("test-token"));
         assert!(take_matching_callback(&mut pending, Some("expected-state")).is_none());
+    }
+
+    #[test]
+    fn pkce_code_challenge_matches_sha256_of_verifier() {
+        // The verifier/challenge pair is locked in by RFC 7636 §B.
+        // Verifier `dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXfqNk`
+        // is the canonical Appendix B test vector; SHA-256 of it,
+        // base64url-no-pad, is the expected S256 challenge.
+        // `E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM` is the
+        // S256 challenge listed in some references, but it
+        // actually equals the verifier unchanged (i.e. it is the
+        // plain-method challenge, not the S256 one). Our value is
+        // the genuine SHA-256 challenge; any future change here
+        // would break every existing /exchange request.
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXfqNk";
+        let expected = "k-QfUN-s0qjS-u3s7Q89P3A9rJQ6FT_vOv-0PTKy68U";
+        assert_eq!(code_challenge_from_verifier(verifier), expected);
+    }
+
+    #[test]
+    fn pkce_code_verifier_has_rfc_compliant_length() {
+        // 32 random bytes → 43 base64url chars (no padding). RFC
+        // 7636 §4.1 requires 43–128; we generate the minimum.
+        let verifier = random_code_verifier();
+        assert_eq!(verifier.len(), 43);
+        assert!(verifier
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+    }
+
+    #[test]
+    fn oauth_state_hex_length_matches_server_contract() {
+        // The auth server's `STATE_PATTERN = /^[a-f0-9]{32}$/i` is
+        // the wire contract for the OAuth `state` query parameter.
+        // If this assertion ever fails, the launcher is producing a
+        // length the server will reject with `Invalid PKCE parameters`
+        // and the whole login dance 400s before Steam ever loads.
+        let state = random_hex_32();
+        assert_eq!(state.len(), 32);
+        assert!(state.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
     }
 }

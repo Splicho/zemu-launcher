@@ -31,6 +31,8 @@ pub struct OAuthCallbackPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -42,6 +44,12 @@ pub struct OAuthState {
     pub state: String,
     pub provider: String,
     pub timestamp: i64,
+    /// PKCE code-verifier (RFC 7636). Stored alongside the state
+    /// record so the launcher's exchange step can prove the
+    /// authorization request came from the same caller that
+    /// received the redirect.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_verifier: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -152,8 +160,6 @@ pub struct LauncherConfig {
     pub update_base_url: Option<String>,
     #[serde(default)]
     pub api_base_url: Option<String>,
-    #[serde(default)]
-    pub oauth_callback_protocol: Option<String>,
     /// Path to the game executable inside `game_directory`. Defaults to
     /// `H1Z1.exe` at the root of the install.
     #[serde(default)]
@@ -211,7 +217,6 @@ impl Default for LauncherConfig {
             last_update_check: None,
             update_base_url: None,
             api_base_url: None,
-            oauth_callback_protocol: None,
             game_executable: None,
             discord_rpc_enabled: true,
             discord_rpc_mode: DiscordRpcMode::Always,

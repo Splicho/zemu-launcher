@@ -5,7 +5,7 @@ use crate::launch_args;
 use crate::models::CommandResult;
 use crate::state::AppState;
 use crate::storage::{
-    detect_game_executable, load_launcher_config, load_version_cache, normalize_callback_protocol,
+    detect_game_executable, load_launcher_config, load_version_cache, read_auth_key,
     save_launcher_config,
 };
 #[cfg(not(target_os = "windows"))]
@@ -167,60 +167,6 @@ pub fn set_game_executable(app: &AppHandle, executable: String) -> Result<()> {
     Ok(())
 }
 
-pub fn set_update_base_url(app: &AppHandle, url: String) -> Result<()> {
-    let mut config = load_launcher_config(app)?;
-    let trimmed = url.trim().trim_end_matches('/').to_string();
-    config.update_base_url = if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.clone())
-    };
-    save_launcher_config(app, &config)?;
-    let _ = debug_log::append(
-        app,
-        "config",
-        &format!(
-            "set_update_base_url value={}",
-            config.update_base_url.as_deref().unwrap_or("<none>")
-        ),
-    );
-    Ok(())
-}
-
-pub fn set_oauth_callback_protocol(app: &AppHandle, protocol: String) -> Result<()> {
-    let mut config = load_launcher_config(app)?;
-    let normalized = normalize_callback_protocol(&protocol)
-        .ok_or_else(|| anyhow!("Invalid OAuth callback protocol"))?;
-    config.oauth_callback_protocol = Some(normalized.clone());
-    save_launcher_config(app, &config)?;
-    let _ = debug_log::append(
-        app,
-        "config",
-        &format!("set_oauth_callback_protocol value={normalized}"),
-    );
-    Ok(())
-}
-
-pub fn set_api_base_url(app: &AppHandle, url: String) -> Result<()> {
-    let mut config = load_launcher_config(app)?;
-    let trimmed = url.trim().trim_end_matches('/').to_string();
-    config.api_base_url = if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.clone())
-    };
-    save_launcher_config(app, &config)?;
-    let _ = debug_log::append(
-        app,
-        "config",
-        &format!(
-            "set_api_base_url value={}",
-            config.api_base_url.as_deref().unwrap_or("<none>")
-        ),
-    );
-    Ok(())
-}
-
 pub fn select_game_directory(app: &AppHandle) -> Result<Option<String>> {
     let default_dir = dirs::document_dir().unwrap_or_else(|| PathBuf::from("C:\\"));
     let picked = rfd::FileDialog::new()
@@ -313,14 +259,15 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
             .ok_or_else(|| anyhow!("invalid executable path"))?;
 
         // Read the local key and pass the same client arguments on every platform.
-        let config = load_launcher_config(app)?;
-        let auth_key = config
-            .auth_key
-            .as_deref()
+        // The key lives in the OS keychain (`storage::read_auth_key`); we keep
+        // the in-config `auth_key` field as a one-release migration carrier
+        // for users whose key was previously written to `launcher-config.json`.
+        let auth_key = read_auth_key(app)?
             .filter(|key| !key.trim().is_empty())
             .ok_or_else(|| anyhow!("Auth key required. Save your auth key before launching."))?;
+        let config = load_launcher_config(app)?;
         let locale = config.locale.as_deref();
-        let client_args = launch_args::client_arguments(auth_key);
+        let client_args = launch_args::client_arguments(&auth_key);
 
         // Persist the locale into the game's own ClientConfig.ini
         // before spawning. The game reads `[Internationalization]`
