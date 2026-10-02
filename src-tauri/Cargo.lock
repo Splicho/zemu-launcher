@@ -7966,7 +7966,7 @@ dependencies = [
 
 [[package]]
 name = "zemu_launcher"
-version = "0.1.52"
+version = "0.1.55"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
