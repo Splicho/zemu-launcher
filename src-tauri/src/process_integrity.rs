@@ -90,6 +90,7 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::{
 };
 
 use crate::debug_log;
+#[cfg(target_os = "windows")]
 use crate::game::collect_process_tree;
 use crate::hardware_api::{self, ApiPostError};
 use crate::models::CompressorManifest;
@@ -487,30 +488,24 @@ fn run_monitor(
             unknown_modules,
         };
 
-        match post_event(&app, &event) {
-            Ok(()) => {
-                last_report_at = Some(Instant::now());
-                let _ = debug_log::append(
-                    &app,
-                    "integrity",
-                    &format!(
-                        "reported {} unknown module(s) game_pid={}",
-                        event.unknown_modules.len(),
-                        event.game_pid
-                    ),
-                );
-            }
-            Err(err) => {
-                let _ = debug_log::append(
-                    &app,
-                    "integrity",
-                    &format!("post_event failed: {:?}; will retry next scan", err),
-                );
-                // Leave `last_report_at` untouched so the next scan
-                // gets a fresh attempt rather than honouring the
-                // previous tick's "successful" timestamp.
-            }
-        }
+        // TEMP-DISABLE: process-integrity reports to the API.
+        //   The detector still runs (DLL enumeration, allowlist match,
+        //   log line, kill) — only the network POST is suppressed so
+        //   the moderation API isn't flooded until the rework lands.
+        //   Re-enable the `post_event` call (and remove this branch)
+        //   when the rework ships.
+        //   See ticket: rework process-integrity reports.
+        let _ = debug_log::append(
+            &app,
+            "integrity",
+            &format!(
+                "would-report {} unknown module(s) game_pid={} (api-post disabled)",
+                event.unknown_modules.len(),
+                event.game_pid
+            ),
+        );
+        last_report_at = Some(Instant::now());
+        continue;
 
         sleep_poll_interval();
     }
