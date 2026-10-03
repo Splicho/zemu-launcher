@@ -375,6 +375,9 @@ export default {
       colTotalScore: 'Pontuação Total',
       noPlayersFound: 'Nenhum jogador encontrado.',
       viewFull: 'Ver leaderboard completo',
+      statWins: 'Vitórias',
+      statWinRate: 'Taxa de vitória',
+      statKillsPerMatch: 'Abates por partida',
     },
     leaderboardPage: {
       title: 'Classificação',
