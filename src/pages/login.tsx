@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ProviderButton } from '@/components/provider-button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { CircleAlert, DiscordFilled, Mail, Steam } from '@/components/icons'
@@ -11,7 +11,57 @@ import { useAuthContext } from '@/contexts/auth-context'
 import { useLastUsedProvider } from '@/hooks/use-last-used-provider'
 import { formatAuthError, type AuthErrorMessage } from '@/lib/auth-errors'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
+import { GAME_BACKGROUNDS, GAME_BACKGROUND_INTERVAL_MS } from '@/config/backgrounds'
+import { useRotatingImage } from '@/hooks/use-rotating-image'
 import type { Provider } from '@/lib/auth'
+
+// Accent per login option. Steam uses its client-blue rather than the
+// navy from its logo, which disappears against the dark backdrop; email
+// borrows the launcher's own red.
+const PROVIDER_BRANDS = {
+  discord: '#5865F2',
+  steam: '#1A9FFF',
+  email: 'oklch(0.55 0.19 29.11)',
+} as const
+
+function LoginBackground() {
+  const background = useRotatingImage(
+    GAME_BACKGROUNDS,
+    GAME_BACKGROUND_INTERVAL_MS,
+  )
+
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 overflow-hidden"
+    >
+      <AnimatePresence initial={false}>
+        <motion.img
+          key={background}
+          src={background}
+          alt=""
+          initial={{ opacity: 0, scale: 1.08 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{
+            opacity: { duration: 1.5, ease: 'easeInOut' },
+            scale: {
+              duration: GAME_BACKGROUND_INTERVAL_MS / 1000 + 1.5,
+              ease: 'linear',
+            },
+          }}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      </AnimatePresence>
+      {/* Darken the screenshots so the card stays readable on bright
+          scenes (sunsets, snow), with a vignette behind the card and a
+          fade into the app background at the bottom edge. */}
+      <div className="absolute inset-0 bg-background/55" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,var(--background)_0%,transparent_65%)] opacity-80" />
+      <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/40" />
+    </div>
+  )
+}
 
 export function LoginPage() {
   const { t } = useTranslation()
@@ -96,7 +146,8 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative flex flex-1 items-center justify-center overflow-y-auto overflow-x-hidden bg-gradient-to-t from-background via-background to-[#121212]">
+    <div className="relative flex flex-1 items-center justify-center overflow-y-auto overflow-x-hidden bg-background">
+      <LoginBackground />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -177,61 +228,33 @@ export function LoginPage() {
               `lastUsedProvider` value read once on mount (see
               `use-last-used-provider.ts`), so it doesn't flicker
               between clicks — only between sessions. */}
-          <div className="relative">
-            <Button
-              type="button"
-              variant="discord"
-              onClick={() => handleProvider('discord')}
-              size="lg"
-              className="h-12 w-full justify-center rounded-sm"
-            >
-              <DiscordFilled className="!size-5" />
-              {t('login.continueDiscord')}
-            </Button>
-            {lastUsedProvider === 'discord' ? (
-              <Badge className="absolute -top-2 -right-2">
-                {t('login.lastUsed')}
-              </Badge>
-            ) : null}
-          </div>
-          <div className="relative">
-            <Button
-              type="button"
-              variant="steam"
-              onClick={() => handleProvider('steam')}
-              size="lg"
-              className="h-12 w-full justify-center rounded-sm"
-            >
-              <Steam className="!size-5" />
-              {t('login.continueSteam')}
-            </Button>
-            {lastUsedProvider === 'steam' ? (
-              <Badge className="absolute -top-2 -right-2">
-                {t('login.lastUsed')}
-              </Badge>
-            ) : null}
-          </div>
-          <div className="relative">
-            <Button
-              type="button"
-              variant="email"
-              onClick={() => {
-                setAuthError(null)
-                setShowEmailForm((prev) => !prev)
-              }}
-              disabled={isSubmitting}
-              size="lg"
-              className="h-12 w-full justify-center rounded-sm"
-            >
-              <Mail className="!size-5" />
-              {t('login.continueEmail')}
-            </Button>
-            {lastUsedProvider === 'email' ? (
-              <Badge className="absolute -top-2 -right-2">
-                {t('login.lastUsed')}
-              </Badge>
-            ) : null}
-          </div>
+          <ProviderButton
+            brand={PROVIDER_BRANDS.discord}
+            icon={<DiscordFilled />}
+            label={t('login.continueDiscord')}
+            hint={lastUsedProvider === 'discord' ? t('login.lastUsed') : null}
+            onClick={() => handleProvider('discord')}
+          />
+          <ProviderButton
+            brand={PROVIDER_BRANDS.steam}
+            icon={<Steam />}
+            label={t('login.continueSteam')}
+            hint={lastUsedProvider === 'steam' ? t('login.lastUsed') : null}
+            onClick={() => handleProvider('steam')}
+          />
+          <ProviderButton
+            brand={PROVIDER_BRANDS.email}
+            icon={<Mail />}
+            label={t('login.continueEmail')}
+            hint={lastUsedProvider === 'email' ? t('login.lastUsed') : null}
+            active={showEmailForm}
+            aria-expanded={showEmailForm}
+            onClick={() => {
+              setAuthError(null)
+              setShowEmailForm((prev) => !prev)
+            }}
+            disabled={isSubmitting}
+          />
         </div>
 
 
