@@ -422,6 +422,9 @@ export default {
       colTotalScore: 'Total Score',
       noPlayersFound: 'No players found.',
       viewFull: 'View full leaderboard',
+      statWins: 'Wins',
+      statWinRate: 'Win rate',
+      statKillsPerMatch: 'Kills per match',
     },
     leaderboardPage: {
       title: 'Leaderboard',

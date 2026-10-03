@@ -442,6 +442,9 @@ export default {
       colTotalScore: '总分',
       noPlayersFound: '未找到玩家。',
       viewFull: '查看完整排行榜',
+      statWins: '胜场',
+      statWinRate: '胜率',
+      statKillsPerMatch: '场均击杀',
     },
     leaderboardPage: {
       title: '排行榜',

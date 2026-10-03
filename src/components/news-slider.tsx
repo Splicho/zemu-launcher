@@ -1,290 +1,244 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { AnimatePresence, motion } from 'framer-motion'
 
 import { Button } from '@/components/ui/button'
 import { fetchNewsList, formatNewsDate } from '@/lib/news'
 import { useHashRouter } from '@/hooks/use-hash'
-import { ArrowRight } from './icons'
+import { cn } from '@/lib/utils'
 
 const SWIPE_THRESHOLD = 60
 const AUTO_PLAY_INTERVAL = 6000
+// The hero rotates through the newest articles only; older ones live
+// on the News page. Keeps the headline rail short enough to fit.
+const MAX_ITEMS = 5
+
+const HERO_HEIGHT = 'h-[min(28rem,58vh)] min-h-80'
 
 function NewsSliderSkeleton() {
-  return (
-    <div className="news-carousel group relative w-full select-none overflow-hidden focus:outline-none rounded-xl h-80">
-      <div className="flex h-full w-full items-center overflow-hidden">
-        <div className="h-full w-full bg-muted/30 animate-pulse" />
-      </div>
-      <div className="absolute left-12 bottom-4 z-20 flex gap-2">
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="h-1.5 w-8 rounded-full bg-white/30 animate-pulse"
-          />
-        ))}
-      </div>
-    </div>
-  )
+  return <div className={cn('w-full animate-pulse bg-muted/30', HERO_HEIGHT)} />
 }
 
+/**
+ * Full-bleed news hero at the top of Home. Covers crossfade behind a
+ * left-aligned headline; on wide windows a rail on the right lists the
+ * articles in rotation, with a fill bar on the active one counting down
+ * to the next. Narrow windows fall back to pill indicators.
+ *
+ * Auto-advance is driven by the indicator's CSS animation (`news-progress`
+ * in index.css): when it ends we move on. Hovering or focusing the hero
+ * pauses it. Swipe, horizontal wheel and arrow keys also navigate.
+ */
 export function NewsSlider() {
   const { t } = useTranslation()
   const { navigate } = useHashRouter()
   const [index, setIndex] = useState(0)
-  const [prevIndex, setPrevIndex] = useState<number | null>(null)
-  const [progress, setProgress] = useState(0)
+  const [paused, setPaused] = useState(false)
+  const [dragOffset, setDragOffset] = useState(0)
+  const dragStartX = useRef<number | null>(null)
 
-  const { data: items, error } = useQuery({
+  const { data, error } = useQuery({
     queryKey: ['news'],
     queryFn: fetchNewsList,
   })
+  const items = data?.slice(0, MAX_ITEMS)
 
-  const dragStartX = useRef<number | null>(null)
-  const [dragOffset, setDragOffset] = useState(0)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const isTransitioning = prevIndex !== null
+  const count = items?.length ?? 0
+  const advance = (delta: 1 | -1) => {
+    if (count <= 1) return
+    setIndex((i) => (i + delta + count) % count)
+  }
 
-  const goToIndex = useCallback((newIndex: number) => {
-    setPrevIndex(index)
-    setIndex(newIndex)
-    setProgress(0)
-    setTimeout(() => {
-      setPrevIndex(null)
-    }, 800)
-  }, [index])
+  if (error) return null
+  if (!items || items.length === 0) return <NewsSliderSkeleton />
 
-  const advance = useCallback(
-    (delta: 1 | -1) => {
-      if (!items || items.length === 0) return
-      const newIndex = (index + delta + items.length) % items.length
-      goToIndex(newIndex)
-    },
-    [index, goToIndex, items],
-  )
-
-  // Auto-play with progress
-  useEffect(() => {
-    if (!items || items.length <= 1) return
-
-    const startProgress = () => {
-      setProgress(0)
-      progressRef.current = setInterval(() => {
-        setProgress((p) => {
-          if (p >= 100) return 0
-          return p + (100 / (AUTO_PLAY_INTERVAL / 50))
-        })
-      }, 50)
-    }
-
-    const startAutoPlay = () => {
-      startProgress()
-      autoPlayRef.current = setInterval(() => {
-        if (!items || items.length <= 1) return
-        const newIndex = (index + 1) % items.length
-        goToIndex(newIndex)
-      }, AUTO_PLAY_INTERVAL)
-    }
-
-    startAutoPlay()
-
-    return () => {
-      if (autoPlayRef.current) clearInterval(autoPlayRef.current)
-      if (progressRef.current) clearInterval(progressRef.current)
-    }
-  }, [items, index, goToIndex])
-
-  // Keyboard navigation
-  useEffect(() => {
-    const node = containerRef.current
-    if (!node || !items || items.length <= 1) return
-    node.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowRight') {
-        e.preventDefault()
-        advance(1)
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault()
-        advance(-1)
-      }
-    })
-  }, [advance, items])
+  const current = items[Math.min(index, items.length - 1)]
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
-    if ((e.target as HTMLElement).closest('[data-pills]')) return
+    if ((e.target as HTMLElement).closest('[data-news-nav]')) return
     dragStartX.current = e.clientX
     setDragOffset(0)
   }
-
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragStartX.current === null) return
-    const offset = e.clientX - dragStartX.current
-    setDragOffset(offset)
+    setDragOffset(e.clientX - dragStartX.current)
   }
-
   const onPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragStartX.current === null) return
     const offset = e.clientX - dragStartX.current
     dragStartX.current = null
     setDragOffset(0)
-    if (Math.abs(offset) > SWIPE_THRESHOLD) {
-      advance(offset < 0 ? 1 : -1)
+    if (Math.abs(offset) > SWIPE_THRESHOLD) advance(offset < 0 ? 1 : -1)
+  }
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Math.abs(e.deltaX) < 10) return
+    advance(e.deltaX > 0 ? 1 : -1)
+  }
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      advance(1)
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      advance(-1)
     }
   }
 
-  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return
-    if (Math.abs(e.deltaX) < 10) return
-    advance(e.deltaX > 0 ? 1 : -1)
-  }
-
-  if (error) {
-    return null
-  }
-
-  if (!items || items.length === 0) {
-    return <NewsSliderSkeleton />
-  }
-
-  const current = items[index]
-  const prevItem = prevIndex !== null ? items[prevIndex] : null
-  const dragPx = dragOffset
-  const isDragging = dragStartX.current !== null
+  // Only the visible indicator (rail on lg+, pills below) runs the
+  // countdown; `display: none` elements don't fire animation events.
+  // `motion-reduce:hidden` therefore also turns auto-advance off for
+  // people who prefer reduced motion.
+  const progressBar = (active: boolean) =>
+    active && items.length > 1 ? (
+      <span
+        key={`progress-${index}`}
+        aria-hidden="true"
+        onAnimationEnd={() => advance(1)}
+        className="absolute inset-0 origin-left bg-white motion-reduce:hidden"
+        style={{
+          animation: `news-progress ${AUTO_PLAY_INTERVAL}ms linear forwards`,
+          animationPlayState: paused ? 'paused' : 'running',
+        }}
+      />
+    ) : null
 
   return (
-    <div
-      ref={containerRef}
+    <section
+      aria-roledescription="carousel"
       tabIndex={0}
-      className="news-carousel group relative w-full select-none overflow-hidden focus:outline-none rounded-xl"
+      onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
       onPointerCancel={onPointerEnd}
+      onPointerEnter={() => setPaused(true)}
+      onPointerLeave={() => setPaused(false)}
+      // Keyboard focus pauses; a mouse click inside shouldn't leave it
+      // paused after the pointer has left.
+      onFocus={(e) => {
+        if (e.target.matches(':focus-visible')) setPaused(true)
+      }}
+      onBlur={() => setPaused(false)}
       onWheel={onWheel}
       style={{ touchAction: 'pan-y' }}
+      className={cn(
+        'relative isolate w-full select-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+        HERO_HEIGHT,
+      )}
     >
-      {/* Clickable card */}
-      <div
-        onClick={() => {
-          if (dragOffset === 0) navigate(`/news/${current.slug}`)
-        }}
-        className="group relative flex h-80 w-full cursor-pointer items-center overflow-hidden"
-      >
-        {/* Previous cover (fading out) */}
-        {prevItem && (
-          <div
-            className="absolute inset-0 transition-opacity duration-500 opacity-0"
-            style={{ animation: 'fadeOut 500ms ease-out forwards' }}
-          >
-            <img
-              src={prevItem.coverImageUrl ?? ''}
-              alt={prevItem.coverImageAlt}
-              loading="lazy"
-              draggable={false}
-              className="size-full object-cover"
-            />
-          </div>
-        )}
-
-        {/* Current cover */}
-        <div
-          className="absolute inset-0 transition-opacity duration-500"
-          style={{
-            animation: isTransitioning ? 'fadeIn 500ms ease-out forwards' : undefined,
-            opacity: isTransitioning ? 0 : 1,
-          }}
-        >
-          <img
-            src={current.coverImageUrl ?? ''}
-            alt={current.coverImageAlt}
-            loading="lazy"
-            draggable={false}
-            className="size-full object-cover transition-[filter,transform] duration-300 group-hover:brightness-110"
-            style={{
-              transform: `translateX(${dragPx}px)`,
-              transition: isDragging ? 'none' : undefined,
-            }}
-          />
-        </div>
-
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              'linear-gradient(to right, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 50%, rgba(0,0,0,0) 100%)',
-          }}
+      {/* All covers stay mounted and crossfade on opacity. */}
+      {items.map((item, i) => (
+        <img
+          key={item.slug}
+          src={item.coverImageUrl ?? ''}
+          alt={i === index ? item.coverImageAlt : ''}
+          aria-hidden={i !== index}
+          draggable={false}
+          className={cn(
+            'absolute inset-0 -z-20 size-full object-cover transition-opacity duration-700 ease-out motion-reduce:transition-none',
+            i === index ? 'opacity-100' : 'opacity-0',
+          )}
+          style={i === index && dragOffset ? { transform: `translateX(${dragOffset}px)` } : undefined}
         />
+      ))}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-10 bg-[linear-gradient(to_right,rgb(0_0_0/0.85)_0%,rgb(0_0_0/0.55)_45%,rgb(0_0_0/0.15)_100%)]"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-10 bg-gradient-to-t from-background via-transparent to-transparent"
+      />
 
-        {/* Content with fade animation */}
-        <div
-          className="relative z-10 flex max-w-xl flex-col gap-3 px-12 py-8 text-left"
-          style={{
-            opacity: isTransitioning ? 0 : 1,
-            transform: `translateX(${dragPx}px) translateY(${isTransitioning ? '8px' : '0px'})`,
-            transition: isDragging ? 'none' : 'opacity 500ms ease, transform 500ms ease',
-          }}
-        >
-          <div className="flex items-center gap-2 text-xs text-white/60">
-            <span className="uppercase tracking-wide">{current.category}</span>
-            <span>·</span>
-            <span>{formatNewsDate(current.publishedAt)}</span>
-          </div>
-          <h3 className="line-clamp-2 text-2xl font-bold leading-snug text-white">
-            {current.title}
-          </h3>
-          <p className="line-clamp-2 text-sm text-white/75">{current.excerpt}</p>
-          <Button
-            variant="gradient"
-            size="lg"
-            className="mt-2 w-fit px-4"
-            onClick={(e) => {
-              e.stopPropagation()
-              navigate(`/news/${current.slug}`)
-            }}
+      <div className="flex h-full items-end gap-8 px-6 pb-10 sm:px-8">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={current.slug}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="flex max-w-xl min-w-0 flex-1 flex-col gap-3"
           >
-            <span className="inline-flex items-center gap-2">
-              <span>{t('news.readMore')}</span>
-              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-            </span>
-          </Button>
-        </div>
+            <div className="flex items-center gap-3 text-sm text-white/70">
+              <span className="rounded-sm bg-white/15 px-2 py-0.5 text-xs font-medium text-white">
+                {current.category}
+              </span>
+              <time dateTime={current.publishedAt}>{formatNewsDate(current.publishedAt)}</time>
+            </div>
+            <h2 className="line-clamp-2 text-4xl leading-tight font-bold tracking-tight text-white">
+              {current.title}
+            </h2>
+            <p className="line-clamp-2 max-w-[60ch] text-white/75">{current.excerpt}</p>
+            <Button
+              variant="gradient"
+              size="lg"
+              className="mt-2 w-fit px-4"
+              data-news-nav
+              onClick={() => navigate(`/news/${current.slug}`)}
+            >
+              {t('news.readMore')}
+            </Button>
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Headline rail (wide windows). */}
+        {items.length > 1 ? (
+          <ol data-news-nav className="ml-auto hidden w-72 shrink-0 flex-col gap-1 lg:flex">
+            {items.map((item, i) => {
+              const active = i === index
+              return (
+                <li key={item.slug}>
+                  <button
+                    type="button"
+                    onClick={() => setIndex(i)}
+                    aria-current={active ? 'true' : undefined}
+                    className={cn(
+                      'relative flex w-full flex-col gap-0.5 overflow-hidden rounded-md px-3 py-2.5 text-left backdrop-blur-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      active ? 'bg-white/15' : 'bg-black/20 hover:bg-white/10',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'line-clamp-1 text-sm font-medium',
+                        active ? 'text-white' : 'text-white/70',
+                      )}
+                    >
+                      {item.title}
+                    </span>
+                    <span className="text-xs text-white/50">
+                      {formatNewsDate(item.publishedAt)}
+                    </span>
+                    <span className="absolute inset-x-0 bottom-0 h-0.5 bg-white/10">
+                      {progressBar(active)}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+        ) : null}
       </div>
 
-      {/* Pill navigation with progress */}
-      {items.length > 1 && (
-        <div
-          data-pills
-          className="absolute left-12 bottom-4 z-20 flex gap-2"
-          style={{
-            transform: `translateX(${dragPx}px)`,
-            transition: isDragging ? 'none' : undefined,
-          }}
-        >
-          {items.map((_, i) => {
-            const isActive = i === index
-            return (
-              <button
-                key={i}
-                type="button"
-                aria-label={t('news.showArticle', { index: i + 1 })}
-                aria-current={isActive ? 'true' : undefined}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (i !== index) goToIndex(i)
-                }}
-                className="relative h-1.5 w-8 cursor-pointer rounded-full overflow-hidden bg-white/30 hover:bg-white/55 transition-colors"
-              >
-                <div
-                  className="absolute inset-y-0 left-0 bg-white rounded-full"
-                  style={{ width: isActive ? `${progress}%` : '0%' }}
-                />
-              </button>
-            )
-          })}
+      {/* Pill indicators (narrow windows). */}
+      {items.length > 1 ? (
+        <div data-news-nav className="absolute bottom-4 left-6 flex gap-2 sm:left-8 lg:hidden">
+          {items.map((item, i) => (
+            <button
+              key={item.slug}
+              type="button"
+              aria-label={t('news.showArticle', { index: i + 1 })}
+              aria-current={i === index ? 'true' : undefined}
+              onClick={() => setIndex(i)}
+              className="relative h-1.5 w-8 overflow-hidden rounded-full bg-white/30 transition-colors hover:bg-white/55"
+            >
+              {progressBar(i === index)}
+            </button>
+          ))}
         </div>
-      )}
-    </div>
+      ) : null}
+    </section>
   )
 }
