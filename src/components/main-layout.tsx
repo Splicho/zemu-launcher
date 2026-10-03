@@ -12,6 +12,7 @@ import {
   OpenPropertiesProvider,
   type OpenProperties,
 } from '@/contexts/open-properties-context'
+import { PageBackgroundProvider } from '@/contexts/page-background-context'
 
 export type SidebarType = 'app' | 'settings' | 'account'
 
@@ -49,12 +50,10 @@ const sidebarVariants = {
 
 export function MainLayout({
   children,
-  backgroundSrc,
   routeKey,
   sidebarType = 'app',
 }: {
   children: ReactNode
-  backgroundSrc?: string
   routeKey?: string
   sidebarType?: SidebarType
 }) {
@@ -70,17 +69,22 @@ export function MainLayout({
     setOpener(() => fn)
   }, [])
 
+  // Full-window backdrop image, supplied by the current page through
+  // `usePageBackground` (play page rotation, clan covers).
+  const [activeBackground, setPageBackground] = useState<string | null>(null)
+
   return (
     <TooltipProvider delayDuration={150}>
       <SidebarProvider>
         <OpenPropertiesProvider open={opener ?? (() => {})}>
+        <PageBackgroundProvider value={setPageBackground}>
           <div className="flex h-screen w-screen flex-col bg-background">
             <TitleBar />
             <div className="relative flex min-h-0 flex-1">
               <AnimatePresence>
-                {backgroundSrc && (
+                {activeBackground && (
                   <motion.div
-                    key={`bg-image-${routeKey}`}
+                    key={`bg-image-${routeKey}-${activeBackground}`}
                     initial="enter"
                     animate="center"
                     exit="exit"
@@ -88,7 +92,7 @@ export function MainLayout({
                     className="pointer-events-none absolute inset-0"
                   >
                     <img
-                      src={backgroundSrc}
+                      src={activeBackground}
                       alt=""
                       className="h-full w-full object-cover"
                       aria-hidden="true"
@@ -96,7 +100,7 @@ export function MainLayout({
                   </motion.div>
                 )}
               </AnimatePresence>
-              {backgroundSrc && (
+              {activeBackground && (
                 <div
                   className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background from-30% via-background/95"
                   aria-hidden="true"
@@ -136,6 +140,7 @@ export function MainLayout({
               </div>
             </div>
           </div>
+        </PageBackgroundProvider>
         </OpenPropertiesProvider>
       </SidebarProvider>
     </TooltipProvider>

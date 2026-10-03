@@ -125,7 +125,7 @@ export function ClanActions({ clan }: { clan: ClanProfile }) {
 
   return (
     <>
-      <div className="flex shrink-0 items-center gap-2 pb-3 sm:pb-4">
+      <div className="flex shrink-0 items-center gap-2 pb-1">
         {!isMember && clan.isPrivate === false ? (
           <Button
             type="button"
