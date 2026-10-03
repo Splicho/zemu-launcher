@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SettingsSidebar } from '@/components/settings-sidebar'
 import { AccountSidebar } from '@/components/account-sidebar'
-import { Header } from '@/components/header'
 import { TitleBar } from '@/components/title-bar'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -122,7 +121,6 @@ export function MainLayout({
                   </motion.div>
                 </AnimatePresence>
                 <div className="flex flex-1 flex-col overflow-hidden">
-                  <Header />
                   <motion.main
                     key={`content-${routeKey}`}
                     className="flex flex-1 flex-col overflow-y-auto px-6 sm:px-8"

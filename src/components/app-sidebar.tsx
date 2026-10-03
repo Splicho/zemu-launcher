@@ -53,6 +53,7 @@ import { Badge } from '@/components/ui/badge'
 import { LiveIndicator } from '@/components/live-indicator'
 import { useIncomingRequestsCount, useZemuAuthKeyReady } from '@/hooks/use-friends'
 import { useAuthContext } from '@/contexts/auth-context'
+import { AccountDropdown } from '@/components/account-dropdown'
 import type { PropertiesSectionId } from '@/components/properties-sidebar'
 import type { OpenProperties } from '@/contexts/open-properties-context'
 
@@ -461,16 +462,7 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
           </SidebarMenuItem>
         </SidebarMenu>
         <SidebarSeparator className="mb-2" />
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={isActive('/settings')} size="lg" className="px-4">
-              <a href="#/settings">
-                <Settings className="size-5!" />
-                <span>{t('nav.settings')}</span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <AccountDropdown />
       </div>
 
       {/*
