@@ -9,17 +9,17 @@ import {
   AvatarImage,
 } from '@/components/ui/avatar'
 import { Card, CardContent } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 
 import { useClanMembers } from '@/hooks/use-clan'
 
 /**
  * Members tab on the public clan profile.
  *
- * Renders the roster as a card grid (3 columns on `lg:`+ so the
- * page doesn't grow too tall with a long roster). Each cell
- * shows the player's avatar, display name (linked to their
- * player profile), and a role badge — "Leader" / "Officer" /
- * "Member" — plus the join date in the bottom-right corner.
+ * Renders the roster grouped by rank (leaders, officers, members),
+ * each group headed by its role and head-count. Rows are compact
+ * (avatar, display name linked to the player profile, join date) in
+ * a 3-column grid on `lg:`+; leader rows get a red-tinted highlight.
  *
  * Mirrors `apps/web/app/clans/[slug]/components/clan-members-tab.tsx`.
  */
@@ -48,16 +48,42 @@ export function ClanMembersTab({ slug }: { slug: string }) {
     )
   }
 
+  // The roster reads top-down by rank: leaders, then officers, then
+  // everyone else. Grouping replaces the per-row role badge.
+  const groups = ROLE_ORDER.map((role) => ({
+    role,
+    rows: members.filter((m) => m.role === role),
+  })).filter((group) => group.rows.length > 0)
+
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {members.map((member) => (
-        <MemberCell key={member.userId} member={member} />
+    <div className="flex flex-col gap-8">
+      {groups.map((group) => (
+        <section key={group.role} aria-labelledby={`clan-role-${group.role}`}>
+          <h3
+            id={`clan-role-${group.role}`}
+            className="mb-3 flex items-baseline gap-2 text-sm font-medium text-foreground"
+          >
+            {t(`clan.roles.${group.role}`)}
+            <span className="text-muted-foreground tabular-nums">
+              {group.rows.length}
+            </span>
+          </h3>
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {group.rows.map((member) => (
+              <li key={member.userId}>
+                <MemberRow member={member} />
+              </li>
+            ))}
+          </ul>
+        </section>
       ))}
     </div>
   )
 }
 
-function MemberCell({
+const ROLE_ORDER = ['leader', 'officer', 'member'] as const
+
+function MemberRow({
   member,
 }: {
   member: {
@@ -75,44 +101,30 @@ function MemberCell({
     year: 'numeric',
     month: 'short',
   })
+  const isLeader = member.role === 'leader'
 
   return (
     <a
       href={`#/player/${encodeURIComponent(displayName)}`}
-      className="group rounded-2xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className={cn(
+        'flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        isLeader
+          ? 'bg-primary/20 ring-1 ring-primary/50 hover:bg-primary/30'
+          : 'bg-white/[0.03] hover:bg-white/[0.07]',
+      )}
     >
-      <Card className="border-border/40 bg-transparent py-0 transition-colors group-hover:bg-accent/60">
-        <div className="m-1 rounded-2xl">
-          <CardContent className="relative flex items-center gap-3 p-4">
-            <Avatar className="size-12 shrink-0">
-              {member.avatarUrl ? (
-                <AvatarImage src={member.avatarUrl} alt={displayName} />
-              ) : null}
-              <AvatarFallback>{initials}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <span className="block truncate font-medium text-foreground">
-                {displayName}
-              </span>
-              <RoleBadge role={member.role} />
-            </div>
-            <p className="absolute right-4 bottom-4 text-xs text-muted-foreground">
-              {t('clan.memberJoined', { date: joined })}
-            </p>
-          </CardContent>
-        </div>
-      </Card>
+      <Avatar className={cn('shrink-0', isLeader ? 'size-11' : 'size-9')}>
+        {member.avatarUrl ? (
+          <AvatarImage src={member.avatarUrl} alt={displayName} />
+        ) : null}
+        <AvatarFallback>{initials}</AvatarFallback>
+      </Avatar>
+      <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+        {displayName}
+      </span>
+      <span className="shrink-0 text-xs text-muted-foreground">
+        {t('clan.memberJoined', { date: joined })}
+      </span>
     </a>
   )
-}
-
-function RoleBadge({ role }: { role: 'leader' | 'officer' | 'member' }) {
-  const { t } = useTranslation()
-  const label =
-    role === 'leader'
-      ? t('clan.roles.leader')
-      : role === 'officer'
-        ? t('clan.roles.officer')
-        : t('clan.roles.member')
-  return <span className="text-xs text-muted-foreground">{label}</span>
 }

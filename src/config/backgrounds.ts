@@ -1,4 +1,4 @@
-// Game screenshots cycled behind the login screen.
+// Game screenshots cycled behind the login screen and the play page.
 // Drop more images into `public/background/` and list them here to add
 // them to the rotation.
 export const GAME_BACKGROUNDS = [
