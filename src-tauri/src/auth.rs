@@ -38,6 +38,29 @@ fn resolve_api_base_url(_app: &AppHandle) -> String {
     crate::config::API_BASE_URL.to_string()
 }
 
+/// Base URL for the renderer-driven OAuth calls (`/initiate`,
+/// `/user`). An explicit `LAUNCHER_AUTH_API_BASE_URL` always wins so
+/// contributors without a local `apps/auth` checkout can run
+/// `pnpm tauri dev` against the production auth host; otherwise dev
+/// runtimes default to the local auth app on port 3003.
+fn resolve_oauth_base_url(_app: &AppHandle, is_dev_runtime: bool) -> String {
+    let override_url = std::env::var("LAUNCHER_AUTH_API_BASE_URL").ok();
+    select_oauth_base_url(is_dev_runtime, override_url.as_deref())
+}
+
+/// Pure selection behind `resolve_oauth_base_url`, split out so the
+/// precedence can be tested without touching process env vars.
+fn select_oauth_base_url(is_dev_runtime: bool, override_url: Option<&str>) -> String {
+    let override_url = override_url
+        .map(|raw| raw.trim().trim_end_matches('/'))
+        .filter(|url| !url.is_empty());
+    match override_url {
+        Some(url) => url.to_string(),
+        None if is_dev_runtime => "http://localhost:3003".to_string(),
+        None => crate::config::API_BASE_URL.to_string(),
+    }
+}
+
 pub fn get_token(app: &AppHandle) -> Result<Option<AuthToken>> {
     // We deliberately do NOT enforce `expires_at` here. The launcher's
     // contract is "stay logged in across launches"; the introspect
@@ -66,11 +89,7 @@ pub async fn complete_oauth_token(
     token: String,
     is_dev_runtime: bool,
 ) -> Result<AuthToken> {
-    let api_base_url = if is_dev_runtime {
-        "http://localhost:3003".to_string()
-    } else {
-        resolve_api_base_url(app)
-    };
+    let api_base_url = resolve_oauth_base_url(app, is_dev_runtime);
     let request_url = format!("{}/api/launcher/user", api_base_url.trim_end_matches('/'));
 
     let _ = debug_log::append(
@@ -304,11 +323,7 @@ pub fn open_oauth(app: &AppHandle, provider: String, is_dev_runtime: bool) -> Co
         &format!("open_oauth provider={provider} is_dev_runtime={is_dev_runtime}"),
     );
     let result = (|| -> Result<String> {
-        let api_base_url = if is_dev_runtime {
-            "http://localhost:3003".to_string()
-        } else {
-            resolve_api_base_url(app)
-        };
+        let api_base_url = resolve_oauth_base_url(app, is_dev_runtime);
 
         let callback_url = if uses_loopback_callback(is_dev_runtime) {
             crate::oauth_server::CALLBACK_URL.to_string()
@@ -817,6 +832,28 @@ mod tests {
         assert!(uses_loopback_callback(true));
         let linux_or_windows = cfg!(target_os = "linux") || cfg!(target_os = "windows");
         assert_eq!(uses_loopback_callback(false), linux_or_windows);
+    }
+
+    #[test]
+    fn oauth_base_url_override_wins_in_dev_and_prod() {
+        assert_eq!(
+            select_oauth_base_url(true, Some("https://id.zemu.uk/")),
+            "https://id.zemu.uk"
+        );
+        assert_eq!(
+            select_oauth_base_url(false, Some(" http://localhost:3003 ")),
+            "http://localhost:3003"
+        );
+    }
+
+    #[test]
+    fn oauth_base_url_defaults_without_override() {
+        assert_eq!(select_oauth_base_url(true, None), "http://localhost:3003");
+        assert_eq!(select_oauth_base_url(true, Some("   ")), "http://localhost:3003");
+        assert_eq!(
+            select_oauth_base_url(false, None),
+            crate::config::API_BASE_URL
+        );
     }
 
     #[test]
