@@ -1,6 +1,6 @@
 [package]
 name = "zemu_launcher"
-version = "0.1.57"
+version = "0.1.58"
 description = "Zemu Launcher"
 authors = ["Zemu"]
 license = "MIT"
