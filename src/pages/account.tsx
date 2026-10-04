@@ -1,21 +1,26 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Copy, Eye, EyeOff, KeyRound, PencilLine } from 'lucide-react'
+import { AlertTriangle, Copy, Eye, EyeOff, KeyRound } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
-import { AuthKeyModal } from '@/components/auth-key-modal'
 import { fetchMyAuthKey } from '@/lib/auth'
 import { useAuthContext } from '@/contexts/auth-context'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 /**
  * Account page — entry point reachable from the avatar dropdown
- * (`Account → #/account`). Exposes one panel: the user's auth key,
- * with reveal and copy affordances, plus a "Change" shortcut into
- * the existing `AuthKeyModal` for editing/clearing.
+ * (`Account → #/account`). Exposes one panel: a read-only view of
+ * the user's server-synced auth key, with reveal and copy
+ * affordances.
+ *
+ * There is deliberately no edit surface here. The launcher
+ * doesn't own the auth key — the server does — so there is
+ * nothing for the user to "change" in this view. The key shown
+ * here is whatever the server returned at mount time, persisted
+ * to disk so subsequent launches don't need a network round-trip.
  *
  * Hydration order on mount:
  *
@@ -69,7 +74,6 @@ export function AccountPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isRevealed, setIsRevealed] = useState(false)
-  const [isChangeModalOpen, setIsChangeModalOpen] = useState(false)
   const [banner, setBanner] = useState<AccountBanner>(null)
 
   useEffect(() => {
@@ -176,45 +180,6 @@ export function AccountPage() {
   }, [authKey, t])
 
   const hasKey = authKey !== null && authKey.length > 0
-
-  // Stable primitive so React Compiler and the manual dep array
-  // agree on a single value to compare. Pulled out of `token`
-  // because `useCallback([token?.token])` and the compiler's inferred
-  // `[token]` deps don't match (compiler sees the object ref, manual
-  // deps see the inner string) and that mismatch trips
-  // `react-hooks/preserve-manual-memoization`.
-  const bearerToken = token?.token ?? null
-
-  const handleSaved = useCallback(() => {
-    // Refresh the displayed key from disk so the reveal panel
-    // reflects the new value the user just typed.
-    void window.launcherAPI?.getAuthKey().then((key) => {
-      setAuthKey(key ?? null)
-      // Re-fetch from the server so the panel reflects the
-      // canonical value (the user might have pasted a typo, or
-      // an admin might have revoked the key in the time since
-      // we last polled). We do this best-effort — a network
-      // failure here just leaves the panel showing whatever the
-      // user typed, which is what they'd expect from a "Save"
-      // button anyway.
-      if (bearerToken) {
-        void fetchMyAuthKey(bearerToken).then((result) => {
-          if (!result.ok) {
-            setBanner({ kind: 'fetch-failed', reason: result.reason })
-            return
-          }
-          if (result.status === 'revoked') {
-            setBanner({ kind: 'revoked' })
-            return
-          }
-          setBanner(null)
-          if (result.key && result.status === 'active') {
-            setAuthKey(result.key)
-          }
-        })
-      }
-    })
-  }, [bearerToken])
 
   return (
     <div className="flex flex-col gap-6 py-6">
@@ -339,30 +304,8 @@ export function AccountPage() {
               {t('account.noKey')}
             </p>
           )}
-
-          <Separator className="my-4" />
-
-          <Button
-            type="button"
-            variant="gradient"
-            onClick={() => setIsChangeModalOpen(true)}
-          >
-            <PencilLine className="size-4" />
-            {hasKey ? t('account.changeKey') : t('account.addKey')}
-          </Button>
         </div>
       </section>
-
-      <AuthKeyModal
-        open={isChangeModalOpen}
-        onOpenChange={setIsChangeModalOpen}
-        // Pass the bearer token so the modal can validate the
-        // typed key against the canonical server value before
-        // writing to disk. See the AuthKeyModal JSDoc for the
-        // threat model + failure-posture rationale.
-        token={token?.token ?? null}
-        onSaved={handleSaved}
-      />
     </div>
   )
 }
@@ -374,10 +317,10 @@ export function AccountPage() {
  * states — only the bullet glyphs swap for the real characters.
  *
  * The launcher only has ONE display surface where masking applies
- * — this account page. The `AuthKeyModal` is an *editing* surface
- * where the user types the key straight into an Input; masking
- * there would defeat the point (and break the validator). Keep
- * maskKey local to this file.
+ * — this account page. The `AuthKeyModal` lives on in the
+ * onboarding wizard as the first-time entry surface; this account
+ * page is strictly a view (the key on disk is whatever the
+ * server last told us). Keep `maskKey` local to this file.
  */
 function maskKey(key: string): string {
   return '•'.repeat(key.length)

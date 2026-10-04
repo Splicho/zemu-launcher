@@ -67,5 +67,5 @@ export const LAUNCHER_CONFIG = {
   // into the install root to override the depot's copy. The
   // launcher has no business re-downloading the original over
   // the top of it.
-  updateSkipFiles: ['ClientConfig.ini', 'dinput8.dll'],
+  updateSkipFiles: ['ClientConfig.ini'],
 } as const

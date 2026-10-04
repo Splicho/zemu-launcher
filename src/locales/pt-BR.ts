@@ -141,16 +141,17 @@ export default {
       unknownUser: 'Usuário desconhecido',
       title: 'Conta',
       authKey: 'Chave de autenticação',
-      description: 'Gerencie sua conta e credenciais salvas.',
+      description:
+        'Veja a chave de autenticação sincronizada da sua conta. Para rotacionar a chave, abra as configurações da conta no site.',
       keyLabel: 'Chave de autenticação',
-      keyDescription: 'A chave usada pelo jogo para identificar sua sessão.',
+      keyDescription:
+        'Sincronizada do servidor quando você abre esta página e armazenada localmente para que as execuções não precisem da rede.',
       revealKey: 'Mostrar chave',
       hideKey: 'Ocultar chave',
       copyKey: 'Copiar chave',
       copied: 'Chave de autenticação copiada para a área de transferência.',
-      changeKey: 'Alterar chave de autenticação',
-      addKey: 'Adicionar chave de autenticação',
-      noKey: 'Nenhuma chave de autenticação definida. Adicione uma para poder jogar.',
+      noKey:
+        'Nenhuma chave de autenticação definida ainda. Execute a configuração do launcher novamente para obter uma da sua conta.',
       // Banner above the key panel when the launcher's server-side
       // fetch returned a `revoked` row. Mirrors the onboarding
       // banner — the user has to walk over to the website to ask
@@ -160,10 +161,10 @@ export default {
       revokedBannerLink: 'Abrir configurações da conta',
       // Soft note when the auto-fetch failed. We surface the
       // upstream reason so the bug report has something useful in
-      // it, but the wording still tells the user they can edit the
-      // key by hand if they want to.
+      // it; the field below keeps showing whatever was last saved
+      // on disk.
       fetchFallback:
-        'Não foi possível carregar sua chave salva automaticamente ({{reason}}). Você ainda pode colar outra chave abaixo.',
+        'Não foi possível sincronizar sua chave de autenticação do servidor ({{reason}}). O valor exibido é o último salvo localmente.',
       errors: {
         unavailable: 'A ponte do launcher está indisponível.',
       },

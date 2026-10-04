@@ -1,12 +1,10 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
-import { AuthKeyModal } from '@/components/auth-key-modal'
 import { useGameStateContext } from '@/hooks/use-game-state-context'
-import { useAuthContext } from '@/contexts/auth-context'
 import { Cancel } from '@/components/icons'
 import type { UpdateInfo, UpdateStatus } from '@/hooks/use-game-state'
 
@@ -39,7 +37,11 @@ type _LocalGameStateForNarrowing =
  *   1. **Pre-play**: install, locate folder, update available, or
  *      auth-key required. The button label tells the user what the
  *      next action is; the click routes through the appropriate
- *      handler.
+ *      handler. `AUTH_KEY_REQUIRED` clicks route to the onboarding
+ *      wizard (`#/onboarding`), which owns the server-validated
+ *      save flow. The wizard was already the canonical first-time
+ *      entry point, so a key-recovery click reuses the same path
+ *      rather than reaching for a side-channel paste modal.
  *   2. **Updating… N%**: download in flight. Button is disabled,
  *      cancel button visible to its right.
  *   3. **Launching… / Playing…**: game is launching or running.
@@ -65,17 +67,7 @@ export function GameActionButton({ className }: GameActionButtonProps) {
     launchGame,
     startUpdate,
     selectDirectory,
-    refreshAuthKey,
   } = useGameStateContext()
-  // Read the bearer token from the auth context so the modal can
-  // validate the typed key against the canonical server value
-  // before writing to disk. A signed-out user (e.g. mid-onboarding
-  // before the OAuth round-trip) gets `null` and the modal falls
-  // back to manual entry — the wizard handles that case through
-  // its own auto-assign hook, not the modal's server check.
-  const { token: authToken } = useAuthContext()
-
-  const [showAuthKeyModal, setShowAuthKeyModal] = useState(false)
 
   // Cast `state` to a local union so the switch narrows correctly
   // for `state.updateStatus`, `state.reason`, etc. without TS losing
@@ -139,7 +131,14 @@ export function GameActionButton({ className }: GameActionButtonProps) {
 
   const handleClick = useCallback(async () => {
     if (type === 'AUTH_KEY_REQUIRED') {
-      setShowAuthKeyModal(true)
+      // The auth key is the only user-editable piece of launcher
+      // state that the launcher itself doesn't own — the server
+      // does. We route into the wizard so the existing
+      // server-validated save path (Step 1's auto-fetch or manual
+      // paste) handles the recovery. When the user finishes the
+      // wizard the React tree re-renders the play page, the game
+      // state hook re-reads disk, and `AUTH_KEY_REQUIRED` clears.
+      window.location.hash = '#/onboarding'
       return
     }
     if (type === 'NEEDS_DESTINATION') {
@@ -214,17 +213,6 @@ export function GameActionButton({ className }: GameActionButtonProps) {
           ) : null}
         </AnimatePresence>
       </div>
-
-      <AuthKeyModal
-        open={showAuthKeyModal}
-        onOpenChange={setShowAuthKeyModal}
-        token={authToken?.token ?? null}
-        onSaved={() => {
-          // Re-read the auth key from disk so the state machine
-          // drops the AUTH_KEY_REQUIRED gate.
-          void refreshAuthKey()
-        }}
-      />
     </div>
   )
 }

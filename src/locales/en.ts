@@ -153,16 +153,17 @@ export default {
       // the web under `/settings/account`, reached via the
       // "Account" external link above this entry.
       authKey: 'Auth Key',
-      description: 'Manage your account and saved credentials.',
+      description:
+        'View the auth key currently synced from your account. To rotate the key, visit your account settings on the website.',
       keyLabel: 'Auth key',
-      keyDescription: 'The key used by the game to identify your session.',
+      keyDescription:
+        'Synced from the server when you open this page and stored locally so launches do not require the network.',
       revealKey: 'Reveal key',
       hideKey: 'Hide key',
       copyKey: 'Copy key',
       copied: 'Auth key copied to clipboard.',
-      changeKey: 'Change auth key',
-      addKey: 'Add auth key',
-      noKey: 'No auth key set yet. Add one to enable playing.',
+      noKey:
+        'No auth key is set yet. Re-run the launcher setup to fetch one from your account.',
       // Banner above the key panel when the launcher's server-side
       // fetch returned a `revoked` row. Mirrors the onboarding
       // banner — the user has to walk over to the website to ask
@@ -172,10 +173,10 @@ export default {
       revokedBannerLink: 'Open account settings',
       // Soft note when the auto-fetch failed. We surface the
       // upstream reason so the bug report has something useful in
-      // it, but the wording still tells the user they can edit the
-      // key by hand if they want to.
+      // it; the key field below keeps showing whatever was last
+      // saved on disk.
       fetchFallback:
-        'Could not load your saved key automatically ({{reason}}). You can still paste a different key below.',
+        'Could not sync your auth key from the server ({{reason}}). The value shown is what was last saved on disk.',
       errors: {
         unavailable: 'Launcher bridge is unavailable.',
       },

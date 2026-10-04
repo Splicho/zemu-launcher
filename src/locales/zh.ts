@@ -138,16 +138,17 @@ export default {
       unknownUser: '未知用户',
       title: '账户',
       authKey: '身份验证密钥',
-      description: '管理您的账户和已保存的凭据。',
+      description:
+        '查看当前从您的账户同步的身份验证密钥。如需轮换密钥，请在网站上打开账户设置。',
       keyLabel: '身份验证密钥',
-      keyDescription: '游戏用于识别您会话的密钥。',
+      keyDescription:
+        '打开此页面时从服务器同步，并存储在本地，使启动游戏时无需联网。',
       revealKey: '显示密钥',
       hideKey: '隐藏密钥',
       copyKey: '复制密钥',
       copied: '身份验证密钥已复制到剪贴板。',
-      changeKey: '更改身份验证密钥',
-      addKey: '添加身份验证密钥',
-      noKey: '尚未设置身份验证密钥。请添加一个以开始游戏。',
+      noKey:
+        '尚未设置身份验证密钥。请重新运行启动器设置以从您的账户获取密钥。',
       // Banner above the key panel when the launcher's server-side
       // fetch returned a `revoked` row. Mirrors the onboarding
       // banner — the user has to walk over to the website to ask
@@ -157,10 +158,10 @@ export default {
       revokedBannerLink: '打开账户设置',
       // Soft note when the auto-fetch failed. We surface the
       // upstream reason so the bug report has something useful in
-      // it, but the wording still tells the user they can edit the
-      // key by hand if they want to.
+      // it; the field below keeps showing whatever was last saved
+      // on disk.
       fetchFallback:
-        '无法自动加载您保存的密钥（{{reason}}）。您仍可在下方粘贴其他密钥。',
+        '无法从服务器同步您的身份验证密钥（{{reason}}）。下面显示的是最近一次保存在本地的值。',
       errors: {
         unavailable: '启动器桥接不可用。',
       },

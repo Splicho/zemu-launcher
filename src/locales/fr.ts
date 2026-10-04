@@ -146,16 +146,17 @@ export default {
       unknownUser: "Utilisateur inconnu",
       title: "Compte",
       authKey: "Clé d'authentification",
-      description: "Gérez votre compte et vos identifiants enregistrés.",
+      description:
+        'Consultez la clé d’authentification actuellement synchronisée depuis votre compte. Pour la renouveler, ouvrez les paramètres du compte sur le site web.',
       keyLabel: "Clé d'authentification",
-      keyDescription: "La clé utilisée par le jeu pour identifier votre session.",
+      keyDescription:
+        "Synchronisée depuis le serveur à l'ouverture de cette page et stockée localement pour que les lancements n'aient pas besoin du réseau.",
       revealKey: "Afficher la clé",
       hideKey: "Masquer la clé",
       copyKey: "Copier la clé",
       copied: "Clé d'authentification copiée dans le presse-papiers.",
-      changeKey: "Modifier la clé d'authentification",
-      addKey: "Ajouter une clé d'authentification",
-      noKey: "Aucune clé d'authentification définie. Ajoutez-en une pour pouvoir jouer.",
+      noKey:
+        "Aucune clé d'authentification n'est encore définie. Relancez la configuration du lanceur pour en récupérer une depuis votre compte.",
       // Banner above the key panel when the launcher's server-side
       // fetch returned a `revoked` row. Mirrors the onboarding
       // banner — the user has to walk over to the website to ask
@@ -165,10 +166,10 @@ export default {
       revokedBannerLink: "Ouvrir les paramètres du compte",
       // Soft note when the auto-fetch failed. We surface the
       // upstream reason so the bug report has something useful in
-      // it, but the wording still tells the user they can edit the
-      // key by hand if they want to.
+      // it; the field below keeps showing whatever was last saved
+      // on disk.
       fetchFallback:
-        "Impossible de charger votre clé enregistrée automatiquement ({{reason}}). Vous pouvez toujours coller une autre clé ci-dessous.",
+        "Impossible de synchroniser votre clé depuis le serveur ({{reason}}). La valeur affichée correspond à la dernière sauvegarde locale.",
       errors: {
         unavailable: "La passerelle du lanceur est indisponible.",
       },
