@@ -624,6 +624,13 @@ export default {
       remaining: '{{speed}} · {{eta}} remaining',
       etaRemaining: '{{eta}} remaining',
     },
+    // Launcher notice bar (`/v1/site-notice?surface=launcher`).
+    // Only chrome is translated — the notice's own `text` and
+    // `linkLabel` are authored by an admin and arrive in the
+    // launcher's UI language as written, exactly as on the website.
+    siteNotice: {
+      dismiss: 'Dismiss notice',
+    },
     update: {
       updatingKotK: 'Updating KotK',
       updateComplete: 'Update complete',

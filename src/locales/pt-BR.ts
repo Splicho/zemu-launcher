@@ -538,6 +538,9 @@ export default {
       etaRemaining: '{{eta}} restante',
     },
     // Update toasts
+    siteNotice: {
+      dismiss: 'Dispensar aviso',
+    },
     update: {
       updatingKotK: 'Atualizando KotK',
       updateComplete: 'Atualização concluída',

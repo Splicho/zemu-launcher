@@ -6,6 +6,7 @@ import { SettingsSidebar } from '@/components/settings-sidebar'
 import { AccountSidebar } from '@/components/account-sidebar'
 import { Header } from '@/components/header'
 import { TitleBar } from '@/components/title-bar'
+import { SiteNoticeBar } from '@/components/site-notice-bar'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import {
@@ -76,6 +77,13 @@ export function MainLayout({
         <OpenPropertiesProvider open={opener ?? (() => {})}>
           <div className="flex h-screen w-screen flex-col bg-background">
             <TitleBar />
+            {/* Window-level notice, directly under the title bar. It
+                lives here — not in `AuthedApp`'s wrapper — because
+                this is the element that owns the full-height flex
+                column: the bar's height is absorbed by flexbox, so no
+                page has to offset for it, and it spans the full
+                width instead of starting at the sidebar's edge. */}
+            <SiteNoticeBar />
             <div className="relative flex min-h-0 flex-1">
               <AnimatePresence>
                 {backgroundSrc && (

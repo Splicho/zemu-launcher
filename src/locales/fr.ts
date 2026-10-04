@@ -564,6 +564,9 @@ export default {
       remaining: "{{speed}} · {{eta}} restant",
       etaRemaining: "{{eta}} restant",
     },
+    siteNotice: {
+      dismiss: "Masquer l'avis",
+    },
     update: {
       updatingKotK: "Mise à jour de KotK",
       updateComplete: "Mise à jour terminée",

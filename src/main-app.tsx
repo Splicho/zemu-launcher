@@ -5,6 +5,7 @@ import { HomePage } from '@/pages/home'
 import { MainLayout } from '@/components/main-layout'
 import type { SidebarType } from '@/components/main-layout'
 import { TitleBar } from '@/components/title-bar'
+import { SiteNoticeBar } from '@/components/site-notice-bar'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
 import { OnboardingPage } from '@/pages/onboarding'
@@ -305,6 +306,7 @@ function AuthedApp() {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
         <TitleBar />
+        <SiteNoticeBar />
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <LoginPage />
         </main>

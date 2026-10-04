@@ -537,6 +537,9 @@ export default {
       remaining: '{{speed}} · {{eta}} 剩余',
       etaRemaining: '{{eta}} 剩余',
     },
+    siteNotice: {
+      dismiss: '关闭通知',
+    },
     update: {
       updatingKotK: '正在更新 KotK',
       updateComplete: '更新完成',
