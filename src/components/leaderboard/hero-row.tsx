@@ -128,7 +128,7 @@ export function HeroRow({
       </button>
 
       {expanded && (
-        <div className="border-t border-amber-500/30 bg-page px-2 py-4 sm:px-4 sm:py-6">
+        <div className="border-t border-amber-500/30 bg-muted/30 px-2 py-4 text-foreground sm:px-4 sm:py-6 dark:bg-page">
           <PlayerGames matches={expandedMatches} isLoading={isLoadingMatches} />
         </div>
       )}

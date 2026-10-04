@@ -149,7 +149,7 @@ export default function LeaderboardTable({
                     <TableRow>
                       <TableCell
                         colSpan={columns.length}
-                        className="border-t border-foreground/10 bg-page px-2 py-4 sm:px-4 sm:py-6"
+                        className="border-t border-foreground/10 bg-muted/30 px-2 py-4 text-foreground sm:px-4 sm:py-6 dark:bg-page"
                       >
                         <PlayerGames
                           matches={expandedMatches}
