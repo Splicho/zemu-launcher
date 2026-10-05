@@ -64,7 +64,7 @@ export default function LeaderboardTableWrapper() {
     const q = filters.search.toLowerCase()
     return entries.filter(e => {
       if (q && !e.name.toLowerCase().includes(q)) return false
-      if (filters.tier !== 'all' && filters.tier !== 'master' && e.tier !== filters.tier) return false
+      if (filters.tier !== 'all' && e.tier !== filters.tier) return false
       if (filters.country && e.country !== filters.country) return false
       return true
     })

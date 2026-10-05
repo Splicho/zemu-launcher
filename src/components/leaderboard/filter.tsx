@@ -95,7 +95,6 @@ export default function Filter({
               {t(`leaderboard.${tier}`)}
             </SelectItem>
           ))}
-          <SelectItem value="master">{t('leaderboard.royalty')}</SelectItem>
         </SelectContent>
       </Select>
 

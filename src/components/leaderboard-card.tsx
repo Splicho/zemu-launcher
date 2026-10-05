@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/card'
 import {
   TIER_VALUES,
+  normalizeTier,
   type LeaderboardTier,
   type LeaderboardEntry,
 } from '@/lib/leaderboard'
@@ -37,7 +38,7 @@ const RANK_ASSETS: Record<LeaderboardTier, { smudge: string; medal: string }> = 
   gold: { smudge: '/images/assets/ranks/gold/smudge.png', medal: '/images/assets/ranks/gold/medal.png' },
   platinum: { smudge: '/images/assets/ranks/platinum/smudge.png', medal: '/images/assets/ranks/platinum/medal.png' },
   diamond: { smudge: '/images/assets/ranks/diamond/smudge.png', medal: '/images/assets/ranks/diamond/medal.png' },
-  master: { smudge: '/images/assets/ranks/master/smudge.png', medal: '/images/assets/ranks/master/medal.png' },
+  royalty: { smudge: '/images/assets/ranks/royalty/smudge.png', medal: '/images/assets/ranks/royalty/medal.png' },
 }
 
 function formatNumber(value: number): string {
@@ -46,15 +47,24 @@ function formatNumber(value: number): string {
 
 function RankBadge({ tier }: { tier: LeaderboardTier }) {
   const { t } = useTranslation()
-  const assets = RANK_ASSETS[tier]
+  // This card previously did a bare `RANK_ASSETS[tier]`, so the api's
+  // `royalty` tier (and the retired `master`) resolved to `undefined`
+  // and threw on `.medal`, blanking the whole card. Normalise once and
+  // use the normalised value for BOTH the asset lookup and the label,
+  // so an unknown tier degrades to Bronze instead of showing a raw
+  // translation key like "leaderboard.??".
+  const safeTier = normalizeTier(tier)
+  const assets = RANK_ASSETS[safeTier]
   return (
     <div className="flex items-center gap-1.5">
       <img
         src={assets.medal}
-        alt={t(`leaderboard.${tier}`)}
+        alt={t(`leaderboard.${safeTier}`)}
         className="h-5 w-5 object-contain"
       />
-      <span className="text-xs font-semibold uppercase">{t(`leaderboard.${tier}`)}</span>
+      <span className="text-xs font-semibold uppercase">
+        {t(`leaderboard.${safeTier}`)}
+      </span>
     </div>
   )
 }
@@ -120,12 +130,11 @@ export function LeaderboardCard() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t('leaderboard.allTiers')}</SelectItem>
-              <SelectItem value="bronze">{t('leaderboard.bronze')}</SelectItem>
-              <SelectItem value="silver">{t('leaderboard.silver')}</SelectItem>
-              <SelectItem value="gold">{t('leaderboard.gold')}</SelectItem>
-              <SelectItem value="platinum">{t('leaderboard.platinum')}</SelectItem>
-              <SelectItem value="diamond">{t('leaderboard.diamond')}</SelectItem>
-              <SelectItem value="master">{t('leaderboard.royalty')}</SelectItem>
+              {TIER_VALUES.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {t(`leaderboard.${value}`)}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
