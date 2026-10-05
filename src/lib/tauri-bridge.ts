@@ -131,6 +131,63 @@ function safeStringify(value: unknown): string {
   }
 }
 
+/**
+ * Subscribe to a Tauri event and return a synchronous teardown.
+ *
+ * ## Why this exists
+ *
+ * `listen()` is async, but React effect cleanup is not. The pattern
+ * this replaces was:
+ *
+ *     let unlistenPromise: Promise<UnlistenFn> | null = null
+ *     listen('evt', cb).then((u) => { unlistenPromise = Promise.resolve(u) })
+ *     return () => { if (unlistenPromise) void unlistenPromise.then((u) => u()) }
+ *
+ * When cleanup ran before `listen()` resolved, `unlistenPromise` was
+ * still `null` and the branch was skipped — **the listener was never
+ * removed**. It stayed attached for the life of the process and kept
+ * firing into an unmounted component. In the onboarding wizard that
+ * showed up as `depot-done` firing long after Step 3 was torn down,
+ * re-running `onContinue()` and re-advancing the wizard, which in turn
+ * re-mounted Step 3 and started a fresh Steam login — a remount loop
+ * that logged a `scan_and_go_begin` storm every couple of seconds.
+ *
+ * This helper closes that window by tracking cancellation in a flag
+ * and unlistening immediately if teardown wins the race.
+ */
+function subscribe<T>(
+  event: string,
+  callback: (payload: T) => void,
+): () => void {
+  let unlisten: UnlistenFn | null = null
+  let cancelled = false
+
+  listen<T>(event, (e) => {
+    // A listener that lost the teardown race must not deliver.
+    if (cancelled) return
+    callback(e.payload)
+  })
+    .then((stop) => {
+      if (cancelled) {
+        // Teardown already happened — remove it now.
+        stop()
+        return
+      }
+      unlisten = stop
+    })
+    .catch(() => {
+      /* listener registration failed; nothing to tear down */
+    })
+
+  return () => {
+    cancelled = true
+    if (unlisten) {
+      unlisten()
+      unlisten = null
+    }
+  }
+}
+
 function setupCompatibilityBridge() {
   const isTauriRuntime = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
   if (!isTauriRuntime) {
@@ -203,36 +260,10 @@ function setupCompatibilityBridge() {
     cancelDownload: () => {
       void invoke('game_cancel_download')
     },
-    onUpdateProgress: (callback: (status: UpdateStatus) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-
-      listen<UpdateStatus>('update-progress', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onLaunchState: (callback: (state: GameLaunchState) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-
-      listen<GameLaunchState>('game-launch-state', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
+    onUpdateProgress: (callback: (status: UpdateStatus) => void): (() => void) =>
+      subscribe<UpdateStatus>('update-progress', (payload) => callback(payload)),
+    onLaunchState: (callback: (state: GameLaunchState) => void): (() => void) =>
+      subscribe<GameLaunchState>('game-launch-state', (payload) => callback(payload)),
     launchGame: () => invoke<{ success: boolean; error?: string }>('game_launch'),
     verifyAndRepair: (skipFiles: string[] = []) =>
       invoke<VerifyOutcome>('game_verify_and_repair', { skipFiles }),
@@ -260,97 +291,22 @@ function setupCompatibilityBridge() {
      */
     startInstallPipeline: (destDir: string) =>
       invoke<void>('steam_start_install_pipeline', { destDir }),
-    onQr: (callback: (dataUrl: string) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<string>('steam-qr', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onScanned: (callback: () => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<void>('steam-scanned', () => {
-        callback()
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onAuthed: (callback: (accountName: string) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<string>('steam-authed', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onLoginError: (callback: (message: string) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<string>('steam-error', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onDepotProgress: (callback: (progress: DepotProgress) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<DepotProgress>('depot-progress', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onDepotDone: (callback: (result: { finalDir: string; bytes: number }) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<{ finalDir: string; bytes: number }>('depot-done', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onDepotError: (callback: (message: string) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<string>('depot-error', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
+    onQr: (callback: (dataUrl: string) => void): (() => void) =>
+      subscribe<string>('steam-qr', (payload) => callback(payload)),
+    onScanned: (callback: () => void): (() => void) =>
+      subscribe<void>('steam-scanned', () => callback()),
+    onAuthed: (callback: (accountName: string) => void): (() => void) =>
+      subscribe<string>('steam-authed', (payload) => callback(payload)),
+    onLoginError: (callback: (message: string) => void): (() => void) =>
+      subscribe<string>('steam-error', (payload) => callback(payload)),
+    onDepotProgress: (callback: (progress: DepotProgress) => void): (() => void) =>
+      subscribe<DepotProgress>('depot-progress', (payload) => callback(payload)),
+    onDepotDone: (callback: (result: { finalDir: string; bytes: number }) => void): (() => void) =>
+      subscribe<{ finalDir: string; bytes: number }>('depot-done', (payload) =>
+        callback(payload),
+      ),
+    onDepotError: (callback: (message: string) => void): (() => void) =>
+      subscribe<string>('depot-error', (payload) => callback(payload)),
   }
 
   window.discordAPI = {

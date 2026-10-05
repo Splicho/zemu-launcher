@@ -124,10 +124,20 @@ export function AccountPage() {
           if (result.key !== existing) {
             try {
               await window.launcherAPI?.setAuthKey?.(result.key)
-            } catch {
+            } catch (err) {
               // Disk write failed but we still show the key — the
               // user can copy it. Persisting on next visit will
               // retry naturally.
+              //
+              // Log the reason: this `catch` used to be completely
+              // silent, so a machine whose keychain write was failing
+              // looked identical to a healthy one from the log.
+              void window.debugLog?.write(
+                'account',
+                `auth key re-save failed: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              )
             }
           }
           setAuthKey(result.key)

@@ -673,6 +673,64 @@ async fn drive_download(
         0.0,
     );
 
+    // Persist `manifest.json` so the launcher knows the game is installed
+    // and can transition to "Install Patch" / "Play" without requiring
+    // the user to re-locate the folder. Without this, every user who
+    // completes the depot download is stuck on "Locate PS3 Folder" even
+    // though the files are already present on disk.
+    //
+    // ## Ordering matters — this MUST happen before `depot-done`
+    //
+    // This used to be written *after* the `depot-done` emit. Because
+    // the write is `async` (it fetches the manifest from the patch
+    // CDN), the renderer's `depot-done` handler fired and advanced the
+    // wizard to Step 4 while `isInstalled()` still read `false` — the
+    // store then cached that stale value and the play page showed
+    // "Install Patch" / "Locate PS3 Folder" for a fully-downloaded
+    // game. Emitting `depot-done` is a promise that the install is
+    // fully on disk and self-describing, so the writes come first and
+    // the event comes last.
+    //
+    // A failure here is reported to the user rather than swallowed: a
+    // download that finished but couldn't record its own manifest is
+    // not a successful install, and silently advancing the wizard
+    // strands them in the Step 3 ↔ Finish loop.
+    let manifest_result =
+        crate::update::persist_installed_manifest_from_cdn(app, dest_dir).await;
+    if let Err(e) = &manifest_result {
+        let _ = debug_log::append(
+            app,
+            "depot",
+            &format!("manifest.json write failed after depot: {e}"),
+        );
+    }
+
+    // Write the `.zemu-install-v1` marker. `detect_base_game_installed`
+    // reads this to decide whether the auto-download ever completed, and
+    // it was previously never written by anything — see
+    // `storage::write_install_marker` for the full story of how that
+    // bounced users straight back into Step 3 after a successful
+    // download.
+    if let Err(e) = crate::storage::write_install_marker(dest_dir) {
+        let _ = debug_log::append(
+            app,
+            "depot",
+            &format!("install marker write failed after depot: {e}"),
+        );
+    }
+
+    if let Err(e) = manifest_result {
+        emit_depot_error(
+            app,
+            &format!(
+                "The game downloaded, but the launcher could not record the \
+                 install on disk: {e}. Restart the launcher and try again — \
+                 the downloaded files are still in your install folder."
+            ),
+        );
+        return Err(anyhow!("depot finished but manifest write failed: {e}"));
+    }
+
     let _ = app.emit(
         DEPOT_DONE_EVENT,
         serde_json::json!({
@@ -680,19 +738,6 @@ async fn drive_download(
             "bytes": stats.bytes_downloaded,
         }),
     );
-
-    // Persist `manifest.json` so the launcher knows the game is installed
-    // and can transition to "Install Patch" / "Play" without requiring
-    // the user to re-locate the folder. Without this, every user who
-    // completes the depot download is stuck on "Locate PS3 Folder" even
-    // though the files are already present on disk.
-    if let Err(e) = crate::update::persist_installed_manifest_from_cdn(app, dest_dir).await {
-        let _ = debug_log::append(
-            app,
-            "depot",
-            &format!("manifest.json write failed after depot: {e}"),
-        );
-    }
 
     Ok(stats.bytes_downloaded)
 }

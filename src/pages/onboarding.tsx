@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AlertTriangle, Check, CheckCircle2, Download, Folder, LogOut, RotateCw, X } from 'lucide-react'
@@ -13,6 +13,7 @@ import { TitleBar } from '@/components/title-bar'
 import { fetchMyAuthKey } from '@/lib/auth'
 import { markOnboardingCompleted } from '@/lib/onboarding'
 import type { SetupChecks } from '@/lib/setup-checks'
+import { getSetupChecks } from '@/lib/setup-checks'
 import type { DepotProgress } from '@/lib/tauri-bridge'
 import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
@@ -157,6 +158,41 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerT
 
   const { refreshFromDisk } = useGameStateContext()
 
+  // Re-derive the "did the base game actually land on disk" answers
+  // from the real filesystem whenever we reach the Finish step.
+  //
+  // This is the authoritative check the Finish checklist should trust.
+  // Previously `hasBaseGame` / `hasMarker` were set optimistically in
+  // Step 3's `onContinue`, which is a lie whenever the depot finished
+  // but failed to write `manifest.json` (patch CDN unreachable) or the
+  // `.zemu-install-v1` marker. The checklist then showed a green
+  // "all good", Finish was enabled, and clicking it wrote
+  // `onboarding_completed = true` on a machine whose gate would still
+  // evaluate to `incomplete` — dropping the user back into Step 3's
+  // "Sign in with Steam" card with a complete 15 GB install already on
+  // disk. That is the exact loop a user reported.
+  //
+  // We also kick the play-page store's refresh here rather than at
+  // Step 3 exit: `manifest.json` is written by Rust *after* the
+  // download job reports completion, so refreshing at the moment the
+  // progress bar hits 100% could still read `isInstalled() === false`.
+  // By the time the user is looking at the Finish screen, the write
+  // has landed.
+  useEffect(() => {
+    if (step !== 4) return
+    let cancelled = false
+    void (async () => {
+      const checks = await getSetupChecks().catch(() => null)
+      if (cancelled || !checks) return
+      setHasBaseGame(checks.hasBaseGame)
+      setHasMarker(checks.hasMarker)
+      void refreshFromDisk()
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [step, refreshFromDisk])
+
   const finish = useCallback(() => {
     // `markOnboardingCompleted` is now async (it writes the flag
     // to the Rust-side `LauncherConfig` via IPC, replacing the
@@ -288,16 +324,18 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerT
                     folder={folder}
                     onBack={back}
                     onContinue={() => {
-                      setHasBaseGame(true)
-                      setHasMarker(true)
-                      // The depot just finished writing files
-                      // into the install folder; the marker's
-                      // now present, so `isInstalled` should
-                      // flip on the play page too. Same rationale
-                      // as the Step 1 / Step 2 refreshes — the
-                      // wizard writes directly to disk and the
-                      // store needs a hint to re-read.
-                      void refreshFromDisk()
+                      // The depot just finished writing files into the
+                      // install folder. We optimistically advance so the
+                      // user isn't held on the progress bar, but the
+                      // *authoritative* `hasBaseGame` / `hasMarker` values
+                      // are re-read from disk by the Step 4 effect below —
+                      // `setHasBaseGame(true)` used to be the only source
+                      // for the Finish checklist, which meant a download
+                      // that finished but failed to record its own
+                      // `manifest.json` / `.zemu-install-v1` marker still
+                      // showed a green "all good" and let the user click
+                      // Finish into a gate that bounced them straight back
+                      // into Step 3.
                       advance()
                     }}
                     t={t}
@@ -408,6 +446,24 @@ type Step1Banner =
   | { kind: 'fetch-failed'; reason: string }
   | null
 
+/**
+ * Normalise a thrown value into a loggable string.
+ *
+ * Tauri IPC rejections arrive as plain strings (the `Err(String)`
+ * returned by each `#[tauri::command]`), so `err.message` is usually
+ * `undefined` and an `instanceof Error` check alone would drop the
+ * only diagnostic we have.
+ */
+function describeError(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === 'string') return err
+  try {
+    return JSON.stringify(err)
+  } catch {
+    return String(err)
+  }
+}
+
 function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerToken, t }: AccessKeyStepProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -455,17 +511,36 @@ function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerTok
       //     the play-page store picks up the change before the
       //     wizard advances.
       if (result.ok && result.key && result.status === 'active') {
+        // Put the key in the input **before** attempting the write.
+        //
+        // This used to run after `await setAuthKey(...)`, so a failed
+        // persistence left the field empty and told the user to "paste
+        // it below" — even though the fetch had already succeeded and
+        // we were holding the correct value. The user then had to go
+        // and re-obtain a key they never saw, and the banner's
+        // `save_failed` reason read as though the *fetch* had failed.
+        //
+        // Setting state first means a write failure degrades to
+        // "here is your key, press Continue to retry" instead of
+        // losing the value entirely.
+        setAuthKey(result.key)
         try {
           await window.launcherAPI?.setAuthKey?.(result.key)
           if (cancelled) return
-          setAuthKey(result.key)
           onAfterSave?.()
           onContinue()
           return
-        } catch {
-          // Fall through to manual entry if the disk write
-          // fails — `setAuthKey` only resolves once the file
-          // is on disk, so a throw here is a real I/O error.
+        } catch (err) {
+          // Log the real reason. A user report is often the only
+          // evidence we get, and a bare `save_failed` with no
+          // underlying message is undiagnosable — the backend's
+          // `write_auth_key` deliberately degrades to a config-file
+          // fallback, so an error here is genuinely unexpected and
+          // worth surfacing in the log.
+          void window.debugLog?.write(
+            'onboarding',
+            `step1 auto-save failed: ${describeError(err)}`,
+          )
           setBanner({ kind: 'fetch-failed', reason: 'save_failed' })
           setIsLoading(false)
           return
@@ -512,7 +587,16 @@ function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerTok
       // advance (`onContinue()`) stays snappy.
       onAfterSave?.()
       onContinue()
-    } catch {
+    } catch (err) {
+      // The user reported this as an unactionable "Could not save
+      // the auth key. Please try again" with no further detail.
+      // `write_auth_key` already logs the underlying keyring error
+      // to the Rust-side debug log, but nothing correlated the two,
+      // so record the renderer-side view of the failure too.
+      void window.debugLog?.write(
+        'onboarding',
+        `step1 manual save failed: ${describeError(err)}`,
+      )
       setError(t('authKey.saveFailed'))
     } finally {
       setIsSaving(false)
@@ -714,6 +798,51 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
   // from the same pipeline.
   const [depotProgress, setDepotProgress] = useState<DepotProgress | null>(null)
 
+  // Live mirror of `pipelineState` for use inside the event handlers.
+  // The handlers are registered once per `pipelineActive` transition;
+  // reading the ref lets them see the current value without making
+  // every transition tear down and rebuild the whole listener set.
+  const pipelineStateRef = useRef<QrGateState>(pipelineState)
+  useEffect(() => {
+    pipelineStateRef.current = pipelineState
+  }, [pipelineState])
+
+  // True while the pipeline is mid-flight and the Tauri listeners
+  // should be attached. Deliberately excludes `idle` (never started /
+  // user dismissed) and `done` (download finished, wizard advancing)
+  // so the subscription set is stable for the whole run.
+  const pipelineActive = pipelineState !== 'idle' && pipelineState !== 'done'
+
+  // Instrumentation: log every pipeline transition to the Rust debug
+  // log. A report from a user who can't be reached for follow-up
+  // questions is often the only evidence we get, and the
+  // `scan_and_go_begin` storm in a previous report was only
+  // interpretable after seeing which state transitions preceded it.
+  useEffect(() => {
+    if (pipelineState === 'idle') return
+    void window.debugLog?.write(
+      'onboarding',
+      `step3 pipeline_state=${pipelineState} ` +
+        `hasFolder=${folder ? 'yes' : 'no'} ` +
+        `progress=${depotProgress ? 'yes' : 'no'}`,
+    )
+  }, [pipelineState, folder, depotProgress])
+
+  // Instrumentation: log mount/unmount of Step 3. Repeated
+  // `scan_and_go_begin` entries with no user action in between mean
+  // the wizard is being remounted by the gate redirect rather than
+  // the user retrying, and this is the only way to tell those apart
+  // from the log alone.
+  useEffect(() => {
+    void window.debugLog?.write('onboarding', `step3 mounted folder=${folder ?? 'none'}`)
+    return () => {
+      void window.debugLog?.write(
+        'onboarding',
+        `step3 unmounted state=${pipelineStateRef.current}`,
+      )
+    }
+  }, [folder])
+
   // Probe initial auth status on mount.
   useEffect(() => {
     let cancelled = false
@@ -749,39 +878,73 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
   // Pipeline-event subscriptions. Active whenever the pipeline is
   // running — covers both QR events and download events because
   // they're emitted by the same orchestrator on the same runtime.
+  //
+  // ## Why the dep is a ref, not `pipelineState`
+  //
+  // This used to depend on the *boolean expression*
+  // `pipelineState === 'idle' || pipelineState === 'done'`. That value
+  // only ever flips twice across the whole lifecycle, so the listener
+  // set was attached on the first non-idle render and torn down on the
+  // return to idle — the subscription lifecycle was decoupled from the
+  // state it was tracking. We now depend on `pipelineActive` (a real
+  // boolean derived from state) and read the live state through a ref
+  // inside the handlers, which keeps the subscription stable across
+  // `connecting → awaiting_scan → awaiting_confirm → downloading`
+  // while still tearing down when the pipeline truly ends.
+  //
+  // ## Why the `disposed` guard matters
+  //
+  // Every `on*` listener in `tauri-bridge.ts` is fire-and-forget:
+  // `listen()` returns a promise, so if cleanup runs before it
+  // resolves, the underlying Tauri listener is never removed and can
+  // fire into an unmounted component — re-running `onContinue()` and
+  // re-advancing the wizard. The bridge now tears down late-resolving
+  // listeners itself, and this guard is the renderer-side belt to that
+  // braces.
   useEffect(() => {
-    if (pipelineState === 'idle' || pipelineState === 'done') return
+    if (!pipelineActive) return
+    let disposed = false
+    // Read the freshest state from inside callbacks without making
+    // them re-subscribe on every transition.
+    const stateRef = pipelineStateRef
     const offs: Array<() => void> = []
     const offQr = window.steamApi?.onQr?.((dataUrl) => {
+      if (disposed) return
       setQrDataUrl(dataUrl)
       setPipelineState('awaiting_scan')
     })
     const offScanned = window.steamApi?.onScanned?.(() => {
+      if (disposed) return
       setPipelineState('awaiting_confirm')
     })
     const offAuthed = window.steamApi?.onAuthed?.((name) => {
+      if (disposed) return
       setAccountName(name)
       // Drop the QR immediately so the wizard UI transitions to the
       // progress bar without flashing a stale "scan me" image.
       setQrDataUrl(null)
     })
     const offLoginError = window.steamApi?.onLoginError?.((message) => {
+      if (disposed) return
       setPipelineError(message)
       setPipelineState('failed')
     })
     const offProgress = window.steamApi?.onDepotProgress?.((p) => {
+      if (disposed) return
       setDepotProgress(p)
       // First progress event marks the auth → download transition.
-      if (pipelineState !== 'downloading') {
+      if (stateRef.current !== 'downloading') {
         setPipelineState('downloading')
       }
     })
     const offDone = window.steamApi?.onDepotDone?.(() => {
+      if (disposed) return
       setPipelineState('done')
       setDepotProgress(null)
       onContinue()
     })
     const offDepotError = window.steamApi?.onDepotError?.((message) => {
+      if (disposed) return
       setPipelineError(message)
       setPipelineState('failed')
     })
@@ -793,12 +956,10 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
     if (offDone) offs.push(offDone)
     if (offDepotError) offs.push(offDepotError)
     return () => {
+      disposed = true
       offs.forEach((off) => off())
     }
-    // We intentionally read `pipelineState` once at subscribe-time;
-    // the cleanup tears everything down on unmount or state flip.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipelineState === 'idle' || pipelineState === 'done', onContinue])
+  }, [pipelineActive, onContinue, pipelineStateRef])
 
   const beginScanAndGo = useCallback(async () => {
     if (!folder || folder === '__existing__' || !window.steamApi) return
