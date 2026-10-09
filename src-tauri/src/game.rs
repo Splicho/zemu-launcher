@@ -17,7 +17,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use std::process::Command;
-#[cfg(target_os = "windows")]
 use std::thread;
 #[cfg(target_os = "windows")]
 use std::time::Duration;
@@ -411,6 +410,7 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
 
             set_in_game_presence(app);
             emit_game_launch_state(app, state.mark_game_running(child.id()));
+            start_game_process_monitor(app.clone(), state.clone(), child);
         }
 
         Ok(())
@@ -494,6 +494,46 @@ fn set_in_game_presence(app: &AppHandle) {
     }
 }
 
+fn set_in_launcher_presence(app: &AppHandle) {
+    if let Err(error) = discord::set_in_launcher(app) {
+        let _ = debug_log::append(
+            app,
+            "discord",
+            &format!("failed to restore launcher activity: {error}"),
+        );
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn wait_for_game_exit(
+    child: &mut std::process::Child,
+    state: &AppState,
+) -> std::io::Result<Option<crate::models::GameLaunchState>> {
+    // Keep and reap the child instead of polling its PID: an exited Unix
+    // child can remain a zombie until it is waited on. Proton is launched
+    // with waitforexitandrun, so its process also waits for the game.
+    child.wait()?;
+    Ok(state.clear_game_launch_if_pid_matches(child.id()))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn start_game_process_monitor(app: AppHandle, state: AppState, mut child: std::process::Child) {
+    thread::spawn(move || match wait_for_game_exit(&mut child, &state) {
+        Ok(Some(snapshot)) => {
+            emit_game_launch_state(&app, snapshot);
+            set_in_launcher_presence(&app);
+        }
+        Ok(None) => {} // A newer launch owns the state now.
+        Err(error) => {
+            let _ = debug_log::append(
+                &app,
+                "game",
+                &format!("game_process_wait_failed pid={} error={error}", child.id()),
+            );
+        }
+    });
+}
+
 #[cfg(target_os = "windows")]
 fn start_game_process_monitor(app: AppHandle, state: AppState, root_pid: u32) {
     // Resolve the configured game exe name once at launch time so we can
@@ -527,13 +567,7 @@ fn start_game_process_monitor(app: AppHandle, state: AppState, root_pid: u32) {
 
         if let Some(snapshot) = state.clear_game_launch_if_pid_matches(root_pid) {
             emit_game_launch_state(&app, snapshot);
-            if let Err(error) = discord::set_in_launcher(&app) {
-                let _ = debug_log::append(
-                    &app,
-                    "discord",
-                    &format!("failed to restore launcher activity: {error}"),
-                );
-            }
+            set_in_launcher_presence(&app);
         }
     });
 }
@@ -751,4 +785,90 @@ pub(crate) fn snapshot_processes() -> HashMap<u32, (u32, String)> {
 pub(crate) fn wide_null_trim(raw: &[u16]) -> String {
     let len = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
     String::from_utf16_lossy(&raw[..len])
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::process::{Child, Command, Stdio};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    fn waiting_child(exit_code: i32) -> Child {
+        Command::new("/bin/sh")
+            .args(["-c", &format!("read line; exit {exit_code}")])
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap()
+    }
+
+    #[test]
+    fn game_stays_running_until_child_exits_and_can_be_launched_again() {
+        let state = AppState::new(None, None);
+        // Both a clean exit and a runtime/game failure must restore Play.
+        for exit_code in [0, 1] {
+            let mut child = waiting_child(exit_code);
+            let mut stdin = child.stdin.take().unwrap();
+            state.begin_game_launch();
+            state.mark_game_running(child.id());
+            let monitor_state = state.clone();
+            let (tx, rx) = mpsc::channel();
+            let monitor = thread::spawn(move || {
+                tx.send(wait_for_game_exit(&mut child, &monitor_state))
+                    .unwrap();
+                assert_eq!(child.try_wait().unwrap().unwrap().code(), Some(exit_code));
+            });
+
+            assert!(matches!(
+                rx.recv_timeout(Duration::from_millis(50)),
+                Err(mpsc::RecvTimeoutError::Timeout)
+            ));
+            assert!(state.game_launch_state().is_running);
+            stdin.write_all(b"exit\n").unwrap();
+            drop(stdin);
+
+            let snapshot = rx
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            assert!(!snapshot.is_running);
+            assert!(!snapshot.is_launching);
+            assert!(!state.game_launch_state().is_running);
+            assert_eq!(state.game_runtime.lock().unwrap().active_pid, None);
+            monitor.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn killed_game_also_clears_launch_state() {
+        let state = AppState::new(None, None);
+        let mut child = waiting_child(0);
+        state.mark_game_running(child.id());
+        child.kill().unwrap();
+
+        let snapshot = wait_for_game_exit(&mut child, &state).unwrap().unwrap();
+        assert!(!snapshot.is_running);
+        assert!(!snapshot.is_launching);
+        assert!(!child.try_wait().unwrap().unwrap().success());
+    }
+
+    #[test]
+    fn old_game_exit_does_not_clear_a_new_launch() {
+        let state = AppState::new(None, None);
+        let mut child = waiting_child(0);
+        state.mark_game_running(child.id());
+        state.begin_game_launch();
+        let newer_pid = child.id() + 1;
+        state.mark_game_running(newer_pid);
+        child.kill().unwrap();
+
+        assert!(wait_for_game_exit(&mut child, &state).unwrap().is_none());
+        assert!(state.game_launch_state().is_running);
+        assert_eq!(
+            state.game_runtime.lock().unwrap().active_pid,
+            Some(newer_pid)
+        );
+    }
 }
