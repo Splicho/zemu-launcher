@@ -35,7 +35,7 @@ function MatchColumn({ match }: { match: MatchData }) {
             height={24}
             className="h-3.5 w-3.5 object-contain sm:h-4 sm:w-4"
           />
-          <span className="text-xs font-semibold tabular-nums sm:text-sm">
+          <span className="text-xs font-semibold text-white tabular-nums sm:text-sm">
             {formatNumber(match.kills)}
           </span>
         </div>
@@ -60,7 +60,7 @@ export function PlayerGames({
     return (
       <div className="flex items-center justify-center gap-2 py-6">
         <Spinner className="size-5" aria-hidden />
-        <span className="text-sm text-muted-foreground">
+        <span className="text-sm text-foreground/70">
           {t('leaderboardPage.expandingLoading')}
         </span>
       </div>
@@ -69,7 +69,7 @@ export function PlayerGames({
 
   if (!matches.length) {
     return (
-      <p className="py-4 text-center text-sm text-muted-foreground">
+      <p className="py-4 text-center text-sm text-foreground/70">
         {t('leaderboardPage.expandingEmpty')}
       </p>
     )
