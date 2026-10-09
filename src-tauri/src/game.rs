@@ -265,9 +265,32 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
         let auth_key = read_auth_key(app)?
             .filter(|key| !key.trim().is_empty())
             .ok_or_else(|| anyhow!("Auth key required. Save your auth key before launching."))?;
+
+        // Log the *outcome* of the auth-key read so a "black screen
+        // after launch" report can be triaged without a second user
+        // round-trip. We deliberately redact the value — only its
+        // length and a 4-char prefix make it into the debug log.
+        let _ = debug_log::append(
+            app,
+            "game",
+            &format!(
+                "launch_game auth_key_present=true auth_key_len={} auth_key_prefix={}…",
+                auth_key.len(),
+                auth_key.chars().take(4).collect::<String>()
+            ),
+        );
+
         let config = load_launcher_config(app)?;
         let locale = config.locale.as_deref();
-        let client_args = launch_args::client_arguments(&auth_key);
+        let client_args = launch_args::client_arguments(&auth_key)
+            .context("build client launch arguments")?;
+
+        // Record exactly which args we are about to hand to H1Z1.exe.
+        // This is the single most useful line for diagnosing
+        // black-screen-on-launch tickets: it tells the operator the
+        // server address, that the env override (if any) fired, and
+        // that the session key was non-empty and of plausible length.
+        launch_args::log_client_arguments(app, &client_args);
 
         // Persist the locale into the game's own ClientConfig.ini
         // before spawning. The game reads `[Internationalization]`
