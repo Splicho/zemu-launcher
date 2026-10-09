@@ -67,7 +67,7 @@ export function ClanAboutTab({ clan }: { clan: ClanProfile }) {
             />
             <Stat label={t('clan.stats.created')} value={createdAt} />
             <div className="space-y-1">
-              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              <p className="text-xs text-muted-foreground">
                 {t('clan.stats.foundedBy')}
               </p>
               {founderLoading ? (
@@ -102,7 +102,7 @@ export function ClanAboutTab({ clan }: { clan: ClanProfile }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-1">
-      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+      <p className="text-xs text-muted-foreground">
         {label}
       </p>
       <p className="text-sm text-foreground tabular-nums">{value}</p>

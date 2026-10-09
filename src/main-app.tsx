@@ -353,7 +353,6 @@ function AuthedApp() {
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
         <MainLayout
-          backgroundSrc={route.page === 'play' ? '/background/kotk_bg.webp' : undefined}
           routeKey={hash ?? ''}
           sidebarType={sidebarType}
         >

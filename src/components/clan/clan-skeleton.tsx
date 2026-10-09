@@ -2,25 +2,27 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 /**
  * Loading skeleton for the clan profile page. Mirrors the layout of
- * `<ClanView>` — cover banner, identity row, tab strip, member grid —
- * so the page doesn't reflow when the tooltip endpoint resolves.
+ * `<ClanView>` — full-bleed hero with the identity block in its
+ * bottom-left, tab strip, roster — so the page doesn't reflow when
+ * the tooltip endpoint resolves.
  */
 export function ClanSkeleton() {
   return (
-    <div className="flex flex-col gap-4">
-      <Skeleton className="h-64 w-full rounded-3xl" />
-      <div className="-mt-10 flex items-end gap-4 px-2 sm:-mt-14 sm:px-4">
-        <Skeleton className="size-20 shrink-0 rounded-4xl border-4 border-page sm:size-28" />
-        <div className="flex flex-col gap-2 pb-2">
-          <Skeleton className="h-7 w-40" />
-          <Skeleton className="h-4 w-24" />
+    <div className="flex flex-col">
+      <div className="flex min-h-[max(22rem,50vh)] items-end gap-5 bg-muted/30 px-6 pt-24 pb-8 sm:px-8">
+        <Skeleton className="size-24 shrink-0 rounded-2xl sm:size-32" />
+        <div className="flex flex-col gap-3 pb-1">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-4 w-48" />
         </div>
       </div>
-      <Skeleton className="h-10 w-full rounded-md" />
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 w-full rounded-xl" />
-        ))}
+      <div className="flex flex-col gap-6 px-6 sm:px-8">
+        <Skeleton className="h-9 w-full rounded-md" />
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+          ))}
+        </div>
       </div>
     </div>
   )
