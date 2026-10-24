@@ -1,5 +1,6 @@
 mod api;
 mod auth;
+mod catnip;
 mod child_process;
 mod client_config;
 mod commands;
@@ -29,7 +30,6 @@ mod integrity;
 mod launch_args;
 mod models;
 mod oauth_server;
-mod process_integrity;
 mod public_api;
 mod state;
 mod steam;

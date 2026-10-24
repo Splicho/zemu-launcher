@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { CountryFlagThumb } from '@/components/leaderboard/country-flag-thumb'
 import { SERVERS, type ServerRegion } from '@/lib/server-status'
+import type { PlayerCountRegion } from '@/lib/playercount'
 import { usePlayerCount } from '@/hooks/use-playercount'
 import { cn } from '@/lib/utils'
 
@@ -15,9 +16,9 @@ import { cn } from '@/lib/utils'
  * per region today, so every row in a region shares the same fill,
  * matching how the launcher has historically drawn it.
  *
- * Player count is pulled live from `GET /v1/playercount` via
- * `usePlayerCount`, scoped per region so the probe is forward-
- * compatible with NA / APAC.
+ * Player count is pulled live from `GET /v1/playercount?region=…`
+ * via `usePlayerCount`, scoped per region so EU and NA probe their
+ * own upstreams independently.
  */
 export function ServersPage() {
   const { t } = useTranslation()
@@ -52,11 +53,10 @@ export function ServersPage() {
  * row component stays a pure presentational element that receives
  * the live capacity through props.
  *
- * NA / APAC are placeholders today: their game-server hostnames
- * don't resolve yet, and the api exposes a single global
- * `/v1/playercount` (EU only). Calling the probe for those
- * regions would either return EU's count — misleading — or 404
- * later when per-region endpoints land. Pass `null` to the hook
+ * EU (Frankfurt) and NA (Chicago) probe their own api regions, so
+ * neither can show the other's headcount. APAC is still a
+ * placeholder — the api has no APAC upstream yet, and probing a
+ * region the api doesn't know would 400. Pass `null` to the hook
  * to disable the probe cleanly; the row renders the em-dash state
  * instead of a fake bar.
  */
@@ -311,9 +311,10 @@ interface Server {
  * the region — this file only owns the static `location` +
  * `status` data.
  *
- * Today only Frankfurt (EU) is wired up. Chicago (NA) is declared
- * but offline, APAC is empty so the page renders the N/A body copy.
- * Adding NA / APAC later is a one-key entry per region.
+ * Frankfurt (EU) and Chicago (NA) are both serving, so both are
+ * marked online and both probe the api. APAC still declares its
+ * reserved Singapore row, but with its probe switched off it renders
+ * the em-dash "not wired up" state instead of a fake bar.
  */
 const REGION_SERVERS: Record<
   ServerRegion['id'],
@@ -323,7 +324,7 @@ const REGION_SERVERS: Record<
     { id: 'eu-fra', location: 'Frankfurt', status: 'online' },
   ],
   na: [
-    { id: 'na-chi', location: 'Chicago', status: 'offline' },
+    { id: 'na-chi', location: 'Chicago', status: 'online' },
   ],
   apac: [
     { id: 'apac-sin', location: 'Singapore', status: 'offline' },
@@ -335,14 +336,19 @@ const REGION_SERVERS: Record<
 const MAX_PLAYERS = 2000
 
 /**
- * Whether a region has a working player-count probe. Today only EU
- * does — the api returns a single global total, not per-region
- * numbers, so NA / APAC would either display EU's count (wrong)
- * or 404 once per-region endpoints ship. Toggle a region on here
- * when its dedicated endpoint is wired up server-side.
+ * Whether a region has a working player-count probe.
+ *
+ * EU and NA do: the api exposes `GET /v1/playercount?region=eu|na`,
+ * each with its own upstream and cache. APAC doesn't — the api
+ * rejects an unknown region with a 400, so the probe stays off and
+ * the page renders the em-dash "not wired up" state. Toggle a region
+ * on here when its upstream is configured server-side.
+ *
+ * Typed as a predicate so the narrowed id can be handed straight to
+ * `usePlayerCount`, which only accepts api regions.
  */
-function isLiveRegion(id: ServerRegion['id']): boolean {
-  return id === 'eu'
+function isLiveRegion(id: ServerRegion['id']): id is PlayerCountRegion {
+  return id === 'eu' || id === 'na'
 }
 
 /** Region id → 2-letter ISO code for the header flag pill. */

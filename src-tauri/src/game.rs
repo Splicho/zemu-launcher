@@ -1,3 +1,5 @@
+#[cfg(target_os = "windows")]
+use crate::catnip;
 use crate::client_config;
 use crate::debug_log;
 use crate::discord;
@@ -224,7 +226,7 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
         &format!("launch_game start game_directory={game_directory}"),
     );
 
-    let result = (|| -> Result<()> {
+    let result: Result<()> = async {
         let executable_rel = get_game_executable(app);
         let executable_path = resolve_game_executable_path(&game_directory, &executable_rel);
 
@@ -282,15 +284,58 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
 
         let config = load_launcher_config(app)?;
         let locale = config.locale.as_deref();
-        let client_args = launch_args::client_arguments(&auth_key)
-            .context("build client launch arguments")?;
 
-        // Record exactly which args we are about to hand to H1Z1.exe.
-        // This is the single most useful line for diagnosing
-        // black-screen-on-launch tickets: it tells the operator the
-        // server address, that the env override (if any) fired, and
-        // that the session key was non-empty and of plausible length.
-        launch_args::log_client_arguments(app, &client_args);
+        // The ZEmu anti-cheat (`CatnipAC.exe`) lives next to the game
+        // exe when it's installed. It opens the anti-cheat session with
+        // the ZEmu anti-cheat server and starts the game itself, using
+        // the session arguments the server hands back. On that path the
+        // launcher does NOT build any game arguments — the server owns
+        // them.
+        //
+        // Without the anti-cheat, we keep the original behaviour: build
+        // the client arguments ourselves and spawn `H1Z1.exe` directly.
+        //
+        // The anti-cheat is a Windows binary, so the detection is
+        // Windows-only — the Wine/Proton path on macOS/Linux is
+        // unchanged.
+        #[cfg(target_os = "windows")]
+        let catnip_executable = catnip::executable_path(Path::new(&game_directory));
+        #[cfg(not(target_os = "windows"))]
+        let catnip_executable: Option<PathBuf> = None;
+
+        let client_args: Vec<String> = match &catnip_executable {
+            Some(exe) => {
+                // Write the user's auth key into the anti-cheat's config
+                // before starting it. The anti-cheat reads the key from
+                // this file — there's no command-line way to pass it.
+                let config_path = catnip::config_path(Path::new(&game_directory));
+                catnip::write_config(&config_path, &auth_key)
+                    .context("write catnip-client.cfg")?;
+                let _ = debug_log::append(
+                    app,
+                    "game",
+                    &format!(
+                        "launch_game catnip_config_written path={} anti_cheat={}",
+                        config_path.display(),
+                        exe.display()
+                    ),
+                );
+                Vec::new()
+            }
+            None => {
+                let args = launch_args::client_arguments(&auth_key)
+                    .context("build client launch arguments")?;
+
+                // Record exactly which args we are about to hand to
+                // H1Z1.exe. This is the single most useful line for
+                // diagnosing black-screen-on-launch tickets: it tells
+                // the operator the server address, that the env
+                // override (if any) fired, and that the session key was
+                // non-empty and of plausible length.
+                launch_args::log_client_arguments(app, &args);
+                args
+            }
+        };
 
         // Persist the locale into the game's own ClientConfig.ini
         // before spawning. The game reads `[Internationalization]`
@@ -310,7 +355,14 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             const DETACHED_PROCESS: u32 = 0x0000_0008;
 
-            let direct_launch = Command::new(&executable_path)
+            // With the anti-cheat installed we spawn `CatnipAC.exe`
+            // (no arguments — it starts the game itself). Without it we
+            // spawn the game exe with the client arguments we built.
+            let spawn_target = catnip_executable
+                .clone()
+                .unwrap_or_else(|| executable_path.clone());
+
+            let direct_launch = Command::new(&spawn_target)
                 .args(&client_args)
                 .current_dir(&working_dir)
                 .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
@@ -322,8 +374,9 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
                         app,
                         "game",
                         &format!(
-                            "launch_game direct_spawn_ok path={}",
-                            executable_path.display()
+                            "launch_game direct_spawn_ok path={} anti_cheat={}",
+                            spawn_target.display(),
+                            catnip_executable.is_some()
                         ),
                     );
                     child.id()
@@ -342,7 +395,7 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
                     // `os error 740` means "operation requires elevation".
                     // Fallback to elevated launch while preserving the real client PID.
                     if error.raw_os_error() == Some(740) {
-                        let pid = launch_game_elevated(&working_dir, &executable_path, &client_args).map_err(
+                        let pid = launch_game_elevated(&working_dir, &spawn_target, &client_args).map_err(
                             |shell_error| {
                                 anyhow!(
                                     "Failed to launch game (direct and elevated fallback failed): direct={error}; elevated={shell_error}"
@@ -361,20 +414,67 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
                 }
             };
 
-            set_in_game_presence(app);
-            emit_game_launch_state(app, state.mark_game_running(pid));
-            start_game_process_monitor(app.clone(), state.clone(), pid);
             // `executable_path` is a `PathBuf`; `file_name()` returns
-            // `Option<&OsStr>` which `to_string_lossy` flattens.
+            // `Option<&OsStr>` which `to_string_lossy` flattens. This is
+            // the *game* exe (`H1Z1.exe`) even on the anti-cheat path,
+            // where the process we spawned is `CatnipAC.exe`.
             let exe_basename = executable_path
                 .file_name()
                 .map(|name| name.to_string_lossy().to_string())
                 .unwrap_or_else(|| "H1Z1.exe".to_string());
-            crate::process_integrity::start_integrity_monitor(
-                app.clone(),
-                pid,
-                exe_basename,
-            );
+
+            // On the anti-cheat path the process we spawned is
+            // `CatnipAC.exe`, and the game (`H1Z1.exe`) is its child.
+            // Both monitors are rooted at a PID and stop when that
+            // root's process tree is empty — so if the anti-cheat ever
+            // detaches the game and exits, the tree would go empty, the
+            // monitors would stop, and the orphan sweep would then kill
+            // the still-running game.
+            //
+            // Re-root both monitors on the game process itself: poll the
+            // tree under the anti-cheat for the first `H1Z1.exe` and use
+            // that PID. Fall back to the anti-cheat's PID if the game
+            // doesn't show up in time (e.g. the session failed), so the
+            // monitors still work in the failure case.
+            let monitor_root_pid = match &catnip_executable {
+                Some(_) => match resolve_game_pid(pid, &exe_basename).await {
+                    Some(game_pid) => {
+                        let _ = debug_log::append(
+                            app,
+                            "game",
+                            &format!(
+                                "launch_game monitor_root=game game_pid={game_pid} anti_cheat_pid={pid}"
+                            ),
+                        );
+                        game_pid
+                    }
+                    None => {
+                        let _ = debug_log::append(
+                            app,
+                            "game",
+                            &format!(
+                                "launch_game monitor_root=anti_cheat anti_cheat_pid={pid} game_pid=not_found"
+                            ),
+                        );
+                        pid
+                    }
+                },
+                None => pid,
+            };
+
+            // The launch state is keyed on the *monitor root* PID, not
+            // on the PID we spawned. `start_game_process_monitor` clears
+            // the state with `clear_game_launch_if_pid_matches(root_pid)`
+            // when the tree goes away, so the two have to agree — on the
+            // anti-cheat path the root is the game PID, not the
+            // `CatnipAC.exe` PID. Recording the spawned PID here would
+            // leave the launcher stuck showing "Playing" (and Discord
+            // stuck in-game) after the game exits, because the monitor
+            // would try to clear a PID that was never recorded.
+            set_in_game_presence(app);
+            emit_game_launch_state(app, state.mark_game_running(monitor_root_pid));
+
+            start_game_process_monitor(app.clone(), state.clone(), monitor_root_pid);
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -414,7 +514,8 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
         }
 
         Ok(())
-    })();
+    }
+    .await;
 
     match result {
         Ok(_) => CommandResult::ok(),
@@ -598,9 +699,22 @@ fn launch_game_elevated(
 
     let file_path = powershell_escape_single_quoted(&executable.to_string_lossy());
     let dir_path = powershell_escape_single_quoted(&working_dir.to_string_lossy());
-    let argument_list = launch_args::windows_command_line(client_args);
+
+    // `Start-Process` rejects an empty `-ArgumentList`, so the whole
+    // clause is omitted when there are no arguments — which is the
+    // case on the anti-cheat path (`CatnipAC.exe` takes no arguments
+    // and starts the game itself).
+    let (argument_clause, argument_list) = if client_args.is_empty() {
+        (String::new(), String::new())
+    } else {
+        (
+            " -ArgumentList $env:ZEMU_GAME_ARGS".to_string(),
+            launch_args::windows_command_line(client_args),
+        )
+    };
+
     let script = format!(
-        "$ErrorActionPreference = 'Stop'; $process = Start-Process -FilePath '{file_path}' -WorkingDirectory '{dir_path}' -ArgumentList $env:ZEMU_GAME_ARGS -Verb RunAs -PassThru; Write-Output $process.Id"
+        "$ErrorActionPreference = 'Stop'; $process = Start-Process -FilePath '{file_path}' -WorkingDirectory '{dir_path}'{argument_clause} -Verb RunAs -PassThru; Write-Output $process.Id"
     );
 
     let output = Command::new("powershell")
@@ -634,17 +748,62 @@ fn launch_game_elevated(
     Ok(pid)
 }
 
+/// How long we wait for the anti-cheat to spawn the game process
+/// before giving up and falling back to monitoring the anti-cheat
+/// itself. The anti-cheat opens its session with the server first
+/// (a network round-trip), then starts the game — a couple of seconds
+/// is a comfortable margin.
+#[cfg(target_os = "windows")]
+const GAME_PID_RESOLVE_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// How often we re-scan the process tree while waiting for the game
+/// process to appear.
+#[cfg(target_os = "windows")]
+const GAME_PID_RESOLVE_POLL_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Find the game process (`exe_basename`) in the tree rooted at
+/// `root_pid`.
+///
+/// Used on the anti-cheat path: the launcher spawns `CatnipAC.exe`,
+/// and the game (`H1Z1.exe`) appears a moment later as its child. The
+/// monitors are re-rooted on the game PID so they keep running (and
+/// the orphan sweep doesn't kill the live game) even if the
+/// anti-cheat detaches from the game and exits.
+///
+/// Returns `None` if the game process doesn't appear within
+/// [`GAME_PID_RESOLVE_TIMEOUT`].
+#[cfg(target_os = "windows")]
+async fn resolve_game_pid(root_pid: u32, exe_basename: &str) -> Option<u32> {
+    let target = exe_basename.to_lowercase();
+    let deadline = std::time::Instant::now() + GAME_PID_RESOLVE_TIMEOUT;
+
+    loop {
+        // Skip the root itself — we're looking for the *child* game
+        // process, not the anti-cheat we're already tracking.
+        for (pid, name) in collect_process_tree(root_pid) {
+            if pid != root_pid && name == target {
+                return Some(pid);
+            }
+        }
+
+        if std::time::Instant::now() >= deadline {
+            return None;
+        }
+
+        tokio::time::sleep(GAME_PID_RESOLVE_POLL_INTERVAL).await;
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn powershell_escape_single_quoted(value: &str) -> String {
     value.replace('\'', "''")
 }
 
 /// Walk the process tree from `root_pid` and return every
-/// `(pid, exe_basename_lc)` pair under it. Used by the process
-/// integrity monitor to enumerate loaded modules across any
-/// child processes the game spawns (anti-cheats, launchers, etc.).
-/// Reuses the same snapshot the orphan-kill sweep reads — the
-/// tree walks `parent_pid` edges until exhaustion.
+/// `(pid, exe_basename_lc)` pair under it. Used to locate the game
+/// process under the anti-cheat wrapper so the monitors can be
+/// re-rooted on it. Reuses the same snapshot the orphan-kill sweep
+/// reads — the tree walks `parent_pid` edges until exhaustion.
 ///
 /// Returns an empty vec when the root PID has already exited or
 /// the snapshot is empty; callers treat both as "monitor done".
