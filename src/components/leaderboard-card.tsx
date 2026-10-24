@@ -25,6 +25,7 @@ import {
   CardContent,
 } from '@/components/ui/card'
 import {
+  DEFAULT_LEADERBOARD_SELECTION,
   TIER_VALUES,
   normalizeTier,
   type LeaderboardTier,
@@ -89,14 +90,17 @@ export function LeaderboardCard() {
       setTierFilterRaw(value as LeaderboardTier | 'all')
     }
   }
-  const [region, setRegion] = useState('EU')
-  const [teamMode, setTeamMode] = useState('Solo')
+  const [region, setRegion] = useState(DEFAULT_LEADERBOARD_SELECTION.region)
+  const [teamMode, setTeamMode] = useState(DEFAULT_LEADERBOARD_SELECTION.teamMode)
 
-  // Share the `['leaderboard', 'entries']` cache with the dedicated
-  // leaderboard page. The page hits the same key, so navigating
-  // straight from this card into the full table renders the rows
-  // instantly without a second fetch + skeleton flash.
-  const { data: entries, error } = useLeaderboardEntries()
+  // Share the `['leaderboard', 'entries', region, mode]` cache with the
+  // dedicated leaderboard page. When both are on the same selection,
+  // navigating straight from this card into the full table renders the
+  // rows instantly without a second fetch + skeleton flash.
+  const { data: entries, error } = useLeaderboardEntries(undefined, {
+    region,
+    teamMode,
+  })
 
   // Sort by Total Score, take the top 5, and apply the tier filter
   // client-side. The underlying query returns the full standings in
@@ -139,21 +143,23 @@ export function LeaderboardCard() {
           </Select>
 
           <Select value={region} onValueChange={setRegion}>
-            <SelectTrigger className="w-20 h-7">
+            <SelectTrigger className="w-28 h-7">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">{t('leaderboard.regionAll')}</SelectItem>
               <SelectItem value="EU">{t('leaderboard.regionEU')}</SelectItem>
-              <SelectItem value="NA" disabled>{t('leaderboard.regionNA')}</SelectItem>
+              <SelectItem value="NA">{t('leaderboard.regionNA')}</SelectItem>
               <SelectItem value="ASIA" disabled>{t('leaderboard.regionAsia')}</SelectItem>
             </SelectContent>
           </Select>
 
           <Select value={teamMode} onValueChange={setTeamMode}>
-            <SelectTrigger className="w-20 h-7">
+            <SelectTrigger className="w-24 h-7">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">{t('leaderboard.modeAll')}</SelectItem>
               <SelectItem value="Solo">{t('leaderboard.modeSolo')}</SelectItem>
               <SelectItem value="Duo">{t('leaderboard.modeDuo')}</SelectItem>
               <SelectItem value="Fives">{t('leaderboard.modeFives')}</SelectItem>

@@ -7,35 +7,29 @@
 
 import { useQuery } from '@tanstack/react-query'
 import {
+  DEFAULT_LEADERBOARD_SELECTION,
   fetchLeaderboardEntries,
   fetchPlayerTopMatches,
   fetchClantags,
   type LeaderboardEntry,
+  type LeaderboardSelection,
 } from '@/lib/leaderboard'
 
 /**
  * Full leaderboard entries with background auto-refresh every 60 seconds.
  *
- * The single `['leaderboard', 'entries']` cache is shared by both the
- * home-screen `LeaderboardCard` (which slices the top rows by tier)
- * and the dedicated leaderboard page (which paginates + filters the
- * same data client-side). That way, navigating from the home card
- * to the leaderboard page hits the cache and renders immediately
- * instead of triggering a fresh fetch.
- *
- * `initialEntries` (from SSR) can be passed as `initialData` so the
- * table renders without a loading state on first paint. Callers that
- * have no SSR data must pass `undefined` explicitly — defaulting to
- * `[]` would tell TanStack Query "I have data" before the network
- * resolves, causing the table to skip its skeleton state and render
- * the empty "No players match your filters" row instead.
+ * The cache is keyed by the region/mode selection so the home-screen
+ * `LeaderboardCard` and the dedicated page share a result only when
+ * they are showing the same board. `initialEntries` is passed as
+ * `initialData` when the caller already has matching rows.
  */
 export function useLeaderboardEntries(
   initialEntries?: LeaderboardEntry[],
+  selection: LeaderboardSelection = DEFAULT_LEADERBOARD_SELECTION,
 ) {
   return useQuery({
-    queryKey: ['leaderboard', 'entries'],
-    queryFn: fetchLeaderboardEntries,
+    queryKey: ['leaderboard', 'entries', selection.region, selection.teamMode],
+    queryFn: () => fetchLeaderboardEntries(selection),
     initialData: initialEntries,
     staleTime: 20_000,
     gcTime: 60_000,

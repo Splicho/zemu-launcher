@@ -75,6 +75,44 @@ export interface LeaderboardEntry {
   topMatches?: MatchData[]
 }
 
+export interface LeaderboardSelection {
+  region: string
+  teamMode: string
+}
+
+/**
+ * The season upstream ignores region/mode, so `all`/`all` is the only
+ * combination that uses `/leaderboards`. Every other combination goes
+ * to the api's aggregated match-stats route. Mirroring the website,
+ * the launcher defaults to All regions / Solo.
+ */
+export const DEFAULT_LEADERBOARD_SELECTION: LeaderboardSelection = {
+  region: 'all',
+  teamMode: 'Solo',
+}
+
+const REGION_PARAM: Record<string, string> = { EU: 'eu', NA: 'na' }
+const MODE_PARAM: Record<string, string> = {
+  Solo: 'solos',
+  Duo: 'duos',
+  Fives: 'fives',
+}
+
+export function leaderboardPath(selection: LeaderboardSelection): string {
+  if (selection.region === 'all' && selection.teamMode === 'all') {
+    return '/leaderboards'
+  }
+
+  const params = new URLSearchParams()
+  const region = REGION_PARAM[selection.region]
+  const mode = MODE_PARAM[selection.teamMode]
+  if (region) params.set('region', region)
+  if (mode) params.set('mode', mode)
+
+  const query = params.toString()
+  return `/leaderboards/matches${query ? `?${query}` : ''}`
+}
+
 // ─── URL resolution ───────────────────────────────────────────────────────
 //
 // All four API consumers (friends, news, streams, leaderboard) share
@@ -164,8 +202,12 @@ export async function fetchTopLeaderboard(
 // ─── Full leaderboard (page) ───────────────────────────────────────────────
 
 /** Fetch all standings for the leaderboard page. */
-export async function fetchLeaderboardEntries(): Promise<LeaderboardEntry[]> {
-  const response = await httpFetch(`${STATS_API_BASE}/leaderboards`, { headers: { Accept: 'application/json' } })
+export async function fetchLeaderboardEntries(
+  selection: LeaderboardSelection = DEFAULT_LEADERBOARD_SELECTION,
+): Promise<LeaderboardEntry[]> {
+  const response = await httpFetch(`${STATS_API_BASE}${leaderboardPath(selection)}`, {
+    headers: { Accept: 'application/json' },
+  })
   if (!response.ok) throw new Error(`Leaderboard request failed (HTTP ${response.status})`)
   const data = await response.json()
   const entries = ((data.entries ?? []) as Array<Parameters<typeof toEntry>[0]>).map(toEntry)

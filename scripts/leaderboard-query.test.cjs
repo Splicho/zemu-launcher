@@ -18,7 +18,12 @@ function setup(fetchLeaderboardEntries) {
     require(name) {
       // Run the real hook's options through QueryObserver, which drives useQuery.
       if (name === '@tanstack/react-query') return { useQuery: options => new QueryObserver(client, options) }
-      if (name === '@/lib/leaderboard') return { fetchLeaderboardEntries }
+      if (name === '@/lib/leaderboard') {
+        return {
+          fetchLeaderboardEntries,
+          DEFAULT_LEADERBOARD_SELECTION: { region: 'all', teamMode: 'Solo' },
+        }
+      }
       throw new Error(`Unexpected import: ${name}`)
     },
   })

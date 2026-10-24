@@ -9,7 +9,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
-import { TIER_VALUES } from '@/lib/leaderboard'
+import {
+  DEFAULT_LEADERBOARD_SELECTION,
+  TIER_VALUES,
+} from '@/lib/leaderboard'
 
 export type LeaderboardFilters = {
   search: string
@@ -25,8 +28,8 @@ const DEFAULT_FILTERS: LeaderboardFilters = {
   search: '',
   tier: 'all',
   country: '',
-  region: 'EU',
-  teamMode: 'Solo',
+  region: DEFAULT_LEADERBOARD_SELECTION.region,
+  teamMode: DEFAULT_LEADERBOARD_SELECTION.teamMode,
   pageSize: 50,
 }
 
@@ -43,8 +46,8 @@ export default function Filter({
   const [search, setSearch] = useState('')
   const [tier, setTier] = useState('all')
   const [country, setCountry] = useState('')
-  const [region, setRegion] = useState('EU')
-  const [teamMode, setTeamMode] = useState('Solo')
+  const [region, setRegion] = useState(DEFAULT_LEADERBOARD_SELECTION.region)
+  const [teamMode, setTeamMode] = useState(DEFAULT_LEADERBOARD_SELECTION.teamMode)
   const [pageSize, setPageSize] = useState(DEFAULT_FILTERS.pageSize)
 
   const emit = (patch: Partial<LeaderboardFilters>) => {
@@ -133,14 +136,13 @@ export default function Filter({
           emit({ region: v })
         }}
       >
-        <SelectTrigger className="w-28" size="sm">
+        <SelectTrigger className="w-32" size="sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
+          <SelectItem value="all">{t('leaderboard.regionAll')}</SelectItem>
           <SelectItem value="EU">{t('leaderboard.regionEU')}</SelectItem>
-          <SelectItem value="NA" disabled>
-            {t('leaderboard.regionNA')}
-          </SelectItem>
+          <SelectItem value="NA">{t('leaderboard.regionNA')}</SelectItem>
           <SelectItem value="ASIA" disabled>
             {t('leaderboard.regionAsia')}
           </SelectItem>
@@ -155,10 +157,11 @@ export default function Filter({
           emit({ teamMode: v })
         }}
       >
-        <SelectTrigger className="w-24" size="sm">
+        <SelectTrigger className="w-28" size="sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
+          <SelectItem value="all">{t('leaderboard.modeAll')}</SelectItem>
           <SelectItem value="Solo">{t('leaderboard.modeSolo')}</SelectItem>
           <SelectItem value="Duo">{t('leaderboard.modeDuo')}</SelectItem>
           <SelectItem value="Fives">{t('leaderboard.modeFives')}</SelectItem>

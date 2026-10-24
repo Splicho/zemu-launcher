@@ -36,10 +36,13 @@ export default function LeaderboardTableWrapper() {
   const { token } = useAuthContext()
   const authName = token?.displayName ?? null
 
-  const { data: entries = [], isLoading } = useLeaderboardEntries()
-
   const [filters, setFilters] = useState<LeaderboardFilters>(DEFAULT_FILTERS)
   const [page, setPage] = useState(1)
+
+  const { data: entries = [], isLoading } = useLeaderboardEntries(undefined, {
+    region: filters.region,
+    teamMode: filters.teamMode,
+  })
 
   const handleFilterChange = (updated: LeaderboardFilters) => {
     setFilters(updated)
