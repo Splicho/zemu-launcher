@@ -1,4 +1,9 @@
-#[cfg(target_os = "windows")]
+// `catnip` is imported unconditionally: the `catnip::config_path` /
+// `catnip::write_config` calls below sit in a `match` arm, and Rust
+// type-checks every arm regardless of the platform — so the import
+// has to resolve on Linux/macOS too. Only the *detection* of the
+// anti-cheat is Windows-only (`catnip_executable` is hard-coded to
+// `None` elsewhere), because `CatnipAC.exe` is a Windows binary.
 use crate::catnip;
 use crate::client_config;
 use crate::debug_log;

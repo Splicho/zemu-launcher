@@ -324,7 +324,7 @@ const REGION_SERVERS: Record<
     { id: 'eu-fra', location: 'Frankfurt', status: 'online' },
   ],
   na: [
-    { id: 'na-chi', location: 'Chicago', status: 'online' },
+    { id: 'na-chi', location: 'Kansas City', status: 'online' },
   ],
   apac: [
     { id: 'apac-sin', location: 'Singapore', status: 'offline' },

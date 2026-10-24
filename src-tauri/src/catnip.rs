@@ -39,6 +39,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 /// Name of the anti-cheat executable. Expected next to the game exe.
+///
+/// Windows-only: `CatnipAC.exe` is a Windows binary, so the launcher
+/// never looks for it on other platforms. Gated to keep the
+/// `dead_code` lint quiet on Linux/macOS builds.
+#[cfg(target_os = "windows")]
 pub const CATNIP_EXECUTABLE: &str = "CatnipAC.exe";
 
 /// Name of the anti-cheat's config file. Same directory as the exe.
@@ -59,6 +64,10 @@ const ALLOW_INSECURE_HTTP: &str = "true";
 ///
 /// Returns `None` when the anti-cheat is not installed — the caller
 /// then falls back to launching the game directly.
+///
+/// Windows-only: the anti-cheat ships as a `.exe`, so the launcher
+/// only probes for it on Windows.
+#[cfg(target_os = "windows")]
 pub fn executable_path(game_directory: &Path) -> Option<PathBuf> {
     let candidate = game_directory.join(CATNIP_EXECUTABLE);
     if candidate.is_file() {

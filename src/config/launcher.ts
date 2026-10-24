@@ -72,5 +72,5 @@ export const LAUNCHER_CONFIG = {
   // user's auth key into it on every launch — the ZEmu anti-cheat
   // (`CatnipAC.exe`) reads the key from that file. Without this
   // filter, the local edit would look like a tampered file forever.
-  updateSkipFiles: ['ClientConfig.ini', 'catnip-client.cfg'],
+  updateSkipFiles: ['catnip-client.cfg'],
 } as const

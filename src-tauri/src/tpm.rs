@@ -59,7 +59,12 @@ pub fn try_windows_identity_anchor(_app: &AppHandle) -> Option<Anchor> {
 }
 
 /// No-op on non-Windows targets. The TPM path is Windows-only today.
+///
+/// The only caller (`hardware::compute_anchor`) sits behind a
+/// `#[cfg(target_os = "windows")]` block, so on other platforms this
+/// stub has no callers — hence the `dead_code` allowance.
 #[cfg(not(target_os = "windows"))]
+#[allow(dead_code)]
 pub fn try_windows_identity_anchor(_app: &AppHandle) -> Option<Anchor> {
     None
 }
