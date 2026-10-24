@@ -416,7 +416,6 @@ export default {
       regionEU: 'EU',
       regionNA: 'NA',
       regionAsia: 'ASIA (Soon)',
-      modeAll: 'All modes',
       modeSolo: 'Solo',
       modeDuo: 'Duo',
       modeFives: 'Fives',

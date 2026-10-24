@@ -161,7 +161,6 @@ export default function Filter({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">{t('leaderboard.modeAll')}</SelectItem>
           <SelectItem value="Solo">{t('leaderboard.modeSolo')}</SelectItem>
           <SelectItem value="Duo">{t('leaderboard.modeDuo')}</SelectItem>
           <SelectItem value="Fives">{t('leaderboard.modeFives')}</SelectItem>
