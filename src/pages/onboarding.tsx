@@ -1,15 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AlertTriangle, Check, CheckCircle2, Download, Folder, LogOut, RotateCw, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Download,
+  ExternalLink,
+  Folder,
+  LogOut,
+  RotateCw,
+  X,
+} from 'lucide-react'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { ErrorCard } from '@/components/error-card'
 import { QrSteamGate, type QrGateState } from '@/components/qr-steam-gate'
 import { TitleBar } from '@/components/title-bar'
+import {
+  H1Z1_STORE_URL,
+  normalizeAppError,
+  shouldSuggestAnotherAccount,
+  type AppErrorPayload,
+} from '@/lib/app-errors'
 import { fetchMyAuthKey } from '@/lib/auth'
 import { markOnboardingCompleted } from '@/lib/onboarding'
 import type { SetupChecks } from '@/lib/setup-checks'
@@ -789,10 +807,24 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
   //   awaiting_confirm     — player scanned, waiting for phone approval
   //   downloading          — authed, downloading depot
   //   done                 — download finished; wizard advances
-  //   failed               — pipeline errored; `errorMessage` carries the reason
+  //   failed               — pipeline errored; `pipelineError` carries the
+  //                          structured, coded error
   const [pipelineState, setPipelineState] = useState<QrGateState>('idle')
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
-  const [pipelineError, setPipelineError] = useState<string | null>(null)
+  // Structured `{ code, message, detail, retryable }` payload from
+  // `src-tauri/src/errors.rs`. Never render `detail` directly — `ErrorCard`
+  // maps `code` onto localized copy and hides the raw chain behind a
+  // "Technical details" disclosure. Stored as the payload (not a string) so
+  // the card can pick the recovery action from the code.
+  const [pipelineError, setPipelineError] = useState<AppErrorPayload | null>(null)
+
+  // True once a Steam refresh token exists in the keychain — either from a
+  // previous run or from the QR scan that just succeeded. Drives the retry
+  // path: with a token we can retry the depot download alone instead of
+  // forcing the player through a second QR scan (which is what used to
+  // happen, and which is especially punishing after a transient
+  // `steam_busy` / `steam_rate_limited` failure).
+  const [hasStoredToken, setHasStoredToken] = useState(false)
 
   // Depot download progress. Populated by `depot-progress` events
   // from the same pipeline.
@@ -869,6 +901,11 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
         setAlreadyAuthed(true)
         setAuthInitiated(true)
       }
+      // `accountName` is surfaced whenever a token exists (even on a
+      // fresh install, where `authed` is deliberately false). That makes
+      // it the cheapest reliable "is there a token?" signal, and it lets a
+      // retry skip the QR gate instead of asking the player to scan twice.
+      setHasStoredToken(Boolean(status.accountName))
     })
     return () => {
       cancelled = true
@@ -920,13 +957,17 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
     const offAuthed = window.steamApi?.onAuthed?.((name) => {
       if (disposed) return
       setAccountName(name)
+      // The QR flow persists the refresh token before emitting
+      // `steam-authed`, so a later retry can go straight to the
+      // download-only command without another scan.
+      setHasStoredToken(true)
       // Drop the QR immediately so the wizard UI transitions to the
       // progress bar without flashing a stale "scan me" image.
       setQrDataUrl(null)
     })
-    const offLoginError = window.steamApi?.onLoginError?.((message) => {
+    const offLoginError = window.steamApi?.onLoginError?.((error) => {
       if (disposed) return
-      setPipelineError(message)
+      setPipelineError(normalizeAppError(error))
       setPipelineState('failed')
     })
     const offProgress = window.steamApi?.onDepotProgress?.((p) => {
@@ -943,9 +984,9 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
       setDepotProgress(null)
       onContinue()
     })
-    const offDepotError = window.steamApi?.onDepotError?.((message) => {
+    const offDepotError = window.steamApi?.onDepotError?.((error) => {
       if (disposed) return
-      setPipelineError(message)
+      setPipelineError(normalizeAppError(error))
       setPipelineState('failed')
     })
     if (offQr) offs.push(offQr)
@@ -971,7 +1012,11 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
     try {
       await window.steamApi.startInstallPipeline(folder)
     } catch (e) {
-      setPipelineError(e instanceof Error ? e.message : String(e))
+      // `startInstallPipeline` is fire-and-forget and rejects with a plain
+      // string (the command's spawn error), unlike `installDepot` which
+      // rejects with a classified `AppErrorPayload`. Normalizing here keeps
+      // both paths rendering the same card.
+      setPipelineError(normalizeAppError(e))
       setPipelineState('failed')
     }
   }, [folder])
@@ -987,12 +1032,55 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
     setDepotProgress(null)
   }, [])
 
-  const retryPipeline = useCallback(() => {
+  // When a returning user is already authed, drop them straight into
+  // the download-only path (no QR scan needed). Also used by `retry`
+  // when a token is already in the keychain.
+  const startDownloadOnly = useCallback(async () => {
+    if (!folder || folder === '__existing__' || !window.steamApi) return
+    setPipelineState('downloading')
+    setPipelineError(null)
+    setDepotProgress(null)
+    setAuthInitiated(true)
+    try {
+      await window.steamApi.installDepot(folder)
+      setPipelineState('done')
+      onContinue()
+    } catch (e) {
+      // The command rejects with `{ code, message, detail, retryable }`
+      // once the backend has classified the failure — no parsing needed.
+      setPipelineError(normalizeAppError(e))
+      setPipelineState('failed')
+    }
+  }, [folder, onContinue])
+
+  /**
+   * Retry after a failure.
+   *
+   * If a Steam token is already stored we retry just the depot download:
+   * re-running the QR gate for a transient `steam_busy` /
+   * `steam_rate_limited` / CDN hiccup made the player scan a second QR code
+   * for no reason.
+   *
+   * The exception is a *dead* token (`steam_session_expired`,
+   * `steam_not_signed_in`, `steam_account_missing`): retrying the
+   * download would fail identically, so those go back through the QR gate
+   * (which overwrites the stored token).
+   */
+  const retryPipeline = useCallback(async () => {
+    const code = pipelineError?.code
+    const tokenIsDead =
+      code === 'steam_session_expired' ||
+      code === 'steam_not_signed_in' ||
+      code === 'steam_account_missing'
     setPipelineError(null)
     setQrDataUrl(null)
     setDepotProgress(null)
-    void beginScanAndGo()
-  }, [beginScanAndGo])
+    if (hasStoredToken && !tokenIsDead) {
+      await startDownloadOnly()
+    } else {
+      await beginScanAndGo()
+    }
+  }, [beginScanAndGo, hasStoredToken, pipelineError, startDownloadOnly])
 
   const signOut = useCallback(async () => {
     try {
@@ -1007,25 +1095,8 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
     setDepotProgress(null)
     setAlreadyAuthed(false)
     setAuthInitiated(false)
+    setHasStoredToken(false)
   }, [])
-
-  // When a returning user is already authed, drop them straight into
-  // the download-only path (no QR scan needed).
-  const startDownloadOnly = useCallback(async () => {
-    if (!folder || folder === '__existing__' || !window.steamApi) return
-    setPipelineState('downloading')
-    setPipelineError(null)
-    setDepotProgress(null)
-    setAuthInitiated(true)
-    try {
-      await window.steamApi.installDepot(folder)
-      setPipelineState('done')
-      onContinue()
-    } catch (e) {
-      setPipelineError(e instanceof Error ? e.message : String(e))
-      setPipelineState('failed')
-    }
-  }, [folder, onContinue])
 
   // Convenience flags. Plain equality only — no derived state that
   // could collide with itself across renders. (`isIdle` was
@@ -1042,17 +1113,20 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
   //                     Show the green "Signed in as X" card and
   //                     a Start-download CTA in the bottom bar.
   //   2. `downloading` — pipeline in flight. Show progress card.
-  //   3. `qr`          — anything else (idle, connecting, scan,
-  //                     confirm, failed). Show `QrSteamGate`; it
-  //                     owns its own UI for failed/connecting/etc.
-
+  //   3. `qr`          — idle / connecting / scan / confirm. Show
+  //                     `QrSteamGate`.
+  //
+  // `failed` is deliberately NOT part of the gate anymore: the error card
+  // below is the single place that explains the failure and offers
+  // recovery actions. Rendering both duplicated the message (the gate
+  // showed the raw string and the card showed it again).
   const authedIdle =
     authInitiated &&
     alreadyAuthed &&
     pipelineState === 'idle' &&
     !isDownloading &&
     !isFailed
-  const showQrGate = !authedIdle && !isDownloading
+  const showQrGate = !authedIdle && !isDownloading && !isFailed
   const showProgress = isDownloading
 
   return (
@@ -1087,7 +1161,11 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
           state={pipelineState}
           dataUrl={qrDataUrl}
           accountName={accountName}
-          errorMessage={pipelineError}
+          // The gate never renders its `failed` branch anymore (see
+          // `showQrGate`); failures are owned by `ErrorCard` below so the
+          // message isn't duplicated and the recovery actions live in one
+          // place.
+          errorMessage={null}
           onBegin={beginScanAndGo}
           onCancel={cancelPipeline}
           onRetry={retryPipeline}
@@ -1136,27 +1214,46 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
         </div>
       ) : null}
 
-      {isFailed ? (
-        <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-          <p className="font-medium">{t('onboarding.step3.errorTitle')}</p>
-          <p>{pipelineError}</p>
-          <div className="flex justify-end gap-2 pt-2">
-            {pipelineError && !pipelineError.toLowerCase().includes('bridge missing') ? (
+      {isFailed && pipelineError ? (
+        <ErrorCard
+          error={pipelineError}
+          actions={
+            <>
+              {shouldSuggestAnotherAccount(pipelineError.code) ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void signOut()}
+                >
+                  <LogOut className="size-4" />
+                  {t('errors.actions.useAnotherAccount')}
+                </Button>
+              ) : null}
+              {pipelineError.code === 'steam_depot_not_owned' ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    void openUrl(H1Z1_STORE_URL).catch(() => {
+                      /* OS handler missing — the URL is in the description */
+                    })
+                  }}
+                >
+                  <ExternalLink className="size-4" />
+                  {t('errors.actions.openStore')}
+                </Button>
+              ) : null}
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => void signOut()}
+                onClick={() => void retryPipeline()}
               >
-                <LogOut className="size-4" />
-                {t('onboarding.step3.qrGate.signOut')}
+                <RotateCw className="size-4" />
+                {t('common.retry')}
               </Button>
-            ) : null}
-            <Button variant="outline" size="sm" onClick={retryPipeline}>
-              <RotateCw className="size-4" />
-              {t('common.retry')}
-            </Button>
-          </div>
-        </div>
+            </>
+          }
+        />
       ) : null}
 
       <div className="mt-6 flex justify-between">

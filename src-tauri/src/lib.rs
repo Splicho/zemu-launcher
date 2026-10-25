@@ -19,6 +19,7 @@ mod debug_log;
 mod depot;
 mod dev_env;
 mod discord;
+mod errors;
 mod friends;
 mod friends_debug_log;
 mod friends_realtime;

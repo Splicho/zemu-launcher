@@ -271,15 +271,20 @@ pub fn steam_logout(app: tauri::AppHandle) -> Result<(), String> {
 /// wizard while it runs. The returned `SteamcmdResult` is shaped
 /// to match what the wizard consumed from the (now-removed)
 /// SteamCMD code path.
+///
+/// On failure this rejects with a serialized [`crate::errors::AppError`]
+/// (`{ code, message, detail, retryable }`), not a plain string, so the
+/// renderer can show localized, actionable copy instead of the raw
+/// Steam protocol text.
 #[tauri::command]
 pub async fn steam_install_depot(
     app: tauri::AppHandle,
     _state: tauri::State<'_, AppState>,
     dest_dir: String,
-) -> Result<SteamcmdResult, String> {
+) -> Result<SteamcmdResult, crate::errors::AppError> {
     crate::depot::download_depot(app, PathBuf::from(dest_dir))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| crate::errors::AppError::from_anyhow(&e))
 }
 
 /// Scan-and-go: kick off the QR login and the depot download on

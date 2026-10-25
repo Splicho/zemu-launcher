@@ -13,6 +13,92 @@ export default {
       maximize: 'Maximizar',
       restore: 'Restaurar',
     },
+    // Veja `src-tauri/src/errors.rs`: um bloco por código de erro. O
+    // launcher mostra `.title` / `.description` e deixa a cadeia técnica
+    // bruta atrás de "Detalhes técnicos".
+    errors: {
+      actions: {
+        details: 'Detalhes técnicos',
+        copy: 'Copiar detalhes',
+        copied: 'Copiado',
+        useAnotherAccount: 'Usar outra conta',
+        openStore: 'Abrir Z1 Battle Royale na Steam',
+      },
+      steam_depot_not_owned: {
+        title: 'Sua conta Steam não possui H1Z1: King of the Kill',
+        description:
+          'Entre com a conta que possui o jogo ou adicione Z1 Battle Royale a esta conta (é gratuito). Se você já possui o jogo, aguarde um instante e tente de novo — a Steam também recusa a chave do depot quando está sobrecarregada.',
+      },
+      steam_not_signed_in: {
+        title: 'Entre com a Steam para baixar o jogo',
+        description:
+          'O launcher ainda não tem um login Steam salvo. Escaneie o QR code com o app Steam Mobile para continuar.',
+      },
+      steam_session_expired: {
+        title: 'Seu login da Steam expirou',
+        description:
+          'A Steam não aceita mais o login salvo. Saia e escaneie o QR code novamente.',
+      },
+      steam_login_failed: {
+        title: 'A Steam recusou o login',
+        description:
+          'Saia e tente de novo. Se continuar falhando, verifique a situação da conta na Steam e o log do launcher.',
+      },
+      steam_account_missing: {
+        title: 'Os dados salvos da conta Steam estão incompletos',
+        description:
+          'Saia e escaneie o QR code novamente para o launcher salvar o nome da conta.',
+      },
+      steam_busy: {
+        title: 'A Steam está ocupada no momento',
+        description:
+          'A Steam não respondeu ao pedido de download a tempo. Aguarde alguns segundos e tente de novo.',
+      },
+      steam_rate_limited: {
+        title: 'A Steam está limitando os pedidos de download',
+        description:
+          'Muitos pedidos chegaram à Steam em pouco tempo. Aguarde um minuto e tente de novo.',
+      },
+      steam_network: {
+        title: 'Não foi possível conectar à Steam',
+        description: 'Verifique sua conexão, VPN e firewall e tente de novo.',
+      },
+      steam_cdn_auth: {
+        title: 'O servidor de download da Steam recusou o pedido',
+        description:
+          'O token do CDN foi recusado. Inicie o download de novo; se continuar acontecendo, saia e entre novamente.',
+      },
+      steam_manifest_unavailable: {
+        title: 'A Steam não serve mais esta versão de H1Z1',
+        description:
+          'O manifest de 2017 não está mais disponível. Use as instruções manuais de depot da Steam em Propriedades → Guia de instalação.',
+      },
+      disk_full: {
+        title: 'Espaço em disco insuficiente',
+        description:
+          'Libere espaço na unidade de instalação (H1Z1 precisa de cerca de 20 GB) e tente de novo.',
+      },
+      disk_permission: {
+        title: 'A pasta de instalação não permite gravação',
+        description:
+          'Escolha uma pasta fora de Program Files ou corrija as permissões e tente de novo.',
+      },
+      disk_error: {
+        title: 'Falha ao gravar os arquivos do jogo',
+        description:
+          'Verifique o espaço livre e as permissões da pasta e tente de novo. Os detalhes técnicos abaixo mostram o arquivo e o erro exatos.',
+      },
+      keychain_error: {
+        title: 'Não foi possível salvar o login da Steam',
+        description:
+          'O cofre do sistema recusou a gravação. Desbloqueie o cofre (ou o Gerenciador de Credenciais do Windows) e entre novamente.',
+      },
+      unknown: {
+        title: 'O download da Steam falhou',
+        description:
+          'Um erro inesperado interrompeu o download. Envie os detalhes técnicos abaixo ao suporte.',
+      },
+    },
     bootstrap: {
       status: 'Verificando atualizações do lançador',
       detail: 'Procurando uma versão mais recente do lançador antes de abrir o aplicativo.',

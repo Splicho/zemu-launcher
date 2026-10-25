@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
+import { normalizeAppError, type AppErrorPayload } from './app-errors'
+
 type DebugMetadata = Record<string, unknown> | undefined
 
 export interface GameLaunchState {
@@ -297,16 +299,24 @@ function setupCompatibilityBridge() {
       subscribe<void>('steam-scanned', () => callback()),
     onAuthed: (callback: (accountName: string) => void): (() => void) =>
       subscribe<string>('steam-authed', (payload) => callback(payload)),
-    onLoginError: (callback: (message: string) => void): (() => void) =>
-      subscribe<string>('steam-error', (payload) => callback(payload)),
+    onLoginError: (callback: (error: AppErrorPayload) => void): (() => void) =>
+      // `steam-error` carries `{ code, message, detail, retryable }` from
+      // `src-tauri/src/errors.rs`. Normalizing here (rather than at every
+      // call site) also keeps the wizard working against a backend build
+      // that still emits a bare string during a staged upgrade.
+      subscribe<unknown>('steam-error', (payload) =>
+        callback(normalizeAppError(payload)),
+      ),
     onDepotProgress: (callback: (progress: DepotProgress) => void): (() => void) =>
       subscribe<DepotProgress>('depot-progress', (payload) => callback(payload)),
     onDepotDone: (callback: (result: { finalDir: string; bytes: number }) => void): (() => void) =>
       subscribe<{ finalDir: string; bytes: number }>('depot-done', (payload) =>
         callback(payload),
       ),
-    onDepotError: (callback: (message: string) => void): (() => void) =>
-      subscribe<string>('depot-error', (payload) => callback(payload)),
+    onDepotError: (callback: (error: AppErrorPayload) => void): (() => void) =>
+      subscribe<unknown>('depot-error', (payload) =>
+        callback(normalizeAppError(payload)),
+      ),
   }
 
   window.discordAPI = {
@@ -669,12 +679,12 @@ declare global {
       onQr: (callback: (dataUrl: string) => void) => () => void
       onScanned: (callback: () => void) => () => void
       onAuthed: (callback: (accountName: string) => void) => () => void
-      onLoginError: (callback: (message: string) => void) => () => void
+      onLoginError: (callback: (error: AppErrorPayload) => void) => () => void
       onDepotProgress: (callback: (progress: DepotProgress) => void) => () => void
       onDepotDone: (
         callback: (result: { finalDir: string; bytes: number }) => void
       ) => () => void
-      onDepotError: (callback: (message: string) => void) => () => void
+      onDepotError: (callback: (error: AppErrorPayload) => void) => () => void
     }
     discordAPI: {
       setInLauncher: () => void
