@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
 import { invoke } from '@tauri-apps/api/core'
 import { type DownloadEvent, check } from '@tauri-apps/plugin-updater'
 import { useTranslation } from 'react-i18next'
@@ -252,7 +251,6 @@ export function BootstrapPage() {
   const showProgress = state.phase === 'downloading'
   const hasCheckError = state.phase === 'check-error'
   const hasInstallError = state.phase === 'install-error'
-  const hasError = hasCheckError || hasInstallError
   const splashLabel =
     state.phase === 'checking'
       ? t('bootstrap.splashChecking')
@@ -265,25 +263,13 @@ export function BootstrapPage() {
   return (
     <div className="bootstrap-window flex h-screen w-screen items-center justify-center overflow-hidden bg-transparent px-4 py-4 text-foreground dark">
       <div className="flex h-full max-h-[22.5rem] w-full max-w-[19.5rem] flex-col items-center justify-center overflow-hidden rounded-[22px] bg-background px-12 py-12 shadow-[0_12px_36px_rgba(0,0,0,0.28)]">
-        <motion.div
-          className="flex items-center justify-center"
-          animate={
-            hasError
-              ? { scale: 1, opacity: 1 }
-              : { scale: [1, 1.06, 1], opacity: [0.96, 1, 0.96] }
-          }
-          transition={{
-            duration: 2.4,
-            ease: 'easeInOut',
-            repeat: hasError ? 0 : Infinity,
-          }}
-        >
+        <div className="flex items-center justify-center">
           <img
             src="./assets/icon/app-icon.ico"
             alt={LAUNCHER_CONFIG.name}
             className="h-24 w-24 object-contain"
           />
-        </motion.div>
+        </div>
 
         {splashLabel ? (
           <p className="mt-6 text-center text-sm tracking-[0.08em] text-muted-foreground">

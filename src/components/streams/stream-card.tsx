@@ -26,7 +26,7 @@ export function StreamCard({ stream }: StreamCardProps) {
       <img
         src={stream.thumbnail_url}
         alt={stream.title}
-        className="absolute inset-0 h-full w-full object-cover transition-[filter,transform] duration-300 group-hover:brightness-110"
+        className="absolute inset-0 h-full w-full object-cover transition-[filter,transform] duration-300 group-hover:brightness-125"
       />
       <div
         className="absolute inset-x-0 bottom-0 pt-12 backdrop-blur-md"

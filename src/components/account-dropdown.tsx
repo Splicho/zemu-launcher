@@ -6,8 +6,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { ChevronsUpDown, LogOut, Settings, UserCircle } from 'lucide-react'
-import { DiscordFilled, Mail, Steam } from '@/components/icons'
+import { ChevronsUpDown, LogOut, Settings, User, UserCircle } from 'lucide-react'
+import { DiscordFilled, Steam } from '@/components/icons'
 import { useAuthContext } from '@/contexts/auth-context'
 import { useTranslation } from 'react-i18next'
 import { useHashRouter } from '@/hooks/use-hash'
@@ -64,7 +64,7 @@ export function AccountDropdown() {
     token?.provider === 'discord' || token?.provider === 'steam'
       ? PROVIDER_BADGES[token.provider]
       : null
-  const BadgeIcon = provider?.Icon ?? Mail
+  const BadgeIcon = provider?.Icon ?? User
   const badgeColor = provider?.color ?? EMAIL_BADGE_COLOR
   const subtitle = provider?.label ?? token?.email ?? null
 

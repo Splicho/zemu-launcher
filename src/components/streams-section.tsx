@@ -95,7 +95,7 @@ export function StreamsSection() {
                 <img
                   src={stream.thumbnail_url}
                   alt={stream.title}
-                  className="aspect-video w-full object-cover transition-[filter,transform] duration-300 group-hover:brightness-110"
+                  className="aspect-video w-full object-cover transition-[filter,transform] duration-300 group-hover:brightness-125"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3">
                   <p className="flex items-center gap-2 truncate text-sm font-medium text-white">
