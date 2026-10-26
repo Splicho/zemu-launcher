@@ -39,11 +39,6 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 /// Name of the anti-cheat executable. Expected next to the game exe.
-///
-/// Windows-only: `CatnipAC.exe` is a Windows binary, so the launcher
-/// never looks for it on other platforms. Gated to keep the
-/// `dead_code` lint quiet on Linux/macOS builds.
-#[cfg(target_os = "windows")]
 pub const CATNIP_EXECUTABLE: &str = "CatnipAC.exe";
 
 /// Name of the anti-cheat's config file. Same directory as the exe.
@@ -65,9 +60,7 @@ const ALLOW_INSECURE_HTTP: &str = "true";
 /// Returns `None` when the anti-cheat is not installed — the caller
 /// then falls back to launching the game directly.
 ///
-/// Windows-only: the anti-cheat ships as a `.exe`, so the launcher
-/// only probes for it on Windows.
-#[cfg(target_os = "windows")]
+/// On Linux/macOS the `.exe` is run through Wine/Proton.
 pub fn executable_path(game_directory: &Path) -> Option<PathBuf> {
     let candidate = game_directory.join(CATNIP_EXECUTABLE);
     if candidate.is_file() {
@@ -94,10 +87,7 @@ pub fn config_path(game_directory: &Path) -> PathBuf {
 pub fn write_config(path: &Path, auth_key: &str) -> Result<()> {
     let auth_key = auth_key.trim();
     if auth_key.is_empty() {
-        anyhow::bail!(
-            "refusing to write an empty auth key to {}",
-            path.display()
-        );
+        anyhow::bail!("refusing to write an empty auth key to {}", path.display());
     }
     if auth_key.contains('\n') || auth_key.contains('\r') {
         anyhow::bail!(
@@ -219,7 +209,8 @@ mod tests {
 
     #[test]
     fn preserves_foreign_keys_and_comments() {
-        let input = "# ZEmu anti-cheat\nserver_url = http://example.com\nserver_key = k\nauth_key = old\n";
+        let input =
+            "# ZEmu anti-cheat\nserver_url = http://example.com\nserver_key = k\nauth_key = old\n";
         let out = apply_keys(input, "new");
         assert_eq!(
             out,
@@ -285,10 +276,8 @@ mod tests {
 
     #[test]
     fn write_config_rejects_empty_key() {
-        let dir = std::env::temp_dir().join(format!(
-            "zemu-catnip-test-empty-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("zemu-catnip-test-empty-{}", std::process::id()));
         let _ = fs::create_dir_all(&dir);
         let path = dir.join(CATNIP_CONFIG);
         assert!(write_config(&path, "   ").is_err());
@@ -297,23 +286,22 @@ mod tests {
 
     #[test]
     fn write_config_rejects_key_with_line_terminator() {
-        let dir = std::env::temp_dir().join(format!(
-            "zemu-catnip-test-newline-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("zemu-catnip-test-newline-{}", std::process::id()));
         let _ = fs::create_dir_all(&dir);
         let path = dir.join(CATNIP_CONFIG);
         assert!(write_config(&path, "abc\ndef").is_err());
-        assert!(!path.exists(), "no file should be written for a rejected key");
+        assert!(
+            !path.exists(),
+            "no file should be written for a rejected key"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn write_config_round_trips_through_disk() {
-        let dir = std::env::temp_dir().join(format!(
-            "zemu-catnip-test-roundtrip-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("zemu-catnip-test-roundtrip-{}", std::process::id()));
         let _ = fs::create_dir_all(&dir);
         let path = dir.join(CATNIP_CONFIG);
 
