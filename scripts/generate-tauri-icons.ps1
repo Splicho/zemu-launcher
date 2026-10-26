@@ -53,7 +53,7 @@ try {
 }
 
 Write-Host "Generated square source icon: $temporarySquaredPath"
-pnpm tauri icon "$temporarySquaredPath" --output "$($resolvedOutputDir.Path)"
+npx --no-install tauri icon "$temporarySquaredPath" --output "$($resolvedOutputDir.Path)"
 $exitCode = $LASTEXITCODE
 
 if ($exitCode -eq 0) {

@@ -5,7 +5,7 @@
  * preview-build.cjs — fires the preview-build workflow via the `gh` CLI.
  *
  * Usage:
- *   pnpm run preview-build
+ *   npm run preview-build
  *   node scripts/preview-build.cjs
  *
  * What it does:

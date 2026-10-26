@@ -57,7 +57,6 @@ A desktop gaming launcher for H1Z1, built with Tauri (Rust + React). Provides a 
 
 - **Node.js** 20+ (npm 10+)
 - **Rust** 1.77+
-- **pnpm** (`npm install -g pnpm`)
 - **Git**
 
 ## Setup

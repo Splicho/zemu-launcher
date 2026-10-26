@@ -5,12 +5,12 @@
  * release-build.cjs — one-shot release script for the ZEmu launcher.
  *
  * Usage:
- *   pnpm run release-build                        # interactive prompt
- *   pnpm run release-build -- v0.1.3              # explicit tag
- *   pnpm run release-build -- --tag=v0.1.3        # same, via flag
- *   pnpm run release-build -- --bump=patch        # auto-increment from
- *   pnpm run release-build -- --bump=minor        # current launcher version
- *   pnpm run release-build -- --bump=major        # (skips the prompt)
+ *   npm run release-build                        # interactive prompt
+ *   npm run release-build -- v0.1.3              # explicit tag
+ *   npm run release-build -- --tag=v0.1.3        # same, via flag
+ *   npm run release-build -- --bump=patch        # auto-increment from
+ *   npm run release-build -- --bump=minor        # current launcher version
+ *   npm run release-build -- --bump=major        # (skips the prompt)
  *
  * What it does:
  *   1. Resolves the target tag (from arg / bump / prompt).
@@ -84,7 +84,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: pnpm run release-build [tag] [options]
+  console.log(`Usage: npm run release-build [tag] [options]
 
 Options:
   -t, --tag <vX.Y.Z>      Release tag (the "v" prefix is optional)
