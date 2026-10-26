@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft } from 'lucide-react'
 
 import { fetchNewsList, type NewsListItem } from '@/lib/news'
-import { useHashRouter } from '@/hooks/use-hash'
 import { NewsCard } from '@/components/news-card'
-import { Button } from '@/components/ui/button'
 
 /**
  * News list page — mounted at `#/news`.
@@ -15,14 +12,11 @@ import { Button } from '@/components/ui/button'
  * the hash router; the home sub-router handles which view to render
  * based on the current hash.
  *
- * The "Back" button is the only way out — there's no sidebar entry
- * for news yet, so users land here by clicking "View all" on the
- * slider or a specific news card and need a way to return to the
- * home content.
+ * News is a top-level sidebar destination. Article detail pages
+ * provide their own return navigation to this list.
  */
 export function NewsPage() {
   const { t } = useTranslation()
-  const { navigate } = useHashRouter()
   const [items, setItems] = useState<NewsListItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,18 +38,7 @@ export function NewsPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center gap-3 px-8 pt-6">
-        <Button
-          variant="outline"
-          onClick={() => navigate('/')}
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" />
-          {t('common.back')}
-        </Button>
-      </div>
-
-      <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-8 pb-8 pt-4">
+      <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-8 pb-8 pt-6">
         <header>
           <h1 className="text-3xl tracking-tight">{t('news.allNews')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
