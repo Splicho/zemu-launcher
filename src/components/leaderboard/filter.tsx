@@ -1,36 +1,35 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Search } from 'lucide-react'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { TIER_VALUES } from '@/lib/leaderboard'
 
-export type LeaderboardFilters = {
-  search: string
-  tier: string
-  /** ISO 3166-1 alpha-2 code, or "" for "All countries". */
-  country: string
-  region: string
-  teamMode: string
-  pageSize: number
+import { DEFAULT_FILTERS, type LeaderboardFilters } from './leaderboard-filters'
+
+const regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
+
+function countryLabel(code: string): string {
+  try {
+    return regionNames.of(code.toUpperCase()) ?? code
+  } catch {
+    return code
+  }
 }
 
-const DEFAULT_FILTERS: LeaderboardFilters = {
-  search: '',
-  tier: 'all',
-  country: '',
-  region: 'EU',
-  teamMode: 'Solo',
-  pageSize: 50,
+function CountryFlag({ code }: { code: string }) {
+  return (
+    <img
+      src={`https://flagsapi.com/${code.toUpperCase()}/flat/32.png`}
+      alt=""
+      aria-hidden
+      loading="lazy"
+      className="h-3 w-4 shrink-0 rounded-[2px] object-cover"
+      draggable={false}
+      style={{ pointerEvents: 'none' }}
+    />
+  )
 }
-
-export { DEFAULT_FILTERS }
 
 export default function Filter({
   onFilterChange,
@@ -43,8 +42,8 @@ export default function Filter({
   const [search, setSearch] = useState('')
   const [tier, setTier] = useState('all')
   const [country, setCountry] = useState('')
-  const [region, setRegion] = useState('EU')
-  const [teamMode, setTeamMode] = useState('Solo')
+  const [region, setRegion] = useState(DEFAULT_FILTERS.region)
+  const [teamMode, setTeamMode] = useState(DEFAULT_FILTERS.teamMode)
   const [pageSize, setPageSize] = useState(DEFAULT_FILTERS.pageSize)
 
   const emit = (patch: Partial<LeaderboardFilters>) => {
@@ -69,7 +68,7 @@ export default function Filter({
         <Input
           placeholder={t('leaderboardPage.searchPlaceholder')}
           value={search}
-          onChange={e => {
+          onChange={(e) => {
             setSearch(e.target.value)
             emit({ search: e.target.value })
           }}
@@ -80,7 +79,7 @@ export default function Filter({
       {/* Tier Select */}
       <Select
         value={tier}
-        onValueChange={v => {
+        onValueChange={(v) => {
           setTier(v)
           emit({ tier: v })
         }}
@@ -90,7 +89,7 @@ export default function Filter({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">{t('leaderboard.allTiers')}</SelectItem>
-          {TIER_VALUES.map(tier => (
+          {TIER_VALUES.map((tier) => (
             <SelectItem key={tier} value={tier}>
               {t(`leaderboard.${tier}`)}
             </SelectItem>
@@ -100,47 +99,51 @@ export default function Filter({
 
       {/* Country Select */}
       <Select
-        value={country}
-        onValueChange={v => {
-          setCountry(v)
-          emit({ country: v })
+        value={country || 'all'}
+        onValueChange={(v) => {
+          const next = v === 'all' ? '' : v
+          setCountry(next)
+          emit({ country: next })
         }}
       >
         <SelectTrigger className="w-40" size="sm">
           <SelectValue placeholder={t('leaderboardPage.countryAll')} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">{t('leaderboardPage.countryAll')}</SelectItem>
+          <SelectItem value="all">{t('leaderboardPage.countryAll')}</SelectItem>
           {countryOptions.length === 0 ? (
             <SelectItem value="__empty__" disabled>
               {t('leaderboardPage.countryNone')}
             </SelectItem>
           ) : (
-            countryOptions.map(code => (
+            countryOptions.map((code) => (
               <SelectItem key={code} value={code}>
-                {code}
+                <span className="flex items-center gap-2">
+                  <CountryFlag code={code} />
+                  <span>{countryLabel(code)}</span>
+                </span>
               </SelectItem>
             ))
           )}
         </SelectContent>
       </Select>
 
-      {/* Region Select */}
+      {/* Region Select — EU is the default. There is no global-region
+          option: the season board is global, so the region only scopes
+          the Solo/Duo/Fives recent-match views. */}
       <Select
         value={region}
-        onValueChange={v => {
+        onValueChange={(v) => {
           setRegion(v)
           emit({ region: v })
         }}
       >
-        <SelectTrigger className="w-28" size="sm">
+        <SelectTrigger className="w-32" size="sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="EU">{t('leaderboard.regionEU')}</SelectItem>
-          <SelectItem value="NA" disabled>
-            {t('leaderboard.regionNA')}
-          </SelectItem>
+          <SelectItem value="NA">{t('leaderboard.regionNA')}</SelectItem>
           <SelectItem value="ASIA" disabled>
             {t('leaderboard.regionAsia')}
           </SelectItem>
@@ -150,12 +153,12 @@ export default function Filter({
       {/* Team Mode */}
       <Select
         value={teamMode}
-        onValueChange={v => {
+        onValueChange={(v) => {
           setTeamMode(v)
           emit({ teamMode: v })
         }}
       >
-        <SelectTrigger className="w-24" size="sm">
+        <SelectTrigger className="w-28" size="sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -167,12 +170,10 @@ export default function Filter({
 
       {/* Rows per page */}
       <div className="ml-auto flex items-center gap-2">
-        <span className="text-xs tracking-wide text-foreground/60 uppercase">
-          {t('leaderboardPage.rowsPerPage')}
-        </span>
+        <span className="text-xs tracking-wide text-foreground/60 uppercase">{t('leaderboardPage.rowsPerPage')}</span>
         <Select
           value={String(pageSize)}
-          onValueChange={v => {
+          onValueChange={(v) => {
             const parsed = Number(v)
             if (Number.isFinite(parsed) && parsed > 0) {
               setPageSize(parsed)
@@ -184,7 +185,7 @@ export default function Filter({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {[25, 50, 100, 200].map(n => (
+            {[25, 50, 100, 200].map((n) => (
               <SelectItem key={n} value={String(n)}>
                 {n}
               </SelectItem>

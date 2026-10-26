@@ -16,7 +16,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
 } from '@/components/ui/sidebar'
+import { AccountDropdown } from '@/components/account-dropdown'
 
 type AccountNavItem =
   | {
@@ -177,6 +179,8 @@ export function AccountSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <SidebarSeparator className="my-2" />
+        <AccountDropdown />
       </div>
     </Sidebar>
   )

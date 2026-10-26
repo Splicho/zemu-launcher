@@ -13,6 +13,97 @@ export default {
       maximize: 'Maximize',
       restore: 'Restore',
     },
+    // Actionable copy for the coded errors emitted by
+    // `src-tauri/src/errors.rs`. One block per `ErrorCode`; the wizard's
+    // `ErrorCard` renders `.title` / `.description` and hides the raw Rust
+    // chain behind "Technical details". Missing blocks degrade to the
+    // backend's English message (`AppError.message`), so adding a code on
+    // the Rust side is never a hard break — just untranslated until it
+    // lands here.
+    errors: {
+      actions: {
+        details: 'Technical details',
+        copy: 'Copy details',
+        copied: 'Copied',
+        useAnotherAccount: 'Sign in with another account',
+        openStore: 'Open Z1 Battle Royale on Steam',
+      },
+      steam_depot_not_owned: {
+        title: "Your Steam account doesn't own H1Z1: King of the Kill",
+        description:
+          'Sign in with the account that owns the game, or add Z1 Battle Royale to this account (it is free). If you do own it, wait a moment and retry — Steam also refuses the depot key when it is busy.',
+      },
+      steam_not_signed_in: {
+        title: 'Sign in with Steam to download the game',
+        description:
+          'The launcher has no saved Steam login yet. Scan the QR code with the Steam Mobile app to continue.',
+      },
+      steam_session_expired: {
+        title: 'Your Steam sign-in expired',
+        description:
+          'Steam no longer accepts the saved login. Sign out and scan the QR code again.',
+      },
+      steam_login_failed: {
+        title: 'Steam rejected the sign-in',
+        description:
+          'Sign out and try again. If it keeps failing, check the account status on Steam and the launcher log.',
+      },
+      steam_account_missing: {
+        title: 'The saved Steam account details are incomplete',
+        description:
+          'Sign out, then scan the QR code again so the launcher can store the account name.',
+      },
+      steam_busy: {
+        title: 'Steam is busy right now',
+        description:
+          'Steam did not answer the download request in time. Wait a few seconds and retry.',
+      },
+      steam_rate_limited: {
+        title: 'Steam is rate-limiting download requests',
+        description:
+          'Too many requests reached Steam in a short time. Wait a minute, then retry.',
+      },
+      steam_network: {
+        title: 'Could not reach Steam',
+        description:
+          'Check your internet connection, VPN and firewall, then retry.',
+      },
+      steam_cdn_auth: {
+        title: "Steam's download server rejected the request",
+        description:
+          'The CDN token was refused. Start the download again; if it keeps happening, sign out and back in.',
+      },
+      steam_manifest_unavailable: {
+        title: 'Steam is no longer serving this H1Z1 build',
+        description:
+          'The pinned 2017 manifest is no longer available. Use the manual Steam depot instructions under Properties → Installation Guide.',
+      },
+      disk_full: {
+        title: 'Not enough free disk space',
+        description:
+          'Free up space on the install drive (H1Z1 needs about 20 GB), then retry.',
+      },
+      disk_permission: {
+        title: 'The install folder is not writable',
+        description:
+          'Choose a folder outside Program Files, or fix its permissions, then retry.',
+      },
+      disk_error: {
+        title: 'Writing the game files failed',
+        description:
+          'Check free space and folder permissions, then retry. The technical details below name the exact file and error.',
+      },
+      keychain_error: {
+        title: 'Could not save the Steam login',
+        description:
+          'The system keychain refused the write. Unlock the keychain (or Windows Credential Manager) and sign in again.',
+      },
+      unknown: {
+        title: 'The Steam download failed',
+        description:
+          'An unexpected error stopped the download. Share the technical details below with support.',
+      },
+    },
     bootstrap: {
       status: 'Checking launcher updates',
       detail: 'Looking for a newer launcher build before opening the app.',
@@ -62,11 +153,16 @@ export default {
           'We could not load your saved key automatically ({{reason}}). Paste it below to continue.',
       },
       step2: {
-        title: 'Choose where to install',
-        description: 'Pick a folder for H1Z1: King of the Kill and ZEmu patches. We will keep everything tidy in this folder.',
+        title: 'Install location',
+        description:
+          'The game and the ZEmu patches will live in this folder. Change it if you would rather use another drive.',
         choose: 'Choose folder',
-        change: 'Change folder',
-        pathChosen: 'Chosen:',
+        change: 'Change location',
+        installDestination: 'The game will be installed on',
+        detecting: 'Detecting your main drive…',
+        chooseHint: 'No folder selected yet.',
+        destinationHint: 'Detected from the drive your OS is installed on.',
+        useDefault: 'Use recommended location',
         continue: 'Continue',
       },
       step3: {
@@ -413,7 +509,7 @@ export default {
       master: 'Master',
       royalty: 'Royalty',
       regionEU: 'EU',
-      regionNA: 'NA (Soon)',
+      regionNA: 'NA',
       regionAsia: 'ASIA (Soon)',
       modeSolo: 'Solo',
       modeDuo: 'Duo',
@@ -433,7 +529,6 @@ export default {
       rowsPerPage: 'Rows',
       empty: 'No players match your filters.',
       heroYou: 'You',
-      heroFilteredOut: 'Filtered out',
       expandingLoading: 'Loading matches…',
       expandingEmpty: 'No recent matches to show.',
       playerTier: 'Player tier',

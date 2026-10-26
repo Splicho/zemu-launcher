@@ -2,10 +2,12 @@
  * Server region catalogue for the header's server-status pill
  * and the `ServersPage` route.
  *
- * The launcher used to probe each region's player count against
- * the api's `GET /v1/playercount` endpoint. That probe has been
- * retired — the region list itself stays so NA / APAC can be
- * slotted in without changing the page implementation.
+ * The catalogue itself is static; live player counts are fetched
+ * separately, one probe per region, from the api's
+ * `GET /v1/playercount?region=…` endpoint (see `usePlayerCount`).
+ * Keeping the two apart means a region can be listed here before
+ * the api has an upstream for it — the page just renders it
+ * without a capacity bar.
  */
 
 export interface ServerRegion {
@@ -25,18 +27,18 @@ export const SERVERS: readonly ServerRegion[] = [
   },
   {
     id: 'na',
-    // North America (Chicago). Server hostname is a placeholder
-    // — the real `na.zemu.uk:1115` host doesn't resolve yet, so
-    // the launcher shows it as offline and the page renders the
-    // row without a working capacity fill. Swap this when the
-    // backend's DNS is live.
+    // North America (Chicago). Live headcount comes from the api's
+    // `?region=na` probe, which owns the Chicago upstream — the
+    // launcher never talks to the game server itself. `gameServer`
+    // stays reserved for direct game connections.
     label: 'North America',
     gameServer: 'na.zemu.uk:1115',
   },
   {
     id: 'apac',
-    // Asia-Pacific (Singapore). Same placeholder story as NA —
-    // hostname is reserved but not serving yet.
+    // Asia-Pacific (Singapore). No upstream yet — the api doesn't
+    // serve an APAC region, so the page leaves the probe off and
+    // shows the em-dash state.
     label: 'Asia-Pacific',
     gameServer: 'apac.zemu.uk:1115',
   },

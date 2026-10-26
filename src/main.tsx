@@ -10,6 +10,13 @@ if (!rootElement) {
   throw new Error('Root element not found')
 }
 
+// Packaged launcher builds behave like a native app, not a browser:
+// suppress the WebView context menu (back, reload, inspect, save image).
+// Leave it enabled during development so DevTools stays reachable.
+if (!import.meta.env.DEV) {
+  window.addEventListener('contextmenu', event => event.preventDefault())
+}
+
 createRoot(rootElement).render(
   <StrictMode>
     <App />

@@ -18,6 +18,93 @@ export default {
       restore: "Restaurer",
       cancelDownload: "Annuler le téléchargement",
     },
+    // Voir `src-tauri/src/errors.rs` : un bloc par code d'erreur. Le
+    // lanceur affiche `.title` / `.description` et garde la chaîne
+    // technique brute derrière « Détails techniques ».
+    errors: {
+      actions: {
+        details: "Détails techniques",
+        copy: "Copier les détails",
+        copied: "Copié",
+        useAnotherAccount: "Utiliser un autre compte",
+        openStore: "Ouvrir Z1 Battle Royale sur Steam",
+      },
+      steam_depot_not_owned: {
+        title: "Votre compte Steam ne possède pas H1Z1 : King of the Kill",
+        description:
+          "Connectez-vous avec le compte qui possède le jeu, ou ajoutez Z1 Battle Royale gratuitement à ce compte. Si vous possédez déjà le jeu, attendez un instant et réessayez — Steam refuse aussi la clé du dépôt lorsqu'il est surchargé.",
+      },
+      steam_not_signed_in: {
+        title: "Connectez-vous à Steam pour télécharger le jeu",
+        description:
+          "Le lanceur n'a pas encore de connexion Steam enregistrée. Scannez le QR code avec l'application Steam Mobile pour continuer.",
+      },
+      steam_session_expired: {
+        title: "Votre session Steam a expiré",
+        description:
+          "Steam n'accepte plus la connexion enregistrée. Déconnectez-vous et scannez à nouveau le QR code.",
+      },
+      steam_login_failed: {
+        title: "Steam a refusé la connexion",
+        description:
+          "Déconnectez-vous et réessayez. Si le problème persiste, vérifiez l'état du compte sur Steam et le journal du lanceur.",
+      },
+      steam_account_missing: {
+        title: "Les informations du compte Steam sont incomplètes",
+        description:
+          "Déconnectez-vous, puis scannez à nouveau le QR code pour que le lanceur puisse enregistrer le nom du compte.",
+      },
+      steam_busy: {
+        title: "Steam est occupé",
+        description:
+          "Steam n'a pas répondu à la demande de téléchargement à temps. Patientez quelques secondes et réessayez.",
+      },
+      steam_rate_limited: {
+        title: "Steam limite les demandes de téléchargement",
+        description:
+          "Trop de requêtes ont atteint Steam en peu de temps. Attendez une minute, puis réessayez.",
+      },
+      steam_network: {
+        title: "Impossible de joindre Steam",
+        description:
+          "Vérifiez votre connexion Internet, votre VPN et votre pare-feu, puis réessayez.",
+      },
+      steam_cdn_auth: {
+        title: "Le serveur de téléchargement Steam a refusé la requête",
+        description:
+          "Le jeton CDN a été rejeté. Relancez le téléchargement ; si le problème persiste, déconnectez-vous puis reconnectez-vous.",
+      },
+      steam_manifest_unavailable: {
+        title: "Steam ne fournit plus cette version de H1Z1",
+        description:
+          "Le manifeste de 2017 n'est plus disponible. Utilisez les instructions manuelles de dépôt Steam dans Propriétés → Guide d'installation.",
+      },
+      disk_full: {
+        title: "Espace disque insuffisant",
+        description:
+          "Libérez de l'espace sur le disque d'installation (H1Z1 nécessite environ 20 Go), puis réessayez.",
+      },
+      disk_permission: {
+        title: "Le dossier d'installation n'est pas accessible en écriture",
+        description:
+          "Choisissez un dossier en dehors de Program Files, ou corrigez ses autorisations, puis réessayez.",
+      },
+      disk_error: {
+        title: "L'écriture des fichiers du jeu a échoué",
+        description:
+          "Vérifiez l'espace libre et les autorisations du dossier, puis réessayez. Les détails techniques ci-dessous indiquent le fichier et l'erreur exacts.",
+      },
+      keychain_error: {
+        title: "Impossible d'enregistrer la connexion Steam",
+        description:
+          "Le trousseau du système a refusé l'écriture. Déverrouillez le trousseau (ou le Gestionnaire d'identifiants Windows) et reconnectez-vous.",
+      },
+      unknown: {
+        title: "Le téléchargement Steam a échoué",
+        description:
+          "Une erreur inattendue a interrompu le téléchargement. Transmettez les détails techniques ci-dessous au support.",
+      },
+    },
     bootstrap: {
       status: "Vérification des mises à jour du lanceur",
       detail: "Recherche d'une version plus récente du lanceur avant d'ouvrir l'application.",
@@ -66,11 +153,17 @@ export default {
           'Impossible de charger votre clé enregistrée automatiquement ({{reason}}). Collez-la ci-dessous pour continuer.',
       },
       step2: {
-        title: 'Choisissez le dossier d’installation',
-        description: 'Sélectionnez un dossier pour le jeu de base et les correctifs ZEmu. Tout restera bien organisé à cet endroit.',
+        title: 'Dossier d’installation',
+        description:
+          'Le jeu et les correctifs ZEmu seront installés dans ce dossier. Changez-le si vous préférez un autre disque.',
         choose: 'Choisir un dossier',
-        change: 'Changer de dossier',
-        pathChosen: 'Choisi :',
+        change: 'Changer d’emplacement',
+        installDestination: 'Le jeu sera installé dans',
+        detecting: 'Détection de votre disque principal…',
+        chooseHint: 'Aucun dossier sélectionné pour l’instant.',
+        destinationHint:
+          'Détecté à partir du disque où votre système est installé.',
+        useDefault: 'Utiliser l’emplacement recommandé',
         continue: 'Continuer',
       },
       step3: {
@@ -421,7 +514,7 @@ export default {
       master: "Maitre",
       royalty: 'Royauté',
       regionEU: "UE",
-      regionNA: "Amérique du Nord (Bientôt)",
+      regionNA: "Amérique du Nord",
       regionAsia: "Asie (Bientôt)",
       modeSolo: "Solo",
       modeDuo: "Duo",
@@ -441,7 +534,6 @@ export default {
       rowsPerPage: "Lignes",
       empty: "Aucun joueur ne correspond à vos filtres.",
       heroYou: "Vous",
-      heroFilteredOut: "Filtré",
       expandingLoading: "Chargement des parties…",
       expandingEmpty: "Aucune partie récente à afficher.",
       playerTier: "Division du joueur",

@@ -1,17 +1,16 @@
 /**
  * `usePlayerCount` — TanStack Query wrapper around `fetchPlayerCount`.
  *
- * The api exposes a single global endpoint today (EU only), so this
- * hook returns a shared `total` and consumers just read it. The
- * `regionId` parameter only affects the query key + whether polling
- * runs — once NA/APAC ship, each region will get its own endpoint
- * and this hook is the one place we add per-region routing.
+ * One probe per region: the api keeps a separate upstream and cache for
+ * EU and NA (`?region=`), so the hook passes the caller's region
+ * straight through to the fetcher and keys the query by it. Regions the
+ * api doesn't serve yet (APAC) are disabled at the call site with
+ * `null`.
  *
  * Query key:
- *   `['playercount', regionId]` — the `regionId` segment is
- *   forward-compatible: when each region gets its own endpoint we
- *   swap the fetcher's URL but keep the key, so any cached data
- *   stays grouped under its region in devtools.
+ *   `['playercount', regionId]` — one cache entry per region, so the
+ *   Chicago read-out can never be painted from Frankfurt's cache while
+ *   the NA request is in flight.
  *
  * Polling:
  *   30s by default. Matches the heartbeat interval so the bar's
@@ -20,11 +19,12 @@
  *   well under that).
  *
  * State surface (the page only cares about three of these):
- *   - `disabled`  → region not wired up yet (NA/APAC today).
+ *   - `disabled`  → region not wired up yet (APAC today).
  *                   Distinct from `isError` so the page can render
  *                   a "coming soon" pill instead of a hard N/A.
  *   - `isPending` → first load, no cached data yet.
- *   - `isError`   → api call failed (network / non-2xx / bad JSON).
+ *   - `isError`   → api call failed (network / non-2xx / bad JSON /
+ *                   region mismatch / api has no reading).
  *   - otherwise   → `total` is set.
  *
  * The hook never throws; TanStack Query itself catches and exposes
@@ -36,7 +36,7 @@ import { useQuery } from '@tanstack/react-query'
 import { readPersistedToken } from '@/lib/auth'
 import {
   fetchPlayerCount,
-  type PlayerCount,
+  type PlayerCountRegion,
   type PlayerCountResult,
 } from '@/lib/playercount'
 
@@ -52,7 +52,7 @@ const PLAYERCOUNT_STALE_MS = PLAYERCOUNT_POLL_MS
 export function playerCountKeys() {
   return {
     all: ['playercount'] as const,
-    byRegion: (regionId: 'eu' | 'na' | 'apac' | null) =>
+    byRegion: (regionId: PlayerCountRegion | null) =>
       ['playercount', regionId ?? 'disabled'] as const,
   }
 }
@@ -76,15 +76,15 @@ interface UsePlayerCountResult {
 }
 
 /**
- * Subscribe to the live player count.
+ * Subscribe to a region's live player count.
  *
- * @param regionId - the `ServerRegion.id` to scope the cache to.
- *   Today this doesn't change the URL (single global endpoint),
- *   but it's kept in the key so per-region caching is automatic
- *   when NA/APAC ship. Pass `null` to disable the probe.
+ * @param regionId - the api region to probe (`'eu'` / `'na'`). The
+ *   value goes into the query key *and* the request URL, so each
+ *   region caches and polls independently. Pass `null` to disable the
+ *   probe for a region the api doesn't serve yet.
  */
 export function usePlayerCount(
-  regionId: 'eu' | 'na' | 'apac' | null,
+  regionId: PlayerCountRegion | null,
 ): UsePlayerCountResult {
   // `enabled: regionId !== null` keeps the query entry alive (so the
   // hook is always called and React's rules-of-hooks stays happy),
@@ -101,7 +101,14 @@ export function usePlayerCount(
   const enabled = regionId !== null && hasToken
   const query = useQuery<PlayerCountResult, Error>({
     queryKey: playerCountKeys().byRegion(regionId),
-    queryFn: () => fetchPlayerCount(),
+    queryFn: () => {
+      // `enabled` gates every call, so `regionId` is non-null here;
+      // the guard keeps the type honest rather than asserting.
+      if (regionId === null) {
+        throw new Error('No player-count region selected')
+      }
+      return fetchPlayerCount(regionId)
+    },
     enabled,
     refetchInterval: PLAYERCOUNT_POLL_MS,
     staleTime: PLAYERCOUNT_STALE_MS,
@@ -126,10 +133,9 @@ export function usePlayerCount(
   // 'idle'` and `status: 'pending'`. Override so the page sees a
   // clean "disabled" surface instead of a perpetual skeleton.
   const result = query.data
-  const total = result?.ok ? (result.data as PlayerCount).total : undefined
-  const updatedAt = result?.ok
-    ? (result.data as PlayerCount).updatedAt
-    : undefined
+  const data = result?.ok ? result.data : undefined
+  const total = data?.total
+  const updatedAt = data?.updatedAt
 
   return {
     total,

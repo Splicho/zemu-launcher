@@ -12,6 +12,88 @@ export default {
       maximize: '最大化',
       restore: '还原',
     },
+    // 参见 `src-tauri/src/errors.rs`：每个错误码一个条目。启动器显示
+    // `.title` / `.description`，原始技术错误链收在“技术详情”中。
+    errors: {
+      actions: {
+        details: '技术详情',
+        copy: '复制详情',
+        copied: '已复制',
+        useAnotherAccount: '使用其他账号',
+        openStore: '在 Steam 上打开 Z1 Battle Royale',
+      },
+      steam_depot_not_owned: {
+        title: '你的 Steam 账号不拥有 H1Z1: King of the Kill',
+        description:
+          '请登录拥有该游戏的账号，或在此账号上添加 Z1 Battle Royale（免费）。如果你确实拥有该游戏，请稍等片刻后重试——Steam 繁忙时也会拒绝 depot 密钥。',
+      },
+      steam_not_signed_in: {
+        title: '请登录 Steam 以下载游戏',
+        description:
+          '启动器还没有保存 Steam 登录信息。请用 Steam 手机应用扫描二维码继续。',
+      },
+      steam_session_expired: {
+        title: 'Steam 登录已过期',
+        description: 'Steam 不再接受保存的登录信息。请退出后重新扫描二维码。',
+      },
+      steam_login_failed: {
+        title: 'Steam 拒绝了登录',
+        description:
+          '请退出后重试。如果持续失败，请检查该账号在 Steam 上的状态以及启动器日志。',
+      },
+      steam_account_missing: {
+        title: '保存的 Steam 账号信息不完整',
+        description:
+          '请退出后重新扫描二维码，以便启动器保存账号名称。',
+      },
+      steam_busy: {
+        title: 'Steam 目前繁忙',
+        description: 'Steam 未及时响应下载请求。请稍等几秒后重试。',
+      },
+      steam_rate_limited: {
+        title: 'Steam 正在限制下载请求频率',
+        description: '短时间内发送了过多请求。请等待一分钟后再试。',
+      },
+      steam_network: {
+        title: '无法连接 Steam',
+        description: '请检查网络连接、VPN 和防火墙，然后重试。',
+      },
+      steam_cdn_auth: {
+        title: 'Steam 下载服务器拒绝了请求',
+        description:
+          'CDN 令牌被拒绝。请重新开始下载；如果仍然出现，请退出后重新登录。',
+      },
+      steam_manifest_unavailable: {
+        title: 'Steam 已不再提供此 H1Z1 版本',
+        description:
+          '固定的 2017 manifest 已不可用。请使用 属性 → 安装指南 中的 Steam depot 手动说明。',
+      },
+      disk_full: {
+        title: '磁盘空间不足',
+        description:
+          '请释放安装盘的空间（H1Z1 约需 20 GB），然后重试。',
+      },
+      disk_permission: {
+        title: '安装文件夹不可写入',
+        description:
+          '请选择 Program Files 之外的文件夹，或修复其权限，然后重试。',
+      },
+      disk_error: {
+        title: '写入游戏文件失败',
+        description:
+          '请检查可用空间和文件夹权限后重试。下面的技术详情会显示具体的文件和错误。',
+      },
+      keychain_error: {
+        title: '无法保存 Steam 登录',
+        description:
+          '系统钥匙串拒绝写入。请解锁钥匙串（或 Windows 凭据管理器）后重新登录。',
+      },
+      unknown: {
+        title: 'Steam 下载失败',
+        description:
+          '意外错误中断了下载。请将下面的技术详情反馈给支持人员。',
+      },
+    },
     bootstrap: {
       status: '正在检查启动器更新',
       detail: '正在查找较新的启动器版本后再打开应用程序。',
@@ -61,11 +143,16 @@ export default {
           '无法自动加载您保存的密钥（{{reason}}）。请在下方粘贴以继续。',
       },
       step2: {
-        title: '选择安装位置',
-        description: '为底包游戏和 ZEmu 补丁选择一个文件夹。我们会保持该目录整洁。',
+        title: '安装位置',
+        description:
+          '游戏和 ZEmu 补丁将存放在此文件夹。如果想用其他磁盘，可以随时更改。',
         choose: '选择文件夹',
-        change: '更改文件夹',
-        pathChosen: '已选择：',
+        change: '更改位置',
+        installDestination: '游戏将安装到',
+        detecting: '正在检测你的主磁盘…',
+        chooseHint: '尚未选择文件夹。',
+        destinationHint: '根据系统所在的磁盘自动检测。',
+        useDefault: '使用推荐位置',
         continue: '继续',
       },
       step3: {
@@ -433,7 +520,7 @@ export default {
       master: '大师',
       royalty: '皇者',
       regionEU: '欧洲',
-      regionNA: '北美（即将推出）',
+      regionNA: '北美',
       regionAsia: '亚洲（即将推出）',
       modeSolo: '单人',
       modeDuo: '双人',
@@ -453,7 +540,6 @@ export default {
       rowsPerPage: '每页',
       empty: '没有玩家符合筛选条件。',
       heroYou: '你',
-      heroFilteredOut: '已筛选',
       expandingLoading: '正在加载比赛…',
       expandingEmpty: '暂无最近比赛。',
       playerTier: '玩家段位',

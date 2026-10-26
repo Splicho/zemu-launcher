@@ -7,9 +7,10 @@
 //! is unreachable, the launch must be refused — we cannot prove the
 //! on-disk bytes are authentic in that state.
 //!
-//! This module is the *pre-launch* counterpart of
-//! `process_integrity::start_integrity_monitor`, which watches loaded
-//! modules *after* the game spawns. Different problem, different module.
+//! This module only covers the *pre-launch* file attestation. The
+//! post-launch loaded-module monitor that used to live alongside it
+//! (`process_integrity`) has been removed — the launcher no longer
+//! enumerates the game's loaded DLLs or reports them to the api.
 
 use crate::debug_log;
 use crate::models::{
