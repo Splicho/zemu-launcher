@@ -12,7 +12,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
 } from '@/components/ui/sidebar'
+import { AccountDropdown } from '@/components/account-dropdown'
 
 const SETTINGS_NAV = [
   { href: '#/settings', labelKey: 'settings.general.title' },
@@ -75,6 +77,8 @@ export function SettingsSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <SidebarSeparator className="my-2" />
+        <AccountDropdown />
       </div>
     </Sidebar>
   )
