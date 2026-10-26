@@ -22,7 +22,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import type { LeaderboardEntry } from '@/lib/leaderboard'
 import { PlayerGames } from '@/components/leaderboard/player-games'
 import { leaderboardColumns } from '@/components/leaderboard/leaderboard-columns'
-import { usePlayerTopMatches } from '@/hooks/use-leaderboard'
 
 const features = tableFeatures({ rowSortingFeature, sortedRowModel: createSortedRowModel() })
 
@@ -52,11 +51,10 @@ export default function LeaderboardTable({
   clanTags = {},
 }: LeaderboardTableProps) {
   const { t } = useTranslation()
+  // Expansion is purely local: every row already carries its own
+  // `topMatches` (both boards embed them), so opening a row never
+  // fetches anything.
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
-  const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null)
-  const topMatchesQuery = usePlayerTopMatches(expandedPlayer)
-  const expandedMatches = topMatchesQuery.data ?? []
-  const isLoadingMatches = topMatchesQuery.isFetching
 
   const [sorting, setSorting] = useState([{ id: 'top10TotalScore', desc: true }])
 
@@ -65,27 +63,9 @@ export default function LeaderboardTable({
     [entries],
   )
 
-  const handleRowClick = useCallback(
-    (rowId: string, playerName: string) => {
-      if (expandedRow === rowId) {
-        setExpandedRow(null)
-        setExpandedPlayer(null)
-        return
-      }
-      setExpandedRow(rowId)
-      setExpandedPlayer(playerName)
-    },
-    [expandedRow],
-  )
-
-  const prefetchMatches = useCallback(
-    (playerName: string) => {
-      if (expandedRow && expandedPlayer !== playerName) return
-      if (expandedPlayer === playerName) return
-      setExpandedPlayer(playerName)
-    },
-    [expandedRow, expandedPlayer],
-  )
+  const handleRowClick = useCallback((rowId: string) => {
+    setExpandedRow(current => (current === rowId ? null : rowId))
+  }, [])
 
   const table = useTable({
     key: 'leaderboard-table',
@@ -94,7 +74,12 @@ export default function LeaderboardTable({
     columns,
     state: { sorting },
     onSortingChange: setSorting,
-    getRowId: (_row, index) => `row-${index}`,
+    getRowId: row => {
+      // Key by player name (unique on both boards) instead of the page
+      // index so an expanded row survives sorting and pagination.
+      const r = row as LeaderboardEntry & { __id?: string }
+      return r.__id ?? `player:${r.name}`
+    },
     meta: { clanTags },
   })
 
@@ -135,8 +120,7 @@ export default function LeaderboardTable({
               return (
                 <Fragment key={row.id}>
                   <TableRow
-                    onClick={() => handleRowClick(row.id, entry.name)}
-                    onMouseEnter={() => prefetchMatches(entry.name)}
+                    onClick={() => handleRowClick(row.id)}
                     className="cursor-pointer hover:bg-foreground/5"
                   >
                     {row.getAllCells().map(cell => (
@@ -151,10 +135,7 @@ export default function LeaderboardTable({
                         colSpan={columns.length}
                         className="border-t border-foreground/10 bg-page px-2 py-4 sm:px-4 sm:py-6"
                       >
-                        <PlayerGames
-                          matches={expandedMatches}
-                          isLoading={isLoadingMatches}
-                        />
+                        <PlayerGames matches={entry.topMatches ?? []} />
                       </TableCell>
                     </TableRow>
                   )}

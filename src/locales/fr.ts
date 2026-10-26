@@ -153,11 +153,17 @@ export default {
           'Impossible de charger votre clé enregistrée automatiquement ({{reason}}). Collez-la ci-dessous pour continuer.',
       },
       step2: {
-        title: 'Choisissez le dossier d’installation',
-        description: 'Sélectionnez un dossier pour le jeu de base et les correctifs ZEmu. Tout restera bien organisé à cet endroit.',
+        title: 'Dossier d’installation',
+        description:
+          'Le jeu et les correctifs ZEmu seront installés dans ce dossier. Changez-le si vous préférez un autre disque.',
         choose: 'Choisir un dossier',
-        change: 'Changer de dossier',
-        pathChosen: 'Choisi :',
+        change: 'Changer d’emplacement',
+        installDestination: 'Le jeu sera installé dans',
+        detecting: 'Détection de votre disque principal…',
+        chooseHint: 'Aucun dossier sélectionné pour l’instant.',
+        destinationHint:
+          'Détecté à partir du disque où votre système est installé.',
+        useDefault: 'Utiliser l’emplacement recommandé',
         continue: 'Continuer',
       },
       step3: {
@@ -507,10 +513,10 @@ export default {
       diamond: "Diamant",
       master: "Maitre",
       royalty: 'Royauté',
-      regionAll: "Toutes les régions",
       regionEU: "UE",
       regionNA: "Amérique du Nord",
       regionAsia: "Asie (Bientôt)",
+      modeAll: 'Tous les modes',
       modeSolo: "Solo",
       modeDuo: "Duo",
       modeFives: "Quintets",

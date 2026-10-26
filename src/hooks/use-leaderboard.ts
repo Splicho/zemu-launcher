@@ -9,7 +9,6 @@ import { useQuery } from '@tanstack/react-query'
 import {
   DEFAULT_LEADERBOARD_SELECTION,
   fetchLeaderboardEntries,
-  fetchPlayerTopMatches,
   fetchClantags,
   type LeaderboardEntry,
   type LeaderboardSelection,
@@ -18,50 +17,31 @@ import {
 /**
  * Full leaderboard entries with background auto-refresh every 60 seconds.
  *
- * The cache is keyed by the region/mode selection so the home-screen
- * `LeaderboardCard` and the dedicated page share a result only when
- * they are showing the same board. `initialEntries` is passed as
- * `initialData` when the caller already has matching rows.
+ * "All modes" is the global season board, so its cache entry does not
+ * depend on the selected region. Keying it separately avoids a
+ * pointless refetch when the user flips EU ↔ NA.
  */
 export function useLeaderboardEntries(
   initialEntries?: LeaderboardEntry[],
   selection: LeaderboardSelection = DEFAULT_LEADERBOARD_SELECTION,
 ) {
+  const season = selection.teamMode === 'all'
   return useQuery({
-    queryKey: ['leaderboard', 'entries', selection.region, selection.teamMode],
+    queryKey: [
+      'leaderboard',
+      'entries',
+      season ? 'season' : selection.region,
+      selection.teamMode,
+    ],
     queryFn: () => fetchLeaderboardEntries(selection),
-    initialData: initialEntries,
+    // The preloaded entries are the season board, so they can seed
+    // every "All modes" selection. A mode-specific view starts empty
+    // instead of painting season rows under a Solo/Duo/Fives label.
+    initialData: season ? initialEntries : undefined,
     staleTime: 20_000,
     gcTime: 60_000,
     retry: 1,
     networkMode: 'offlineFirst',
-  })
-}
-
-/**
- * Per-player top-matches query.
- *
- * Auto-fires whenever `playerName` is non-null, so consumers just
- * set the player name and the matches load. We avoid `refetch()` in
- * click handlers because the closure would still be holding the
- * previous render's query observer (keyed on the prior player name,
- * often `null`) — calling `refetch()` on that stale observer would
- * fetch the wrong player or no-op. Letting TanStack auto-fetch on
- * key change sidesteps the closure issue entirely.
- *
- * The cache is keyed on the player name so expanding Player A then
- * Player B leaves A's matches cached for 60s.
- */
-export function usePlayerTopMatches(playerName: string | null) {
-  return useQuery({
-    queryKey: ['player', 'topMatches', playerName],
-    queryFn: () => {
-      if (!playerName) return Promise.resolve([])
-      return fetchPlayerTopMatches(playerName)
-    },
-    enabled: !!playerName,
-    staleTime: 60_000,
-    retry: 1,
   })
 }
 

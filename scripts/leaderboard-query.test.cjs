@@ -21,7 +21,7 @@ function setup(fetchLeaderboardEntries) {
       if (name === '@/lib/leaderboard') {
         return {
           fetchLeaderboardEntries,
-          DEFAULT_LEADERBOARD_SELECTION: { region: 'all', teamMode: 'Solo' },
+          DEFAULT_LEADERBOARD_SELECTION: { region: 'EU', teamMode: 'all' },
         }
       }
       throw new Error(`Unexpected import: ${name}`)

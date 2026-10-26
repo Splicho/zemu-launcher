@@ -44,6 +44,9 @@ use windows_sys::Win32::System::Threading::{
 const GAME_PROCESS_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const GAME_LAUNCH_STATE_EVENT: &str = "game-launch-state";
 const DEFAULT_GAME_EXECUTABLE: &str = "H1Z1.exe";
+/// Folder name the onboarding wizard proposes when the user has never
+/// picked an install location. See [`default_install_directory`].
+const DEFAULT_INSTALL_FOLDER_NAME: &str = "ZEmu";
 
 pub fn get_game_directory(app: &AppHandle) -> Result<Option<String>> {
     let config = load_launcher_config(app)?;
@@ -174,11 +177,97 @@ pub fn set_game_executable(app: &AppHandle, executable: String) -> Result<()> {
     Ok(())
 }
 
+/// Folder the launcher proposes when the user has never picked an
+/// install location.
+///
+/// Windows: `<system drive>\ZEmu`, where the system drive is the volume
+/// Windows itself booted from (`%SystemDrive%` — `C:` on almost every
+/// machine, but `D:` / `E:` when the OS lives there). That keeps the
+/// install on the drive the user's OS already owns instead of dropping
+/// it into a per-user `Documents` path that is easy to lose track of.
+///
+/// Linux/macOS (the Wine/Proton builds): `$HOME/ZEmu`, because those
+/// platforms have no drive letters to detect.
+///
+/// The path is a suggestion only — it is not created here, and the
+/// wizard lets the user change it before anything is downloaded.
+pub fn default_install_directory() -> PathBuf {
+    recommended_install_root().join(DEFAULT_INSTALL_FOLDER_NAME)
+}
+
+#[cfg(target_os = "windows")]
+fn recommended_install_root() -> PathBuf {
+    // `SystemDrive` is set by the Windows loader and is exactly the
+    // volume the running OS is installed on. `SystemRoot`
+    // (`C:\Windows`) is the fallback for environments that scrub the
+    // shorter variable.
+    std::env::var("SystemDrive")
+        .ok()
+        .and_then(|drive| windows_drive_root(&drive))
+        .or_else(|| {
+            std::env::var("SystemRoot")
+                .ok()
+                .and_then(|root| windows_drive_root(&root))
+        })
+        .unwrap_or_else(|| PathBuf::from("C:\\"))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn recommended_install_root() -> PathBuf {
+    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Normalise a Windows drive reference to the volume root.
+///
+/// Accepts the forms the OS itself produces — `C:`, `C:\`, `C:/` and any
+/// path underneath the volume (`C:\Windows`) — and returns `None` for
+/// anything that does not start with a drive letter, including
+/// drive-relative forms like `C:Games` (which Windows resolves against
+/// that drive's per-process working directory, not its root).
+#[cfg(target_os = "windows")]
+fn windows_drive_root(raw: &str) -> Option<PathBuf> {
+    let trimmed = raw.trim();
+    let mut chars = trimmed.chars();
+    let letter = chars.next()?;
+    if !letter.is_ascii_alphabetic() {
+        return None;
+    }
+    // Drive specs are exactly `<letter>:`, optionally followed by a
+    // separator and a path. The remainder starts at the colon.
+    let after_colon = chars.as_str().strip_prefix(':')?;
+    let anchored =
+        after_colon.is_empty() || after_colon.starts_with('\\') || after_colon.starts_with('/');
+    if !anchored {
+        return None;
+    }
+    Some(PathBuf::from(format!("{}:\\", letter.to_ascii_uppercase())))
+}
+
 pub fn select_game_directory(app: &AppHandle) -> Result<Option<String>> {
-    let default_dir = dirs::document_dir().unwrap_or_else(|| PathBuf::from("C:\\"));
+    // Start the picker where the install actually lives: the configured
+    // folder when it still exists, otherwise the recommended folder,
+    // otherwise that folder's parent (the drive root). Opening at
+    // `Documents` every time — the old behaviour — made the wizard's
+    // "change location" button look like it ignored the path it had
+    // just proposed.
+    let start_dir = get_game_directory(app)
+        .ok()
+        .flatten()
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+        .or_else(|| {
+            let recommended = default_install_directory();
+            if recommended.is_dir() {
+                Some(recommended)
+            } else {
+                recommended.parent().map(Path::to_path_buf)
+            }
+        })
+        .unwrap_or_else(|| dirs::document_dir().unwrap_or_else(|| PathBuf::from("C:\\")));
+
     let picked = rfd::FileDialog::new()
         .set_title("Select Game Installation Directory")
-        .set_directory(default_dir)
+        .set_directory(start_dir)
         .pick_folder();
 
     if let Some(path) = picked {
@@ -915,4 +1004,57 @@ pub(crate) fn snapshot_processes() -> HashMap<u32, (u32, String)> {
 pub(crate) fn wide_null_trim(raw: &[u16]) -> String {
     let len = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
     String::from_utf16_lossy(&raw[..len])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_install_directory_is_the_recommended_folder() {
+        let dir = default_install_directory();
+        assert_eq!(
+            dir.file_name().and_then(|name| name.to_str()),
+            Some(DEFAULT_INSTALL_FOLDER_NAME),
+            "unexpected default install folder: {}",
+            dir.display()
+        );
+        // Must be anchored (drive root on Windows, home on Unix) so the
+        // wizard never shows a bare relative path like `ZEmu`.
+        assert!(
+            dir.parent()
+                .is_some_and(|parent| parent.as_os_str().len() > 0),
+            "expected a rooted default install folder, got {}",
+            dir.display()
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_drive_root_normalises_drive_forms() {
+        assert_eq!(windows_drive_root("C:"), Some(PathBuf::from("C:\\")));
+        assert_eq!(windows_drive_root("c:\\"), Some(PathBuf::from("C:\\")));
+        assert_eq!(windows_drive_root(" D:/ "), Some(PathBuf::from("D:\\")));
+        assert_eq!(
+            windows_drive_root("E:\\Windows"),
+            Some(PathBuf::from("E:\\"))
+        );
+        // Anything that is not anchored at a volume root is rejected.
+        assert_eq!(windows_drive_root("C:Games"), None);
+        assert_eq!(windows_drive_root(r"\\server\share"), None);
+        assert_eq!(windows_drive_root(""), None);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn default_install_directory_lands_on_the_system_drive() {
+        // `SystemDrive` is what the resolver prefers, so the default must
+        // sit directly under that volume root (e.g. `C:\ZEmu`).
+        if let Some(expected_root) = std::env::var("SystemDrive")
+            .ok()
+            .and_then(|drive| windows_drive_root(&drive))
+        {
+            assert_eq!(default_install_directory(), expected_root.join("ZEmu"));
+        }
+    }
 }

@@ -195,6 +195,18 @@ pub fn game_select_directory(app: tauri::AppHandle) -> Result<Option<String>, St
     game::select_game_directory(&app).map_err(|e| e.to_string())
 }
 
+/// Folder the onboarding wizard pre-selects when the user has not
+/// chosen an install location yet. On Windows this is the drive the OS
+/// is installed on plus `\ZEmu` (e.g. `C:\ZEmu`, or `D:\ZEmu` when
+/// Windows lives on `D:`); on the Wine/Proton builds it is
+/// `$HOME/ZEmu`. See [`game::default_install_directory`].
+#[tauri::command]
+pub fn game_get_default_install_directory() -> Result<String, String> {
+    Ok(game::default_install_directory()
+        .to_string_lossy()
+        .to_string())
+}
+
 #[tauri::command]
 pub fn game_is_installed(app: tauri::AppHandle) -> Result<bool, String> {
     game::is_game_installed(&app).map_err(|e| e.to_string())
@@ -1057,6 +1069,7 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         launcher_get_app_data_dir,
         launcher_open_app_data_dir,
         game_select_directory,
+        game_get_default_install_directory,
         game_is_installed,
         game_get_local_version,
         game_check_update,

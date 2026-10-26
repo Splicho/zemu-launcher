@@ -246,6 +246,8 @@ function setupCompatibilityBridge() {
     getDirectory: () => invoke<string | null>('game_get_directory'),
     setDirectory: (path: string) => invoke<boolean>('game_set_directory', { directory: path }),
     selectDirectory: () => invoke<string | null>('game_select_directory'),
+    getDefaultInstallDirectory: () =>
+      invoke<string>('game_get_default_install_directory'),
     clearDirectory: () => invoke<boolean>('game_clear_directory'),
     getFolderSize: (directory: string) =>
       invoke<number>('game_get_folder_size', { directory }),
@@ -623,6 +625,14 @@ declare global {
       getDirectory: () => Promise<string | null>
       setDirectory: (path: string) => Promise<boolean>
       selectDirectory: () => Promise<string | null>
+      /**
+       * Folder the onboarding wizard pre-selects when no install
+       * directory is configured yet: the volume the OS is installed on
+       * plus `\ZEmu` (`C:\ZEmu` on a default Windows machine,
+       * `$HOME/ZEmu` on the Wine/Proton builds). Never creates the
+       * folder — the depot download does that.
+       */
+      getDefaultInstallDirectory: () => Promise<string>
       clearDirectory: () => Promise<boolean>
       /**
        * Total byte size of every regular file in `directory`,

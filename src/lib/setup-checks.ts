@@ -38,6 +38,23 @@ export interface SetupChecks {
 }
 
 /**
+ * What lives at the root of a given folder.
+ *
+ * Exported separately from `getSetupChecks` because the wizard needs to
+ * ask the same question about a folder the user has *not* saved yet —
+ * most importantly the auto-selected default (`C:\ZEmu`), which may
+ * already hold an install left behind by a previous launcher install.
+ * Answering that up front lets Step 2 skip the 15 GB depot step rather
+ * than re-download over files that are already on disk.
+ */
+export interface BaseGamePresence {
+  /** `H1Z1.exe` at the folder root, with or without the Zemu marker. */
+  hasBaseGame: boolean
+  /** Strictly the Zemu marker — a Zemu-managed install. */
+  hasMarker: boolean
+}
+
+/**
  * Read each input from the Rust side in parallel. The bridge methods
  * are best-effort: a missing API (e.g. in non-Tauri dev) yields
  * `null`/`undefined`, which we coerce to `false`. The wizard treats
@@ -56,21 +73,10 @@ export async function getSetupChecks(): Promise<SetupChecks> {
   let hasBaseGame = false
   let hasMarker = false
 
-  if (hasFolder) {
-    const installed = await safeDetectBaseGameInstalled(directory)
-    if (installed) {
-      hasBaseGame = true
-      // The Rust `detect_base_game_installed` returns true only if both
-      // the marker AND `H1Z1.exe` exist; we use it as `hasMarker=true`
-      // for UI copy (existing Zemu install). The exe-only path doesn't
-      // set `hasMarker` so the wizard can still show the manual path.
-      hasMarker = true
-    } else {
-      // No marker → check whether `H1Z1.exe` is at the folder root
-      // (user dropped in a manually-downloaded depot).
-      const hasExe = await safeFileExists(directory, 'H1Z1.exe')
-      if (hasExe) hasBaseGame = true
-    }
+  if (hasFolder && directory) {
+    const presence = await detectBaseGameIn(directory)
+    hasBaseGame = presence.hasBaseGame
+    hasMarker = presence.hasMarker
   }
 
   return {
@@ -80,6 +86,35 @@ export async function getSetupChecks(): Promise<SetupChecks> {
     hasMarker,
     folderPath: hasFolder ? directory : null,
   }
+}
+
+/**
+ * Detect the base game inside an arbitrary folder.
+ *
+ *   - `(b)` `H1Z1.exe` at the folder root → the user dropped a depot in
+ *     by hand, so the game is there but there is no Zemu marker.
+ *   - `(a)` `.zemu-install-v1` next to `H1Z1.exe` → a Zemu-managed
+ *     install that already completed on this machine.
+ *
+ * Empty/blank paths and IPC failures resolve to "nothing there" — the
+ * caller then keeps the user on the download step, which is the safe
+ * direction (a false negative re-checks a folder, a false positive
+ * would skip a download that never happened).
+ */
+export async function detectBaseGameIn(
+  directory: string,
+): Promise<BaseGamePresence> {
+  if (!directory || directory.trim() === '') {
+    return { hasBaseGame: false, hasMarker: false }
+  }
+
+  const markerAndExe = await safeDetectBaseGameInstalled(directory)
+  if (markerAndExe) {
+    return { hasBaseGame: true, hasMarker: true }
+  }
+
+  const hasExe = await safeFileExists(directory, 'H1Z1.exe')
+  return { hasBaseGame: hasExe, hasMarker: false }
 }
 
 async function safeGetAuthKey(): Promise<string | null> {

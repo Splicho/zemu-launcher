@@ -4,7 +4,6 @@ import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { usePlayerTopMatches } from '@/hooks/use-leaderboard'
 import type { LeaderboardEntry } from '@/lib/leaderboard'
 import { RankBadge } from '@/components/leaderboard/rank-badge'
 import { CountryFlagThumb } from '@/components/leaderboard/country-flag-thumb'
@@ -35,20 +34,10 @@ export function HeroRow({
 }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null)
-  const topMatchesQuery = usePlayerTopMatches(expandedPlayer)
-  const expandedMatches = topMatchesQuery.data ?? []
-  const isLoadingMatches = topMatchesQuery.isFetching
 
   const handleToggle = useCallback(() => {
-    if (expanded) {
-      setExpanded(false)
-      setExpandedPlayer(null)
-      return
-    }
-    setExpanded(true)
-    setExpandedPlayer(entry.name)
-  }, [expanded, entry.name])
+    setExpanded(current => !current)
+  }, [])
 
   const clan = clanTags[entry.name.toLowerCase()] ?? null
 
@@ -129,7 +118,7 @@ export function HeroRow({
 
       {expanded && (
         <div className="border-t border-amber-500/30 bg-page px-2 py-4 sm:px-4 sm:py-6">
-          <PlayerGames matches={expandedMatches} isLoading={isLoadingMatches} />
+          <PlayerGames matches={entry.topMatches ?? []} />
         </div>
       )}
     </div>

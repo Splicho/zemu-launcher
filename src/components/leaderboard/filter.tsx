@@ -128,7 +128,9 @@ export default function Filter({
         </SelectContent>
       </Select>
 
-      {/* Region Select */}
+      {/* Region Select — EU is the default. There is no global-region
+          option: the season board is global, so the region only scopes
+          the Solo/Duo/Fives recent-match views. */}
       <Select
         value={region}
         onValueChange={v => {
@@ -140,7 +142,6 @@ export default function Filter({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">{t('leaderboard.regionAll')}</SelectItem>
           <SelectItem value="EU">{t('leaderboard.regionEU')}</SelectItem>
           <SelectItem value="NA">{t('leaderboard.regionNA')}</SelectItem>
           <SelectItem value="ASIA" disabled>
@@ -149,7 +150,7 @@ export default function Filter({
         </SelectContent>
       </Select>
 
-      {/* Team Mode */}
+      {/* Team Mode — "All modes" is the global season board. */}
       <Select
         value={teamMode}
         onValueChange={v => {
@@ -161,6 +162,7 @@ export default function Filter({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
+          <SelectItem value="all">{t('leaderboard.modeAll')}</SelectItem>
           <SelectItem value="Solo">{t('leaderboard.modeSolo')}</SelectItem>
           <SelectItem value="Duo">{t('leaderboard.modeDuo')}</SelectItem>
           <SelectItem value="Fives">{t('leaderboard.modeFives')}</SelectItem>

@@ -8,6 +8,7 @@ import {
   Download,
   ExternalLink,
   Folder,
+  HardDrive,
   LogOut,
   RotateCw,
   X,
@@ -30,8 +31,8 @@ import {
 } from '@/lib/app-errors'
 import { fetchMyAuthKey } from '@/lib/auth'
 import { markOnboardingCompleted } from '@/lib/onboarding'
-import type { SetupChecks } from '@/lib/setup-checks'
-import { getSetupChecks } from '@/lib/setup-checks'
+import type { BaseGamePresence, SetupChecks } from '@/lib/setup-checks'
+import { detectBaseGameIn, getSetupChecks } from '@/lib/setup-checks'
 import type { DepotProgress } from '@/lib/tauri-bridge'
 import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
@@ -176,6 +177,48 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerT
 
   const { refreshFromDisk } = useGameStateContext()
 
+  /**
+   * Adopt an install folder chosen in Step 2.
+   *
+   * Two callers reach this: the OS folder picker (which already
+   * persisted the path through `game_select_directory`) and the
+   * wizard's own default proposal (`C:\ZEmu`, see `InstallFolderStep`),
+   * which has to be written through `game_set_directory` before it
+   * counts. Routing both through one callback keeps the meaning of
+   * "folder" consistent — the play-page store, the on-disk config and
+   * the wizard's local state learn about the change together — and
+   * clears the stale "existing install detected" flags, which described
+   * the *previous* folder.
+   *
+   * Memoised so `InstallFolderStep`'s mount effect (which reads the
+   * recommended path exactly once) doesn't re-run on every parent
+   * render.
+   */
+  const adoptInstallFolder = useCallback(
+    async (path: string) => {
+      // Persist before touching state: `setFolder` below kicks a
+      // `refreshFromDisk`, and a state-only change would be overwritten
+      // by that read of a config that still has no directory.
+      try {
+        await window.gameAPI?.setDirectory?.(path)
+      } catch (err) {
+        // Best-effort. The wizard can still download into `path` for
+        // this session, and the next visit simply proposes the default
+        // again. Log the real reason — a config write failure is
+        // otherwise invisible in bug reports.
+        void window.debugLog?.write(
+          'onboarding',
+          `step2 persist folder failed: ${describeError(err)}`,
+        )
+      }
+      setFolder(path)
+      setHasMarker(false)
+      setHasBaseGame(false)
+      void refreshFromDisk()
+    },
+    [refreshFromDisk],
+  )
+
   // Re-derive the "did the base game actually land on disk" answers
   // from the real filesystem whenever we reach the Finish step.
   //
@@ -309,22 +352,31 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerT
                 >
                   <InstallFolderStep
                     folder={folder}
-                    setFolder={(f) => {
-                      setFolder(f)
-                      setHasMarker(false)
-                      setHasBaseGame(false)
-                      // `selectDirectory` already persists the
-                      // path on the Rust side, so push the
-                      // updated directory + (potentially new)
-                      // installed flag into the play-page store
-                      // now. Without this the store's
-                      // mount-time `getDirectory()` cache stays
-                      // pinned at the empty default until the
-                      // wizard finishes.
-                      void refreshFromDisk()
-                    }}
+                    // Only auto-adopt the recommendation when the
+                    // launcher has never had an install folder. A
+                    // user who already configured one — including the
+                    // rare drift case where `hasFolder` is true but the
+                    // stored path read back empty — keeps their folder
+                    // until they explicitly pick another.
+                    autoAdopt={!initialChecks.hasFolder}
+                    onFolderChange={adoptInstallFolder}
                     onBack={back}
-                    onContinue={advance}
+                    onContinue={(presence) => {
+                      // A folder that already holds the game — typically
+                      // the auto-selected `C:\ZEmu` left behind by an
+                      // earlier launcher install, but also a manually
+                      // dropped depot — means there is nothing to
+                      // download. Jump to the Finish checklist instead
+                      // of showing a 15 GB download screen over files
+                      // that are already on disk.
+                      if (presence.hasBaseGame) {
+                        setHasBaseGame(true)
+                        setHasMarker(presence.hasMarker)
+                        setStep(4)
+                        return
+                      }
+                      advance()
+                    }}
                     t={t}
                   />
                 </motion.div>
@@ -701,15 +753,101 @@ function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerTok
 
 interface InstallFolderStepProps {
   folder: string | null
-  setFolder: (path: string | null) => void
+  /**
+   * Whether the resolved recommendation may be adopted without the user
+   * clicking anything. True on a first run (no folder configured yet);
+   * false for a returning user whose stored folder is already set —
+   * their choice must not be replaced by the default.
+   */
+  autoAdopt: boolean
+  /**
+   * Persist + adopt the install folder. Resolves once the Rust-side
+   * config has been written (or the write failed and was logged), so
+   * the step can keep its button in a busy state for the round-trip.
+   */
+  onFolderChange: (path: string) => Promise<void>
   onBack: () => void
-  onContinue: () => void
+  /** Called after the folder has been inspected; `presence` tells the
+   *  parent whether Step 3 (download) can be skipped. */
+  onContinue: (presence: BaseGamePresence) => void
   t: (key: string, params?: Record<string, unknown>) => string
 }
 
-function InstallFolderStep({ folder, setFolder, onBack, onContinue, t }: InstallFolderStepProps) {
+/**
+ * Step 2 — where the game goes.
+ *
+ * The wizard no longer opens with an empty "Choose folder" button and a
+ * disabled Continue. On mount it asks the Rust side for the folder the
+ * launcher recommends on this machine (`game_get_default_install_directory`
+ * → the OS volume plus `\ZEmu`, so `C:\ZEmu` on a normal Windows box and
+ * `D:\ZEmu` when Windows lives on `D:`), shows it as a plain sentence —
+ * "The game will be installed on / C:\ZEmu" — and adopts it immediately
+ * so Continue works without any input from the user. "Change location"
+ * still opens the OS picker for anyone who wants another drive.
+ *
+ * Adopting the recommendation is only safe because Continue probes the
+ * folder first: if `C:\ZEmu` already holds a previous install, the
+ * parent jumps straight to the Finish checklist instead of re-offering
+ * a 15 GB download.
+ */
+function InstallFolderStep({
+  folder,
+  autoAdopt,
+  onFolderChange,
+  onBack,
+  onContinue,
+  t,
+}: InstallFolderStepProps) {
   const [isPicking, setIsPicking] = useState(false)
+  const [isChecking, setIsChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** The launcher's suggestion for this machine; `null` until read or
+   *  when the IPC call failed (plain-Vite dev). */
+  const [recommended, setRecommended] = useState<string | null>(null)
+  /** False once the suggestion has been read (or has failed to load).
+   *  Drives the "detecting…" placeholder so the card never sits empty. */
+  const [isResolving, setIsResolving] = useState(true)
+
+  // Persist + adopt, shared by the picker, the "use recommended" link
+  // and the mount-time default. Callers that show a busy state simply
+  // await it; the mount effect awaits it only so a failure is caught.
+  const adopt = useCallback(
+    async (path: string) => {
+      if (!path) return
+      await onFolderChange(path)
+    },
+    [onFolderChange],
+  )
+
+  // Resolve the recommended folder once. A folder that is already
+  // configured (the user navigated Back into this step) wins — the
+  // suggestion is only offered as a link in that case.
+  useEffect(() => {
+    if (recommended) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const value = await window.gameAPI?.getDefaultInstallDirectory?.()
+        if (cancelled) return
+        const path = typeof value === 'string' ? value.trim() : ''
+        if (!path) return
+        setRecommended(path)
+        if (autoAdopt && !folder) await adopt(path)
+      } catch (err) {
+        // Missing bridge (dev) or a resolver failure: fall back to the
+        // plain "choose a folder" flow rather than blocking the step.
+        void window.debugLog?.write(
+          'onboarding',
+          `step2 default folder failed: ${describeError(err)}`,
+        )
+      } finally {
+        if (!cancelled) setIsResolving(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [recommended, folder, autoAdopt, adopt])
 
   const handlePick = async () => {
     if (isPicking) return
@@ -718,7 +856,7 @@ function InstallFolderStep({ folder, setFolder, onBack, onContinue, t }: Install
     try {
       const picked = await window.gameAPI?.selectDirectory?.()
       if (typeof picked === 'string' && picked.length > 0) {
-        setFolder(picked)
+        await adopt(picked)
       }
     } catch {
       setError(t('toasts.failedToSelectDirectory'))
@@ -727,23 +865,86 @@ function InstallFolderStep({ folder, setFolder, onBack, onContinue, t }: Install
     }
   }
 
+  const handleUseRecommended = async () => {
+    if (!recommended) return
+    setError(null)
+    await adopt(recommended)
+  }
+
+  const handleContinue = async () => {
+    if (!folder || folder === '__existing__' || isChecking) return
+    setIsChecking(true)
+    setError(null)
+    try {
+      const presence = await detectBaseGameIn(folder)
+      onContinue(presence)
+    } finally {
+      setIsChecking(false)
+    }
+  }
+
+  const shownPath = folder && folder !== '__existing__' ? folder : null
+  const isRecommended = !!shownPath && !!recommended && samePath(shownPath, recommended)
+
   return (
     <div>
       <div className="space-y-4">
-        <Button
-          variant="outline"
-          onClick={() => void handlePick()}
-          disabled={isPicking}
-          className="w-full h-12 text-base gap-2.5"
-        >
-          {isPicking ? <Spinner className="size-5" /> : <Folder className="size-5" />}
-          {folder ? t('onboarding.step2.change') : t('onboarding.step2.choose')}
-        </Button>
-        {folder && folder !== '__existing__' ? (
-          <p className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground break-all font-mono">
-            {t('onboarding.step2.pathChosen')} {folder}
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('onboarding.step2.installDestination')}
           </p>
-        ) : null}
+          <div
+            className="mt-2 flex items-start gap-2.5"
+            // The path arrives a tick after the step paints; announce
+            // the resolved location instead of silently swapping text.
+            aria-live="polite"
+          >
+            <HardDrive
+              className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
+            {shownPath ? (
+              <span className="min-w-0 break-all font-mono text-base leading-6 text-foreground">
+                {shownPath}
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                {isResolving
+                  ? t('onboarding.step2.detecting')
+                  : t('onboarding.step2.chooseHint')}
+              </span>
+            )}
+          </div>
+          {isRecommended ? (
+            <p className="mt-2 pl-[26px] text-xs text-muted-foreground">
+              {t('onboarding.step2.destinationHint')}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void handlePick()}
+            disabled={isPicking || isChecking}
+            className="w-full h-12 text-base gap-2.5"
+          >
+            {isPicking ? <Spinner className="size-5" /> : <Folder className="size-5" />}
+            {shownPath ? t('onboarding.step2.change') : t('onboarding.step2.choose')}
+          </Button>
+          {recommended && shownPath && !isRecommended ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleUseRecommended()}
+              disabled={isPicking || isChecking}
+              className="self-center text-xs"
+            >
+              {t('onboarding.step2.useDefault')}
+            </Button>
+          ) : null}
+        </div>
+
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -752,19 +953,38 @@ function InstallFolderStep({ folder, setFolder, onBack, onContinue, t }: Install
       </div>
 
       <div className="mt-6 flex justify-between">
-        <Button variant="ghost" onClick={onBack}>
+        <Button
+          variant="ghost"
+          onClick={onBack}
+          disabled={isPicking || isChecking}
+        >
           {t('common.back')}
         </Button>
         <Button
           variant="gradient"
-          onClick={onContinue}
-          disabled={!folder || folder === '__existing__'}
+          onClick={() => void handleContinue()}
+          disabled={!shownPath || isPicking || isChecking}
         >
+          {isChecking ? <Spinner className="size-4" /> : null}
           {t('onboarding.step2.continue')}
         </Button>
       </div>
     </div>
   )
+}
+
+/**
+ * Compare two user-facing folder paths for equality.
+ *
+ * Windows paths are case-insensitive and `C:\ZEmu` and `C:\ZEmu\` name
+ * the same folder, so the "is this the recommended location?" check
+ * has to normalise both before comparing — otherwise picking the
+ * recommendation through the picker would light up "Use recommended
+ * location" as if the user had moved somewhere else.
+ */
+function samePath(a: string, b: string): boolean {
+  const normalise = (value: string) => value.replace(/[\\/]+$/, '').toLowerCase()
+  return normalise(a) === normalise(b)
 }
 
 interface BaseGameStepProps {

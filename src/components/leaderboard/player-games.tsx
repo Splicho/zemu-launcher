@@ -1,5 +1,4 @@
 import { useTranslation } from 'react-i18next'
-import { Spinner } from '@/components/ui/spinner'
 import type { MatchData } from '@/lib/leaderboard'
 
 function formatNumber(value?: number): string {
@@ -47,25 +46,8 @@ function MatchColumn({ match }: { match: MatchData }) {
   )
 }
 
-export function PlayerGames({
-  matches,
-  isLoading,
-}: {
-  matches: MatchData[]
-  isLoading?: boolean
-}) {
+export function PlayerGames({ matches }: { matches: MatchData[] }) {
   const { t } = useTranslation()
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-6">
-        <Spinner className="size-5" aria-hidden />
-        <span className="text-sm text-muted-foreground">
-          {t('leaderboardPage.expandingLoading')}
-        </span>
-      </div>
-    )
-  }
 
   if (!matches.length) {
     return (

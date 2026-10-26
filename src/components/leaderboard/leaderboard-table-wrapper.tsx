@@ -39,7 +39,7 @@ export default function LeaderboardTableWrapper() {
   const [filters, setFilters] = useState<LeaderboardFilters>(DEFAULT_FILTERS)
   const [page, setPage] = useState(1)
 
-  const { data: entries = [], isLoading } = useLeaderboardEntries(undefined, {
+  const { data: entries = [], isLoading, isError } = useLeaderboardEntries(undefined, {
     region: filters.region,
     teamMode: filters.teamMode,
   })
@@ -74,25 +74,31 @@ export default function LeaderboardTableWrapper() {
   }, [entries, filters])
 
   // Check whether the hero row would be filtered out so we can
-  // dim it on the standalone hero strip. The main table is
-  // unaffected — it only renders `visibleEntries` (which already
-  // excludes the user's entry when their filter combination hides
-  // them).
+  // dim it on the standalone hero strip.
   const heroFilteredOut = useMemo(() => {
     if (!heroEntry) return false
     return !filtered.includes(heroEntry)
   }, [filtered, heroEntry])
 
+  // The hero row is rendered separately above the table. Drop it from
+  // the regular entry list so the signed-in player doesn't appear twice
+  // (once pinned, once at their natural position). Pagination math uses
+  // the post-hero list so the page count/labels match the rows shown.
+  const entriesWithoutHero = useMemo(() => {
+    if (!heroEntry) return filtered
+    return filtered.filter(entry => entry.name !== heroEntry.name)
+  }, [filtered, heroEntry])
+
   // Page math.
   const pageSize = filters.pageSize
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const totalPages = Math.max(1, Math.ceil(entriesWithoutHero.length / pageSize))
   const currentPage = Math.min(page, totalPages || 1)
 
   const visibleEntries = useMemo(() => {
     const start = (currentPage - 1) * pageSize
     const end = start + pageSize
-    return filtered.slice(start, end)
-  }, [filtered, currentPage, pageSize])
+    return entriesWithoutHero.slice(start, end)
+  }, [entriesWithoutHero, currentPage, pageSize])
 
   const uniqueCountries = useMemo(() => getUniqueCountries(entries), [entries])
   const clanTagRecord = useMemo(() => {
@@ -114,6 +120,13 @@ export default function LeaderboardTableWrapper() {
         onFilterChange={handleFilterChange}
         availableCountries={uniqueCountries}
       />
+
+      {isError ? (
+        <p className="text-sm text-destructive" role="alert">
+          Could not load this leaderboard. Try another region/mode or reload
+          the page.
+        </p>
+      ) : null}
 
       {heroEntry && (
         <HeroRow

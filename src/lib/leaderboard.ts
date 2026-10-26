@@ -81,14 +81,15 @@ export interface LeaderboardSelection {
 }
 
 /**
- * The season upstream ignores region/mode, so `all`/`all` is the only
- * combination that uses `/leaderboards`. Every other combination goes
- * to the api's aggregated match-stats route. Mirroring the website,
- * the launcher defaults to All regions / Solo.
+ * The season upstream is global — it ignores region and mode. "All
+ * modes" therefore always maps to the season board for either region;
+ * the region only scopes the mode-specific recent-match boards.
+ *
+ * The page opens on EU / All modes.
  */
 export const DEFAULT_LEADERBOARD_SELECTION: LeaderboardSelection = {
-  region: 'all',
-  teamMode: 'Solo',
+  region: 'EU',
+  teamMode: 'all',
 }
 
 const REGION_PARAM: Record<string, string> = { EU: 'eu', NA: 'na' }
@@ -99,18 +100,19 @@ const MODE_PARAM: Record<string, string> = {
 }
 
 export function leaderboardPath(selection: LeaderboardSelection): string {
-  if (selection.region === 'all' && selection.teamMode === 'all') {
+  const region = REGION_PARAM[selection.region]
+  const mode = MODE_PARAM[selection.teamMode]
+
+  // The season board has no region or mode split, so every "All modes"
+  // selection shows it. This is the default view.
+  if (!mode) {
     return '/leaderboards'
   }
 
   const params = new URLSearchParams()
-  const region = REGION_PARAM[selection.region]
-  const mode = MODE_PARAM[selection.teamMode]
   if (region) params.set('region', region)
-  if (mode) params.set('mode', mode)
-
-  const query = params.toString()
-  return `/leaderboards/matches${query ? `?${query}` : ''}`
+  params.set('mode', mode)
+  return `/leaderboards/matches?${params.toString()}`
 }
 
 // ─── URL resolution ───────────────────────────────────────────────────────
@@ -225,17 +227,6 @@ export async function fetchLeaderboardEntries(
     entry.position = index + 1
   })
   return ranked
-}
-
-/** Fetch a single player's top-10 match history. */
-export async function fetchPlayerTopMatches(name: string): Promise<MatchData[]> {
-  const response = await httpFetch(
-    `${STATS_API_BASE}/player/${encodeURIComponent(name)}`,
-    { headers: { Accept: 'application/json' } },
-  )
-  if (!response.ok) throw new Error(`Player matches failed (HTTP ${response.status})`)
-  const data = await response.json()
-  return (data.topMatches ?? []) as MatchData[]
 }
 
 // ─── Clantag lookups ──────────────────────────────────────────────────────

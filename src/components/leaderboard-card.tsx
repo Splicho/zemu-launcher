@@ -93,10 +93,10 @@ export function LeaderboardCard() {
   const [region, setRegion] = useState(DEFAULT_LEADERBOARD_SELECTION.region)
   const [teamMode, setTeamMode] = useState(DEFAULT_LEADERBOARD_SELECTION.teamMode)
 
-  // Share the `['leaderboard', 'entries', region, mode]` cache with the
-  // dedicated leaderboard page. When both are on the same selection,
-  // navigating straight from this card into the full table renders the
-  // rows instantly without a second fetch + skeleton flash.
+  // Share the `['leaderboard', 'entries', season|region, mode]` cache
+  // with the dedicated leaderboard page. When both are on the same
+  // selection, navigating straight from this card into the full table
+  // renders the rows instantly without a second fetch + skeleton flash.
   const { data: entries, error } = useLeaderboardEntries(undefined, {
     region,
     teamMode,
@@ -147,7 +147,6 @@ export function LeaderboardCard() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">{t('leaderboard.regionAll')}</SelectItem>
               <SelectItem value="EU">{t('leaderboard.regionEU')}</SelectItem>
               <SelectItem value="NA">{t('leaderboard.regionNA')}</SelectItem>
               <SelectItem value="ASIA" disabled>{t('leaderboard.regionAsia')}</SelectItem>
@@ -159,6 +158,7 @@ export function LeaderboardCard() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">{t('leaderboard.modeAll')}</SelectItem>
               <SelectItem value="Solo">{t('leaderboard.modeSolo')}</SelectItem>
               <SelectItem value="Duo">{t('leaderboard.modeDuo')}</SelectItem>
               <SelectItem value="Fives">{t('leaderboard.modeFives')}</SelectItem>

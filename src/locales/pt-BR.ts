@@ -148,11 +148,17 @@ export default {
           'Não foi possível carregar sua chave salva automaticamente ({{reason}}). Cole-a abaixo para continuar.',
       },
       step2: {
-        title: 'Escolha onde instalar',
-        description: 'Escolha uma pasta para o jogo base e os patches do ZEmu. Vamos manter tudo organizado nessa pasta.',
+        title: 'Pasta de instalação',
+        description:
+          'O jogo e os patches do ZEmu vão ficar nesta pasta. Troque se preferir outro disco.',
         choose: 'Escolher pasta',
-        change: 'Trocar pasta',
-        pathChosen: 'Escolhido:',
+        change: 'Trocar local',
+        installDestination: 'O jogo será instalado em',
+        detecting: 'Detectando o seu disco principal…',
+        chooseHint: 'Nenhuma pasta selecionada ainda.',
+        destinationHint:
+          'Detectado a partir do disco onde o seu sistema está instalado.',
+        useDefault: 'Usar o local recomendado',
         continue: 'Continuar',
       },
       step3: {
@@ -451,10 +457,10 @@ export default {
       diamond: 'Diamante',
       master: 'Mestre',
       royalty: 'Realeza',
-      regionAll: 'Todas as regiões',
       regionEU: 'EU',
       regionNA: 'NA',
       regionAsia: 'ÁSIA (Em breve)',
+      modeAll: 'Todos os modos',
       modeSolo: 'Solo',
       modeDuo: 'Duo',
       modeFives: 'Quintetos',
