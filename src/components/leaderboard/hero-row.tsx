@@ -1,10 +1,9 @@
-"use client"
+'use client'
 
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { usePlayerTopMatches } from '@/hooks/use-leaderboard'
 import type { LeaderboardEntry } from '@/lib/leaderboard'
 import { RankBadge } from '@/components/leaderboard/rank-badge'
 import { CountryFlagThumb } from '@/components/leaderboard/country-flag-thumb'
@@ -20,9 +19,8 @@ import { PlayerGames } from '@/components/leaderboard/player-games'
  *
  * The row stays visible when the user's entry is filtered out of
  * the main table — `dimmed` styles drop opacity to communicate
- * "you'd be filtered out right now", and the position cell adds a
- * "Filtered out" caption so the position number still reflects the
- * actual standings (not the filtered view).
+ * "you'd be filtered out right now", while the position number still
+ * reflects the actual standings (not the filtered view).
  */
 export function HeroRow({
   entry,
@@ -35,20 +33,10 @@ export function HeroRow({
 }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null)
-  const topMatchesQuery = usePlayerTopMatches(expandedPlayer)
-  const expandedMatches = topMatchesQuery.data ?? []
-  const isLoadingMatches = topMatchesQuery.isFetching
 
   const handleToggle = useCallback(() => {
-    if (expanded) {
-      setExpanded(false)
-      setExpandedPlayer(null)
-      return
-    }
-    setExpanded(true)
-    setExpandedPlayer(entry.name)
-  }, [expanded, entry.name])
+    setExpanded((current) => !current)
+  }, [])
 
   const clan = clanTags[entry.name.toLowerCase()] ?? null
 
@@ -65,43 +53,24 @@ export function HeroRow({
         type="button"
         onClick={handleToggle}
         aria-expanded={expanded}
-        className={cn(
-          'flex w-full items-center gap-4 px-4 py-3 text-left',
-          'transition-colors hover:bg-amber-500/15',
-        )}
+        className={cn('flex w-full items-center gap-4 px-4 py-3 text-left', 'transition-colors hover:bg-amber-500/15')}
       >
         {/* Position */}
         <div className="flex w-14 shrink-0 flex-col items-center gap-0.5">
-          <span className="font-mono font-semibold tabular-nums">
-            #{entry.position}
-          </span>
-          {dimmed && (
-            <span className="text-[10px] tracking-wide uppercase text-foreground/60">
-              {t('leaderboardPage.heroFilteredOut')}
-            </span>
-          )}
+          <span className="font-mono font-semibold tabular-nums">#{entry.position}</span>
         </div>
 
         {/* Name + YOU badge */}
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <a
             href={`#/player/${encodeURIComponent(entry.name)}`}
-            onClick={event => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
             className="truncate font-medium hover:underline"
           >
             {entry.name}
           </a>
-          {entry.country && (
-            <CountryFlagThumb code={entry.country} size={16} className="shrink-0" />
-          )}
-          {clan && (
-            <ClantagBadge
-              tag={clan.clantag}
-              href={`#/clan/${clan.clanSlug}`}
-              size="sm"
-              className="shrink-0"
-            />
-          )}
+          {entry.country && <CountryFlagThumb code={entry.country} size={16} className="shrink-0" />}
+          {clan && <ClantagBadge tag={clan.clantag} href={`#/clan/${clan.clanSlug}`} size="sm" className="shrink-0" />}
           <span className="inline-flex shrink-0 items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold tracking-wide uppercase text-amber-700 dark:text-amber-300">
             {t('leaderboardPage.heroYou')}
           </span>
@@ -114,14 +83,9 @@ export function HeroRow({
 
         {/* Top 10 Total Score */}
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <span className="font-semibold text-amber-400 tabular-nums">
-            {entry.top10TotalScore.toLocaleString()}
-          </span>
+          <span className="font-semibold text-amber-400 tabular-nums">{entry.top10TotalScore.toLocaleString()}</span>
           <ChevronDown
-            className={cn(
-              'size-4 text-foreground/60 transition-transform duration-200',
-              expanded && 'rotate-180',
-            )}
+            className={cn('size-4 text-foreground/60 transition-transform duration-200', expanded && 'rotate-180')}
             aria-hidden
           />
         </div>
@@ -129,7 +93,7 @@ export function HeroRow({
 
       {expanded && (
         <div className="border-t border-amber-500/30 bg-muted/30 px-2 py-4 text-foreground sm:px-4 sm:py-6 dark:bg-page">
-          <PlayerGames matches={expandedMatches} isLoading={isLoadingMatches} />
+          <PlayerGames matches={entry.topMatches ?? []} />
         </div>
       )}
     </div>

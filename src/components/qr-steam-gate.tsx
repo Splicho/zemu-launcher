@@ -35,7 +35,15 @@ interface QrSteamGateProps {
   dataUrl: string | null
   /** Public Steam account name once `state === 'done'`. */
   accountName: string | null
-  /** Bridge error message when `state === 'failed'`. */
+  /**
+   * Failure copy for the gate's own `failed` state.
+   *
+   * The onboarding wizard no longer mounts this gate in `failed` —
+   * failures are rendered by `ErrorCard`, which owns the localized copy
+   * (`errors.<code>.*`), the recovery actions and the technical-details
+   * drawer — so it passes `null`. Kept for standalone uses that don't wire
+   * up `ErrorCard`.
+   */
   errorMessage: string | null
   /** Begin the QR login (parent calls into `steamApi.loginBegin`). */
   onBegin: () => void

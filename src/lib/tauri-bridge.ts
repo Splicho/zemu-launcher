@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
+import { normalizeAppError, type AppErrorPayload } from './app-errors'
+
 type DebugMetadata = Record<string, unknown> | undefined
 
 export interface GameLaunchState {
@@ -131,6 +133,63 @@ function safeStringify(value: unknown): string {
   }
 }
 
+/**
+ * Subscribe to a Tauri event and return a synchronous teardown.
+ *
+ * ## Why this exists
+ *
+ * `listen()` is async, but React effect cleanup is not. The pattern
+ * this replaces was:
+ *
+ *     let unlistenPromise: Promise<UnlistenFn> | null = null
+ *     listen('evt', cb).then((u) => { unlistenPromise = Promise.resolve(u) })
+ *     return () => { if (unlistenPromise) void unlistenPromise.then((u) => u()) }
+ *
+ * When cleanup ran before `listen()` resolved, `unlistenPromise` was
+ * still `null` and the branch was skipped — **the listener was never
+ * removed**. It stayed attached for the life of the process and kept
+ * firing into an unmounted component. In the onboarding wizard that
+ * showed up as `depot-done` firing long after Step 3 was torn down,
+ * re-running `onContinue()` and re-advancing the wizard, which in turn
+ * re-mounted Step 3 and started a fresh Steam login — a remount loop
+ * that logged a `scan_and_go_begin` storm every couple of seconds.
+ *
+ * This helper closes that window by tracking cancellation in a flag
+ * and unlistening immediately if teardown wins the race.
+ */
+function subscribe<T>(
+  event: string,
+  callback: (payload: T) => void,
+): () => void {
+  let unlisten: UnlistenFn | null = null
+  let cancelled = false
+
+  listen<T>(event, (e) => {
+    // A listener that lost the teardown race must not deliver.
+    if (cancelled) return
+    callback(e.payload)
+  })
+    .then((stop) => {
+      if (cancelled) {
+        // Teardown already happened — remove it now.
+        stop()
+        return
+      }
+      unlisten = stop
+    })
+    .catch(() => {
+      /* listener registration failed; nothing to tear down */
+    })
+
+  return () => {
+    cancelled = true
+    if (unlisten) {
+      unlisten()
+      unlisten = null
+    }
+  }
+}
+
 function setupCompatibilityBridge() {
   const isTauriRuntime = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
   if (!isTauriRuntime) {
@@ -187,6 +246,8 @@ function setupCompatibilityBridge() {
     getDirectory: () => invoke<string | null>('game_get_directory'),
     setDirectory: (path: string) => invoke<boolean>('game_set_directory', { directory: path }),
     selectDirectory: () => invoke<string | null>('game_select_directory'),
+    getDefaultInstallDirectory: () =>
+      invoke<string>('game_get_default_install_directory'),
     clearDirectory: () => invoke<boolean>('game_clear_directory'),
     getFolderSize: (directory: string) =>
       invoke<number>('game_get_folder_size', { directory }),
@@ -203,36 +264,10 @@ function setupCompatibilityBridge() {
     cancelDownload: () => {
       void invoke('game_cancel_download')
     },
-    onUpdateProgress: (callback: (status: UpdateStatus) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-
-      listen<UpdateStatus>('update-progress', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onLaunchState: (callback: (state: GameLaunchState) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-
-      listen<GameLaunchState>('game-launch-state', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
+    onUpdateProgress: (callback: (status: UpdateStatus) => void): (() => void) =>
+      subscribe<UpdateStatus>('update-progress', (payload) => callback(payload)),
+    onLaunchState: (callback: (state: GameLaunchState) => void): (() => void) =>
+      subscribe<GameLaunchState>('game-launch-state', (payload) => callback(payload)),
     launchGame: () => invoke<{ success: boolean; error?: string }>('game_launch'),
     verifyAndRepair: (skipFiles: string[] = []) =>
       invoke<VerifyOutcome>('game_verify_and_repair', { skipFiles }),
@@ -260,97 +295,30 @@ function setupCompatibilityBridge() {
      */
     startInstallPipeline: (destDir: string) =>
       invoke<void>('steam_start_install_pipeline', { destDir }),
-    onQr: (callback: (dataUrl: string) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<string>('steam-qr', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onScanned: (callback: () => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<void>('steam-scanned', () => {
-        callback()
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onAuthed: (callback: (accountName: string) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<string>('steam-authed', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onLoginError: (callback: (message: string) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<string>('steam-error', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onDepotProgress: (callback: (progress: DepotProgress) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<DepotProgress>('depot-progress', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onDepotDone: (callback: (result: { finalDir: string; bytes: number }) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<{ finalDir: string; bytes: number }>('depot-done', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
-    onDepotError: (callback: (message: string) => void): (() => void) => {
-      let unlistenPromise: Promise<UnlistenFn> | null = null
-      listen<string>('depot-error', (event) => {
-        callback(event.payload)
-      }).then((unlisten) => {
-        unlistenPromise = Promise.resolve(unlisten)
-      })
-      return () => {
-        if (unlistenPromise) {
-          void unlistenPromise.then((unlisten) => unlisten())
-        }
-      }
-    },
+    onQr: (callback: (dataUrl: string) => void): (() => void) =>
+      subscribe<string>('steam-qr', (payload) => callback(payload)),
+    onScanned: (callback: () => void): (() => void) =>
+      subscribe<void>('steam-scanned', () => callback()),
+    onAuthed: (callback: (accountName: string) => void): (() => void) =>
+      subscribe<string>('steam-authed', (payload) => callback(payload)),
+    onLoginError: (callback: (error: AppErrorPayload) => void): (() => void) =>
+      // `steam-error` carries `{ code, message, detail, retryable }` from
+      // `src-tauri/src/errors.rs`. Normalizing here (rather than at every
+      // call site) also keeps the wizard working against a backend build
+      // that still emits a bare string during a staged upgrade.
+      subscribe<unknown>('steam-error', (payload) =>
+        callback(normalizeAppError(payload)),
+      ),
+    onDepotProgress: (callback: (progress: DepotProgress) => void): (() => void) =>
+      subscribe<DepotProgress>('depot-progress', (payload) => callback(payload)),
+    onDepotDone: (callback: (result: { finalDir: string; bytes: number }) => void): (() => void) =>
+      subscribe<{ finalDir: string; bytes: number }>('depot-done', (payload) =>
+        callback(payload),
+      ),
+    onDepotError: (callback: (error: AppErrorPayload) => void): (() => void) =>
+      subscribe<unknown>('depot-error', (payload) =>
+        callback(normalizeAppError(payload)),
+      ),
   }
 
   window.discordAPI = {
@@ -657,6 +625,14 @@ declare global {
       getDirectory: () => Promise<string | null>
       setDirectory: (path: string) => Promise<boolean>
       selectDirectory: () => Promise<string | null>
+      /**
+       * Folder the onboarding wizard pre-selects when no install
+       * directory is configured yet: the volume the OS is installed on
+       * plus `\ZEmu` (`C:\ZEmu` on a default Windows machine,
+       * `$HOME/ZEmu` on the Wine/Proton builds). Never creates the
+       * folder — the depot download does that.
+       */
+      getDefaultInstallDirectory: () => Promise<string>
       clearDirectory: () => Promise<boolean>
       /**
        * Total byte size of every regular file in `directory`,
@@ -713,12 +689,12 @@ declare global {
       onQr: (callback: (dataUrl: string) => void) => () => void
       onScanned: (callback: () => void) => () => void
       onAuthed: (callback: (accountName: string) => void) => () => void
-      onLoginError: (callback: (message: string) => void) => () => void
+      onLoginError: (callback: (error: AppErrorPayload) => void) => () => void
       onDepotProgress: (callback: (progress: DepotProgress) => void) => () => void
       onDepotDone: (
         callback: (result: { finalDir: string; bytes: number }) => void
       ) => () => void
-      onDepotError: (callback: (message: string) => void) => () => void
+      onDepotError: (callback: (error: AppErrorPayload) => void) => () => void
     }
     discordAPI: {
       setInLauncher: () => void

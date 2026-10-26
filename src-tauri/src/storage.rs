@@ -154,6 +154,12 @@ pub fn read_auth_key(app: &AppHandle) -> Result<Option<String>> {
     // Migration: copy plaintext → keychain, then redact the
     // plaintext copy. Old users keep their session through the
     // update; new users never get one written to disk.
+    //
+    // This is also the self-heal path for a machine whose credential
+    // store was broken when `write_auth_key` fell back to the config
+    // file (see that function's doc comment). If the keychain has
+    // recovered by the time we read, the value migrates back and the
+    // cleartext copy is dropped again — no user action required.
     let config = load_launcher_config(app)?;
     if let Some(value) = config.auth_key.as_ref().filter(|v| !v.trim().is_empty()) {
         let value = value.clone();
@@ -168,6 +174,11 @@ pub fn read_auth_key(app: &AppHandle) -> Result<Option<String>> {
             // launch on a keychain-only failure.
         } else {
             let _ = redact_auth_key_in_config(app);
+            let _ = crate::debug_log::append(
+                app,
+                "auth",
+                "read_auth_key: migrated auth key back into the keychain",
+            );
         }
         return Ok(Some(value));
     }
@@ -177,18 +188,74 @@ pub fn read_auth_key(app: &AppHandle) -> Result<Option<String>> {
 
 /// Persist a new H1Z1 session key, replacing any existing one.
 /// An empty / whitespace-only string clears the entry.
+///
+/// ## Why this has a plaintext fallback
+///
+/// The keychain write used to be the *only* place the key was
+/// stored, and any failure there was returned as a hard `Err`. On
+/// Windows that maps to the Credential Manager
+/// (`windows-native-keyring-store`), which can be unavailable or
+/// locked under a restricted / roaming profile, blocked by
+/// enterprise policy or third-party security software, or hold a
+/// corrupted blob for the `uk.zemu.launcher` service from an older
+/// build. In every one of those cases the user was **locked out of
+/// the game with no way forward**: `df68a71` removed the last
+/// alternative entry point (`AuthKeyModal` on the account page and
+/// the game action button), leaving onboarding Step 1 as the only
+/// place a key can be entered — and Step 1's only save button calls
+/// straight into this function.
+///
+/// A user reported exactly that: an empty input reading
+/// "We could not load your saved key automatically (save_failed)",
+/// and "Could not save the auth key" when pasting one manually.
+///
+/// ## The posture we take
+///
+/// This is deliberately the **same** trade-off `read_auth_key`
+/// already makes, whose comment reads *"Don't fail the launch on a
+/// keychain-only failure."* Reads degrade; writes now degrade too.
+/// The asymmetry was the bug.
+///
+/// The fallback is failure-only, so a healthy machine never writes
+/// the key in cleartext and the security win of the keyring is
+/// preserved for every user whose credential store works. It is also
+/// **self-healing**: the next `read_auth_key` finds the plaintext
+/// value, re-attempts the keychain write, and on success calls
+/// `redact_auth_key_in_config` to remove it again. A user whose
+/// credential store recovers therefore silently migrates back on the
+/// next launch.
 pub fn write_auth_key(app: &AppHandle, key: &str) -> Result<()> {
     let store = open_auth_key_store(app);
-    if key.trim().is_empty() {
+    let key = key.trim();
+
+    if key.is_empty() {
         let _ = store.delete(AUTH_KEY_ACCOUNT);
-    } else {
-        store
-            .set_password(AUTH_KEY_ACCOUNT, key)
-            .map_err(|e| anyhow!("writing auth key to OS keychain: {e}"))?;
+        return redact_auth_key_in_config(app);
     }
-    // Also clear the plaintext field in `launcher-config.json`
-    // so the key is never on disk in cleartext, even transiently.
-    redact_auth_key_in_config(app)
+
+    match store.set_password(AUTH_KEY_ACCOUNT, key) {
+        Ok(()) => {
+            // Keychain is healthy — make sure no cleartext copy
+            // lingers from an earlier failed write.
+            redact_auth_key_in_config(app)
+        }
+        Err(err) => {
+            // The old code returned `Err` here with no log line at
+            // all, which made the failure undiagnosable from a user
+            // report. Always record the real reason.
+            let _ = crate::debug_log::append(
+                app,
+                "auth",
+                &format!("write_auth_key: keyring write failed, falling back to config: {err}"),
+            );
+
+            // Persist to `launcher-config.json` so a broken OS
+            // credential store can't lock the user out of the game.
+            let mut config = load_launcher_config(app)?;
+            config.auth_key = Some(key.to_string());
+            save_launcher_config(app, &config)
+        }
+    }
 }
 
 /// Drop the plaintext `auth_key` field from `launcher-config.json`.
@@ -266,6 +333,50 @@ pub fn detect_base_game_installed(directory: &str) -> Result<bool> {
     Ok(marker.exists() && exe.is_file())
 }
 
+/// Write the `.zemu-install-v1` marker into `directory` after a
+/// successful auto-download.
+///
+/// ## Why this exists
+///
+/// `detect_base_game_installed` (above) has treated the marker as the
+/// source of truth for "the Zemu auto-download ran successfully" since
+/// the SteamCMD path landed — but **nothing ever created the file**.
+/// A repo-wide search for `zemu-install-v1` turned up only the
+/// constant, the reader, and doc comments; there was no writer. Every
+/// user who completed the depot download therefore reported
+/// `hasMarker: false` forever after, which made `setup-checks.ts` fall
+/// through to the bare `H1Z1.exe` probe for `hasBaseGame` and tagged
+/// their install as `(manual)` in the wizard's Finish checklist.
+///
+/// Worse, the manifest fallback is not guaranteed: the depot's file
+/// layout only puts `H1Z1.exe` at the folder root for the *base game*
+/// depot, and `persist_installed_manifest_from_cdn` can fail outright
+/// when the patch CDN is unreachable. In that case `hasBaseGame` reads
+/// `false`, `decideOnboardingGate` returns `incomplete`, and
+/// `AuthedApp`'s redirect effect shoves the user back into Step 3
+/// ("Sign in with Steam") even though the 15 GB download is sitting on
+/// disk complete. That is the exact loop reported by a user.
+///
+/// ## Contract
+///
+/// Called only after the download completes successfully and
+/// `manifest.json` has been written. Cheap, idempotent, and
+/// best-effort — a failure here is logged, never fatal, because the
+/// install itself is valid and the play page's `isInstalled()` (which
+/// keys off `manifest.json`) is the authoritative signal anyway.
+pub fn write_install_marker(directory: &std::path::Path) -> Result<()> {
+    let marker = directory.join(ZEMU_INSTALL_MARKER);
+    // A short fixed stamp is plenty — nothing reads it back, it only
+    // has to exist. `SystemTime` keeps this free of a new dependency.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    std::fs::write(&marker, format!("zemu-install-v1 {stamp}\n"))
+        .with_context(|| format!("writing install marker {}", marker.display()))?;
+    Ok(())
+}
+
 /// Lightweight path check exposed to the frontend via the
 /// `game_path_exists` IPC. Used by `setup-checks.ts` to detect a
 /// manually-dropped `H1Z1.exe` at the folder root, which has no
@@ -306,6 +417,32 @@ fn should_check_launcher_updates(packaged: bool, disabled: Option<&std::ffi::OsS
 
 #[cfg(test)]
 mod tests {
+    /// The keychain account name is the only thing tying a saved auth
+    /// key to this launcher on Windows' Credential Manager. If it
+    /// changes, every existing user's saved key becomes invisible —
+    /// they would silently re-enter it and, worse, a stale value
+    /// would be left behind in the store. `REFRESH_TOKEN_ACCOUNT` in
+    /// `depot.rs` must stay distinct so the two don't collide.
+    #[test]
+    fn auth_key_account_name_is_stable() {
+        assert_eq!(super::AUTH_KEY_ACCOUNT, "zemu-launcher-auth-key");
+    }
+
+    /// A key that trims to empty must be treated as a clear, not
+    /// stored. `write_auth_key` branches on this before touching the
+    /// keychain, so a whitespace-only paste can't leave a junk
+    /// credential behind.
+    #[test]
+    fn whitespace_only_key_normalizes_to_empty() {
+        for raw in ["", " ", "\t", "\n", "  \r\n\t "] {
+            assert!(
+                raw.trim().is_empty(),
+                "{raw:?} should normalize to a clear operation"
+            );
+        }
+        assert!(!" ZEMU-KEY-123 ".trim().is_empty());
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn unbundled_linux_executable_skips_updates() {
@@ -331,5 +468,47 @@ mod tests {
             false,
             Some(OsStr::new("0"))
         ));
+    }
+
+    /// Regression test for the silent "onboarding never completes"
+    /// bug: `.zemu-install-v1` was read by
+    /// `detect_base_game_installed` but written by *nothing*, so a
+    /// user who had just finished a 15 GB depot download still
+    /// reported `hasMarker: false` / `hasBaseGame: false`, the gate
+    /// evaluated to `incomplete`, and they were pushed straight back
+    /// into the wizard's Step 3 "Sign in with Steam" card.
+    ///
+    /// `write_install_marker` + `detect_base_game_installed` must
+    /// round-trip once `H1Z1.exe` is present.
+    #[test]
+    fn install_marker_round_trips_with_executable_present() {
+        let dir = std::env::temp_dir().join(format!(
+            "zemu-marker-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp install dir");
+
+        // Bare directory: neither marker nor executable, so the
+        // detector must say "no" even after the marker lands.
+        super::write_install_marker(&dir).expect("write marker");
+        assert!(
+            !super::detect_base_game_installed(&dir.to_string_lossy())
+                .expect("detect"),
+            "marker alone is not enough — H1Z1.exe must also exist"
+        );
+
+        std::fs::write(dir.join(super::ZEMU_INSTALL_EXECUTABLE), b"MZ").expect("write exe");
+        assert!(
+            super::detect_base_game_installed(&dir.to_string_lossy()).expect("detect"),
+            "marker + executable must report an installed base game"
+        );
+
+        // Idempotent: a second write (e.g. a re-run of the depot
+        // install) must not error.
+        super::write_install_marker(&dir).expect("rewrite marker");
+        assert!(super::detect_base_game_installed(&dir.to_string_lossy()).expect("detect"));
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

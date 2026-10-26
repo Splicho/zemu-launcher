@@ -5,6 +5,7 @@ import { HomePage } from '@/pages/home'
 import { MainLayout } from '@/components/main-layout'
 import type { SidebarType } from '@/components/main-layout'
 import { TitleBar } from '@/components/title-bar'
+import { SiteNoticeBar } from '@/components/site-notice-bar'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
 import { OnboardingPage } from '@/pages/onboarding'
@@ -37,7 +38,7 @@ import { useEnrollHardware } from '@/hooks/use-enroll-hardware'
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
 
 function parseRoute(hash: string | null): { page: string; params?: Record<string, string> } {
-  if (!hash || hash === '/') return { page: 'home' }
+  if (!hash || hash === '/') return { page: 'play' }
 
   const newsMatch = hash.match(/^\/news\/(.+)$/)
   if (newsMatch) return { page: 'news-slug', params: { slug: newsMatch[1] } }
@@ -66,6 +67,7 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
     return { page: 'clan', params: { slug: clanMatch[1] } }
   }
 
+  if (hash === '/home') return { page: 'home' }
   if (hash === '/news') return { page: 'news' }
   if (hash === '/clans') return { page: 'clans' }
   if (hash === '/servers') return { page: 'servers' }
@@ -305,6 +307,7 @@ function AuthedApp() {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
         <TitleBar />
+        <SiteNoticeBar />
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <LoginPage />
         </main>

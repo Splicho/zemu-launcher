@@ -1,4 +1,4 @@
-import type { LeaderboardTier } from '@/lib/leaderboard'
+import { normalizeTier, type LeaderboardTier } from '@/lib/leaderboard'
 
 const RANK_DATA: Record<LeaderboardTier, { medal: { src: string; w: number; h: number }; label: string }> = {
   bronze: {
@@ -21,14 +21,17 @@ const RANK_DATA: Record<LeaderboardTier, { medal: { src: string; w: number; h: n
     medal: { src: 'diamond/medal.png', w: 28, h: 28 },
     label: 'Diamond',
   },
-  master: {
-    medal: { src: 'master/medal.png', w: 36, h: 36 },
-    label: 'Master',
+  royalty: {
+    medal: { src: 'royalty/medal.png', w: 36, h: 36 },
+    label: 'Royalty',
   },
 }
 
 export function RankBadge({ tier, className }: { tier: LeaderboardTier; className?: string }) {
-  const data = RANK_DATA[tier] ?? RANK_DATA.bronze
+  // `normalizeTier` (rather than a bare `?? bronze`) so a tier the api
+  // sends but we don't ship art for renders a valid badge instead of
+  // throwing on `data.medal.src` and taking the whole table down.
+  const data = RANK_DATA[normalizeTier(tier)]
 
   return (
     <div className={`flex items-center gap-1.5 ${className ?? ''}`}>

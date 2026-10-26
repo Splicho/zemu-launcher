@@ -62,6 +62,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::debug_log;
+// `tpm` is only referenced from the Windows-gated anchor block below,
+// so the import has to be gated the same way — otherwise non-Windows
+// builds emit an `unused_imports` warning.
+#[cfg(target_os = "windows")]
 use crate::tpm;
 
 /// Anchor kinds the api recognises. Mirrors

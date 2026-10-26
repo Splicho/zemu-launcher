@@ -1,6 +1,6 @@
 /** ISO 3166-1 alpha-2 country code, e.g. "SE". */
 function flagUrlFor(code: string): string {
-  return `https://flagcdn.com/w80/${code.toLowerCase()}.png`
+  return `https://flagsapi.com/${code.toUpperCase()}/flat/64.png`
 }
 
 export function CountryFlagThumb({

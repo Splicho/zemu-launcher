@@ -57,6 +57,15 @@
   --color-page: var(--page);
   --color-background: var(--background);
   --color-destructive-foreground: var(--destructive-foreground);
+  /* Site notice banner variants. The website renders the same four
+     `SiteNotice.variant` values off these exact tokens, so a notice
+     authored once reads identically on both surfaces. */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -110,6 +119,17 @@
   --destructive-foreground: oklch(0.985 0 0);
   --success: oklch(0.723 0.219 142.96);
   --success-foreground: oklch(0.985 0 0);
+  /* `warning` / `info` exist for the site notice banner. They are
+     deliberately not part of the button/badge vocabulary — nothing
+     else in the launcher renders a solid warning or info fill, and
+     a token that is only used by one component is easier to reason
+     about when it is introduced for that component. Values are
+     copied from the website's design system so a notice reads the
+     same on both surfaces. */
+  --warning: oklch(0.769 0.165 75);
+  --warning-foreground: oklch(0.205 0 0);
+  --info: oklch(0.6 0.13 220);
+  --info-foreground: oklch(0.985 0 0);
   --toast-success-bg: oklch(0.723 0.219 142.96);
   --toast-success-fg: oklch(0.985 0 0);
   --toast-error-bg: oklch(0.577 0.245 27.325);
@@ -153,6 +173,15 @@
   --destructive-foreground: oklch(0.985 0 0);
   --success: oklch(0.723 0.219 142.96);
   --success-foreground: oklch(0.985 0 0);
+  /* Dark-mode notice fills are lifted off pure white so a solid
+     warning/info bar doesn't glare against `oklch(0.2)` — the
+     foreground flips to near-black to keep the text ratio above
+     4.5:1 on the lighter fills. Mirrors the website's `.dark`
+     values. */
+  --warning: oklch(0.82 0.155 75);
+  --warning-foreground: oklch(0.145 0 0);
+  --info: oklch(0.7 0.12 220);
+  --info-foreground: oklch(0.145 0 0);
   --toast-success-bg: oklch(41.616% 0.1251 142.931 / 0.5);
   --toast-success-fg: oklch(75.116% 0.22547 141.542);
   --toast-error-bg: oklch(33.917% 0.12221 26.286 / 0.5);

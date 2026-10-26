@@ -32,11 +32,18 @@
 //! - `steam-qr`           — `String` data URL (`data:image/png;base64,…`)
 //! - `steam-scanned`      — `()` (user scanned the QR)
 //! - `steam-authed`       — `String` account name
-//! - `steam-error`        — `String` error message
+//! - `steam-error`        — [`AppError`] payload `{ code, message, detail, retryable }`
 //! - `depot-progress`     — `{ stage, message, bytesDone, bytesTotal,
 //!                           speedBps, etaSeconds }`
 //! - `depot-done`         — `{ finalDir, bytes }`
-//! - `depot-error`        — `String` error message
+//! - `depot-error`        — [`AppError`] payload (same shape as `steam-error`)
+//!
+//! Errors are classified by [`crate::errors`] before they leave this
+//! module. The renderer keys its localized copy off `code`; `detail` keeps
+//! the raw Steam/Rust chain for the technical-details drawer and the
+//! debug log. Do not emit a bare string on these two events — the bridge
+//! normalizes one for backwards compatibility, but nothing downstream can
+//! act on it.
 //!
 //! ## Token storage
 //!
@@ -47,6 +54,7 @@
 //! boundary — only `authed: bool` + `account_name` do.
 
 use crate::debug_log;
+use crate::errors::{AppError, ErrorCode};
 use crate::models::SteamcmdResult;
 
 use anyhow::{anyhow, Context, Result};
@@ -201,7 +209,10 @@ pub fn login_qr(app: AppHandle) -> Result<()> {
         {
             Ok(rt) => rt,
             Err(e) => {
-                emit_error(&app_for_thread, &format!("tokio runtime: {e}"));
+                emit_error(
+                    &app_for_thread,
+                    &AppError::new(ErrorCode::Unknown, format!("tokio runtime: {e}")),
+                );
                 return;
             }
         };
@@ -209,12 +220,13 @@ pub fn login_qr(app: AppHandle) -> Result<()> {
             match drive_qr(&app_for_thread).await {
                 Ok(tokens) => persist_login(&app_for_thread, &tokens),
                 Err(e) => {
+                    let app_error = AppError::from_anyhow(&e);
                     let _ = debug_log::append(
                         &app_for_thread,
                         "steam",
-                        &format!("login_qr_failed: {e:#}"),
+                        &format!("login_qr_failed {}", app_error.log_line()),
                     );
-                    emit_error(&app_for_thread, &format!("{e:#}"));
+                    emit_error(&app_for_thread, &app_error);
                 }
             }
         });
@@ -240,7 +252,10 @@ pub fn start_scan_and_go(app: AppHandle, dest_dir: PathBuf) -> Result<()> {
         {
             Ok(rt) => rt,
             Err(e) => {
-                emit_error(&app_for_thread, &format!("tokio runtime: {e}"));
+                emit_error(
+                    &app_for_thread,
+                    &AppError::new(ErrorCode::Unknown, format!("tokio runtime: {e}")),
+                );
                 return;
             }
         };
@@ -249,12 +264,13 @@ pub fn start_scan_and_go(app: AppHandle, dest_dir: PathBuf) -> Result<()> {
             let tokens = match drive_qr(&app_for_thread).await {
                 Ok(t) => t,
                 Err(e) => {
+                    let app_error = AppError::from_anyhow(&e);
                     let _ = debug_log::append(
                         &app_for_thread,
                         "steam",
-                        &format!("scan_and_go_qr_failed: {e:#}"),
+                        &format!("scan_and_go_qr_failed {}", app_error.log_line()),
                     );
-                    emit_error(&app_for_thread, &format!("{e:#}"));
+                    emit_error(&app_for_thread, &app_error);
                     return;
                 }
             };
@@ -269,12 +285,13 @@ pub fn start_scan_and_go(app: AppHandle, dest_dir: PathBuf) -> Result<()> {
             )
             .await
             {
+                let app_error = AppError::from_anyhow(&e);
                 let _ = debug_log::append(
                     &app_for_thread,
                     "steam",
-                    &format!("scan_and_go_download_failed: {e:#}"),
+                    &format!("scan_and_go_download_failed {}", app_error.log_line()),
                 );
-                emit_depot_error(&app_for_thread, &format!("{e:#}"));
+                emit_depot_error(&app_for_thread, &app_error);
             }
         });
     });
@@ -299,12 +316,23 @@ pub async fn download_depot(
             dest_dir.display()
         ),
     );
-    let total = drive_download(&app, refresh_token, &dest_dir, Some(account_name))
-        .await
-        .map_err(|e| {
-            let _ = debug_log::append(&app, "steam", &format!("download error: {e:#}"));
-            anyhow!("depot download failed: {e:#}")
-        })?;
+    let total = match drive_download(&app, refresh_token, &dest_dir, Some(account_name)).await {
+        Ok(total) => total,
+        Err(e) => {
+            // Classify *before* wrapping: `AppError::from_anyhow` walks the
+            // typed chain (`steamroom::Error`, `LoginError`, `io::Error`)
+            // and would lose it if we collapsed the error into a string
+            // here. The context is added on top so the log and the
+            // "Technical details" drawer still show which phase failed.
+            let app_error = AppError::from_anyhow(&e);
+            let _ = debug_log::append(
+                &app,
+                "steam",
+                &format!("download_failed {}", app_error.log_line()),
+            );
+            return Err(e.context("depot download failed"));
+        }
+    };
     let _ = debug_log::append(
         &app,
         "steam",
@@ -640,12 +668,19 @@ async fn drive_download(
             // `Io::Os` code/message/path) so a failed file is
             // immediately diagnosable from the debug log instead
             // of having to re-run with a debugger attached.
+            //
+            // The `rootcause::Report` doesn't downcast to our typed
+            // errors, so `errors::classify_message` reads this string to
+            // recover the CDN/disk/ownership category. Keep the Display
+            // form first — it carries "CDN returned HTTP 403"-style
+            // messages the classifier matches on.
+            let detail = format!("{e}\n{e:?}");
             let _ = debug_log::append(
-                &app,
+                app,
                 "download",
-                &format!("depot_download_failed chain={e:#?}"),
+                &format!("depot_download_failed {detail}"),
             );
-            anyhow!("depot download failed: {e:?}")
+            anyhow!("depot download failed: {detail}")
         })?;
 
     drop(job);
@@ -673,6 +708,66 @@ async fn drive_download(
         0.0,
     );
 
+    // Persist `manifest.json` so the launcher knows the game is installed
+    // and can transition to "Install Patch" / "Play" without requiring
+    // the user to re-locate the folder. Without this, every user who
+    // completes the depot download is stuck on "Locate PS3 Folder" even
+    // though the files are already present on disk.
+    //
+    // ## Ordering matters — this MUST happen before `depot-done`
+    //
+    // This used to be written *after* the `depot-done` emit. Because
+    // the write is `async` (it fetches the manifest from the patch
+    // CDN), the renderer's `depot-done` handler fired and advanced the
+    // wizard to Step 4 while `isInstalled()` still read `false` — the
+    // store then cached that stale value and the play page showed
+    // "Install Patch" / "Locate PS3 Folder" for a fully-downloaded
+    // game. Emitting `depot-done` is a promise that the install is
+    // fully on disk and self-describing, so the writes come first and
+    // the event comes last.
+    //
+    // A failure here is reported to the user rather than swallowed: a
+    // download that finished but couldn't record its own manifest is
+    // not a successful install, and silently advancing the wizard
+    // strands them in the Step 3 ↔ Finish loop.
+    let manifest_result =
+        crate::update::persist_installed_manifest_from_cdn(app, dest_dir).await;
+    if let Err(e) = &manifest_result {
+        let _ = debug_log::append(
+            app,
+            "depot",
+            &format!("manifest.json write failed after depot: {e}"),
+        );
+    }
+
+    // Write the `.zemu-install-v1` marker. `detect_base_game_installed`
+    // reads this to decide whether the auto-download ever completed, and
+    // it was previously never written by anything — see
+    // `storage::write_install_marker` for the full story of how that
+    // bounced users straight back into Step 3 after a successful
+    // download.
+    if let Err(e) = crate::storage::write_install_marker(dest_dir) {
+        let _ = debug_log::append(
+            app,
+            "depot",
+            &format!("install marker write failed after depot: {e}"),
+        );
+    }
+
+    if let Err(e) = manifest_result {
+        let app_error = AppError::new(
+            ErrorCode::DiskError,
+            format!("depot finished but manifest.json write failed: {e}"),
+        );
+        let _ = debug_log::append(
+            app,
+            "depot",
+            &format!("install_record_failed {}", app_error.log_line()),
+        );
+        emit_depot_error(app, &app_error);
+        return Err(anyhow!("depot finished but manifest write failed: {e}"));
+    }
+
     let _ = app.emit(
         DEPOT_DONE_EVENT,
         serde_json::json!({
@@ -680,19 +775,6 @@ async fn drive_download(
             "bytes": stats.bytes_downloaded,
         }),
     );
-
-    // Persist `manifest.json` so the launcher knows the game is installed
-    // and can transition to "Install Patch" / "Play" without requiring
-    // the user to re-locate the folder. Without this, every user who
-    // completes the depot download is stuck on "Locate PS3 Folder" even
-    // though the files are already present on disk.
-    if let Err(e) = crate::update::persist_installed_manifest_from_cdn(app, dest_dir).await {
-        let _ = debug_log::append(
-            app,
-            "depot",
-            &format!("manifest.json write failed after depot: {e}"),
-        );
-    }
 
     Ok(stats.bytes_downloaded)
 }
@@ -868,12 +950,12 @@ fn emit_progress(
     );
 }
 
-fn emit_error(app: &AppHandle, message: &str) {
-    let _ = app.emit(STEAM_ERROR_EVENT, message);
+fn emit_error(app: &AppHandle, error: &AppError) {
+    let _ = app.emit(STEAM_ERROR_EVENT, error);
 }
 
-fn emit_depot_error(app: &AppHandle, message: &str) {
-    let _ = app.emit(DEPOT_ERROR_EVENT, message);
+fn emit_depot_error(app: &AppHandle, error: &AppError) {
+    let _ = app.emit(DEPOT_ERROR_EVENT, error);
 }
 
 /// Translate `steamroom-client`'s `DownloadEvent` into our Tauri

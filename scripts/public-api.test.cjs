@@ -31,7 +31,11 @@ function setup(platform, { status = 200, body = '[]', failure, env = {} } = {}) 
     const exports = {}
     cache.set(name, exports)
     runInNewContext(outputText, {
-      exports, require: load, testEnv: { DEV: false, ...env }, URLSearchParams, Request, Response, Uint8Array,
+      exports, require: load, testEnv: { DEV: false, ...env }, URLSearchParams, Request, Response, Uint8Array, URL,
+      // `lib/site-notice.ts` logs before degrading to "no banner", so
+      // the sandbox needs a console. Keep it quiet so a deliberate
+      // failure-path test doesn't look like a real error.
+      console: { warn() {}, error() {}, log() {} },
       async fetch(url) {
         calls.push({ transport: 'fetch', url })
         if (platform !== 'browser') throw new Error('Desktop must not use WebView fetch')
@@ -97,6 +101,44 @@ for (const platform of ['linux', 'windows', 'macos', 'browser']) {
       assert.equal(h.calls.filter(c => c.transport === 'fetch').length, platform !== 'browser' ? 0 : 1)
     }
   })
+
+  // The site notice is the one public read that must NOT throw: a
+  // failed fetch means the launcher renders without a bar, and it
+  // has no error state to show. These cases pin that contract, plus
+  // the surface echo that stops a `web` notice leaking into the
+  // desktop app.
+  test(`${platform}: site notice degrades to "no banner" instead of throwing`, async () => {
+    const h = setup(platform, { body: 'null' })
+    assert.equal(await h.load('@/lib/site-notice').fetchSiteNotice(), null)
+    assert.equal(h.calls.at(-1).url, 'https://api.zemu.uk/v1/site-notice?surface=launcher')
+
+    for (const broken of [setup(platform, { status: 500, body: 'boom' }), setup(platform, { body: '<html>Bad gateway</html>' }), setup(platform, { failure: 'connection refused' })]) {
+      assert.equal(await broken.load('@/lib/site-notice').fetchSiteNotice(), null)
+    }
+  })
+
+  test(`${platform}: site notice only accepts launcher-surface payloads with real text`, async () => {
+    const base = { id: 'n1', variant: 'info', text: 'Maintenance tonight', linkUrl: null, linkLabel: null, isDismissible: true, surface: 'launcher' }
+    const load = payload => setup(platform, { body: JSON.stringify(payload) }).load('@/lib/site-notice').fetchSiteNotice()
+
+    // A web notice reaching the launcher means the surface was
+    // ignored somewhere; rendering it here would show website copy
+    // in the desktop app.
+    assert.equal(await load({ ...base, surface: 'web' }), null)
+    assert.equal(await load({ ...base, surface: undefined }), null)
+    assert.equal(await load({ ...base, text: '' }), null)
+    assert.equal(await load({ ...base, id: '' }), null)
+    assert.equal(await load('a string'), null)
+    assert.equal(await load(undefined), null)
+
+    // An unknown variant degrades to neutral rather than dropping the
+    // copy — losing the text because a colour token moved is worse.
+    assert.equal((await load({ ...base, variant: 'chartreuse' })).variant, 'info')
+
+    // A non-http(s) link must never reach `openUrl` / the OS.
+    assert.equal((await load({ ...base, linkUrl: 'javascript:alert(1)' })).linkUrl, null)
+    assert.equal((await load({ ...base, linkUrl: 'https://zemu.uk/news' })).linkUrl, 'https://zemu.uk/news')
+  })
 }
 
 test('development API overrides reach the native transport unchanged', async () => {
@@ -107,3 +149,4 @@ test('development API overrides reach the native transport unchanged', async () 
     assert.equal(h.calls[0].url, `http://localhost:3002${path}`)
   }
 })
+

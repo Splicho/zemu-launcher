@@ -1,18 +1,38 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AlertTriangle, Check, CheckCircle2, Download, Folder, LogOut, RotateCw, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Download,
+  ExternalLink,
+  Folder,
+  HardDrive,
+  LogOut,
+  RotateCw,
+  X,
+} from 'lucide-react'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { ErrorCard } from '@/components/error-card'
 import { QrSteamGate, type QrGateState } from '@/components/qr-steam-gate'
 import { TitleBar } from '@/components/title-bar'
+import {
+  H1Z1_STORE_URL,
+  normalizeAppError,
+  shouldSuggestAnotherAccount,
+  type AppErrorPayload,
+} from '@/lib/app-errors'
 import { fetchMyAuthKey } from '@/lib/auth'
 import { markOnboardingCompleted } from '@/lib/onboarding'
-import type { SetupChecks } from '@/lib/setup-checks'
+import type { BaseGamePresence, SetupChecks } from '@/lib/setup-checks'
+import { detectBaseGameIn, getSetupChecks } from '@/lib/setup-checks'
 import type { DepotProgress } from '@/lib/tauri-bridge'
 import { useGameStateContext } from '@/hooks/use-game-state-context'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
@@ -157,6 +177,83 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerT
 
   const { refreshFromDisk } = useGameStateContext()
 
+  /**
+   * Adopt an install folder chosen in Step 2.
+   *
+   * Two callers reach this: the OS folder picker (which already
+   * persisted the path through `game_select_directory`) and the
+   * wizard's own default proposal (`C:\ZEmu`, see `InstallFolderStep`),
+   * which has to be written through `game_set_directory` before it
+   * counts. Routing both through one callback keeps the meaning of
+   * "folder" consistent — the play-page store, the on-disk config and
+   * the wizard's local state learn about the change together — and
+   * clears the stale "existing install detected" flags, which described
+   * the *previous* folder.
+   *
+   * Memoised so `InstallFolderStep`'s mount effect (which reads the
+   * recommended path exactly once) doesn't re-run on every parent
+   * render.
+   */
+  const adoptInstallFolder = useCallback(
+    async (path: string) => {
+      // Persist before touching state: `setFolder` below kicks a
+      // `refreshFromDisk`, and a state-only change would be overwritten
+      // by that read of a config that still has no directory.
+      try {
+        await window.gameAPI?.setDirectory?.(path)
+      } catch (err) {
+        // Best-effort. The wizard can still download into `path` for
+        // this session, and the next visit simply proposes the default
+        // again. Log the real reason — a config write failure is
+        // otherwise invisible in bug reports.
+        void window.debugLog?.write(
+          'onboarding',
+          `step2 persist folder failed: ${describeError(err)}`,
+        )
+      }
+      setFolder(path)
+      setHasMarker(false)
+      setHasBaseGame(false)
+      void refreshFromDisk()
+    },
+    [refreshFromDisk],
+  )
+
+  // Re-derive the "did the base game actually land on disk" answers
+  // from the real filesystem whenever we reach the Finish step.
+  //
+  // This is the authoritative check the Finish checklist should trust.
+  // Previously `hasBaseGame` / `hasMarker` were set optimistically in
+  // Step 3's `onContinue`, which is a lie whenever the depot finished
+  // but failed to write `manifest.json` (patch CDN unreachable) or the
+  // `.zemu-install-v1` marker. The checklist then showed a green
+  // "all good", Finish was enabled, and clicking it wrote
+  // `onboarding_completed = true` on a machine whose gate would still
+  // evaluate to `incomplete` — dropping the user back into Step 3's
+  // "Sign in with Steam" card with a complete 15 GB install already on
+  // disk. That is the exact loop a user reported.
+  //
+  // We also kick the play-page store's refresh here rather than at
+  // Step 3 exit: `manifest.json` is written by Rust *after* the
+  // download job reports completion, so refreshing at the moment the
+  // progress bar hits 100% could still read `isInstalled() === false`.
+  // By the time the user is looking at the Finish screen, the write
+  // has landed.
+  useEffect(() => {
+    if (step !== 4) return
+    let cancelled = false
+    void (async () => {
+      const checks = await getSetupChecks().catch(() => null)
+      if (cancelled || !checks) return
+      setHasBaseGame(checks.hasBaseGame)
+      setHasMarker(checks.hasMarker)
+      void refreshFromDisk()
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [step, refreshFromDisk])
+
   const finish = useCallback(() => {
     // `markOnboardingCompleted` is now async (it writes the flag
     // to the Rust-side `LauncherConfig` via IPC, replacing the
@@ -255,22 +352,31 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerT
                 >
                   <InstallFolderStep
                     folder={folder}
-                    setFolder={(f) => {
-                      setFolder(f)
-                      setHasMarker(false)
-                      setHasBaseGame(false)
-                      // `selectDirectory` already persists the
-                      // path on the Rust side, so push the
-                      // updated directory + (potentially new)
-                      // installed flag into the play-page store
-                      // now. Without this the store's
-                      // mount-time `getDirectory()` cache stays
-                      // pinned at the empty default until the
-                      // wizard finishes.
-                      void refreshFromDisk()
-                    }}
+                    // Only auto-adopt the recommendation when the
+                    // launcher has never had an install folder. A
+                    // user who already configured one — including the
+                    // rare drift case where `hasFolder` is true but the
+                    // stored path read back empty — keeps their folder
+                    // until they explicitly pick another.
+                    autoAdopt={!initialChecks.hasFolder}
+                    onFolderChange={adoptInstallFolder}
                     onBack={back}
-                    onContinue={advance}
+                    onContinue={(presence) => {
+                      // A folder that already holds the game — typically
+                      // the auto-selected `C:\ZEmu` left behind by an
+                      // earlier launcher install, but also a manually
+                      // dropped depot — means there is nothing to
+                      // download. Jump to the Finish checklist instead
+                      // of showing a 15 GB download screen over files
+                      // that are already on disk.
+                      if (presence.hasBaseGame) {
+                        setHasBaseGame(true)
+                        setHasMarker(presence.hasMarker)
+                        setStep(4)
+                        return
+                      }
+                      advance()
+                    }}
                     t={t}
                   />
                 </motion.div>
@@ -288,16 +394,18 @@ export function OnboardingPage({ initialChecks, onFinish, onRefreshGate, bearerT
                     folder={folder}
                     onBack={back}
                     onContinue={() => {
-                      setHasBaseGame(true)
-                      setHasMarker(true)
-                      // The depot just finished writing files
-                      // into the install folder; the marker's
-                      // now present, so `isInstalled` should
-                      // flip on the play page too. Same rationale
-                      // as the Step 1 / Step 2 refreshes — the
-                      // wizard writes directly to disk and the
-                      // store needs a hint to re-read.
-                      void refreshFromDisk()
+                      // The depot just finished writing files into the
+                      // install folder. We optimistically advance so the
+                      // user isn't held on the progress bar, but the
+                      // *authoritative* `hasBaseGame` / `hasMarker` values
+                      // are re-read from disk by the Step 4 effect below —
+                      // `setHasBaseGame(true)` used to be the only source
+                      // for the Finish checklist, which meant a download
+                      // that finished but failed to record its own
+                      // `manifest.json` / `.zemu-install-v1` marker still
+                      // showed a green "all good" and let the user click
+                      // Finish into a gate that bounced them straight back
+                      // into Step 3.
                       advance()
                     }}
                     t={t}
@@ -408,6 +516,24 @@ type Step1Banner =
   | { kind: 'fetch-failed'; reason: string }
   | null
 
+/**
+ * Normalise a thrown value into a loggable string.
+ *
+ * Tauri IPC rejections arrive as plain strings (the `Err(String)`
+ * returned by each `#[tauri::command]`), so `err.message` is usually
+ * `undefined` and an `instanceof Error` check alone would drop the
+ * only diagnostic we have.
+ */
+function describeError(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === 'string') return err
+  try {
+    return JSON.stringify(err)
+  } catch {
+    return String(err)
+  }
+}
+
 function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerToken, t }: AccessKeyStepProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -455,17 +581,36 @@ function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerTok
       //     the play-page store picks up the change before the
       //     wizard advances.
       if (result.ok && result.key && result.status === 'active') {
+        // Put the key in the input **before** attempting the write.
+        //
+        // This used to run after `await setAuthKey(...)`, so a failed
+        // persistence left the field empty and told the user to "paste
+        // it below" — even though the fetch had already succeeded and
+        // we were holding the correct value. The user then had to go
+        // and re-obtain a key they never saw, and the banner's
+        // `save_failed` reason read as though the *fetch* had failed.
+        //
+        // Setting state first means a write failure degrades to
+        // "here is your key, press Continue to retry" instead of
+        // losing the value entirely.
+        setAuthKey(result.key)
         try {
           await window.launcherAPI?.setAuthKey?.(result.key)
           if (cancelled) return
-          setAuthKey(result.key)
           onAfterSave?.()
           onContinue()
           return
-        } catch {
-          // Fall through to manual entry if the disk write
-          // fails — `setAuthKey` only resolves once the file
-          // is on disk, so a throw here is a real I/O error.
+        } catch (err) {
+          // Log the real reason. A user report is often the only
+          // evidence we get, and a bare `save_failed` with no
+          // underlying message is undiagnosable — the backend's
+          // `write_auth_key` deliberately degrades to a config-file
+          // fallback, so an error here is genuinely unexpected and
+          // worth surfacing in the log.
+          void window.debugLog?.write(
+            'onboarding',
+            `step1 auto-save failed: ${describeError(err)}`,
+          )
           setBanner({ kind: 'fetch-failed', reason: 'save_failed' })
           setIsLoading(false)
           return
@@ -512,7 +657,16 @@ function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerTok
       // advance (`onContinue()`) stays snappy.
       onAfterSave?.()
       onContinue()
-    } catch {
+    } catch (err) {
+      // The user reported this as an unactionable "Could not save
+      // the auth key. Please try again" with no further detail.
+      // `write_auth_key` already logs the underlying keyring error
+      // to the Rust-side debug log, but nothing correlated the two,
+      // so record the renderer-side view of the failure too.
+      void window.debugLog?.write(
+        'onboarding',
+        `step1 manual save failed: ${describeError(err)}`,
+      )
       setError(t('authKey.saveFailed'))
     } finally {
       setIsSaving(false)
@@ -599,15 +753,101 @@ function AccessKeyStep({ authKey, setAuthKey, onContinue, onAfterSave, bearerTok
 
 interface InstallFolderStepProps {
   folder: string | null
-  setFolder: (path: string | null) => void
+  /**
+   * Whether the resolved recommendation may be adopted without the user
+   * clicking anything. True on a first run (no folder configured yet);
+   * false for a returning user whose stored folder is already set —
+   * their choice must not be replaced by the default.
+   */
+  autoAdopt: boolean
+  /**
+   * Persist + adopt the install folder. Resolves once the Rust-side
+   * config has been written (or the write failed and was logged), so
+   * the step can keep its button in a busy state for the round-trip.
+   */
+  onFolderChange: (path: string) => Promise<void>
   onBack: () => void
-  onContinue: () => void
+  /** Called after the folder has been inspected; `presence` tells the
+   *  parent whether Step 3 (download) can be skipped. */
+  onContinue: (presence: BaseGamePresence) => void
   t: (key: string, params?: Record<string, unknown>) => string
 }
 
-function InstallFolderStep({ folder, setFolder, onBack, onContinue, t }: InstallFolderStepProps) {
+/**
+ * Step 2 — where the game goes.
+ *
+ * The wizard no longer opens with an empty "Choose folder" button and a
+ * disabled Continue. On mount it asks the Rust side for the folder the
+ * launcher recommends on this machine (`game_get_default_install_directory`
+ * → the OS volume plus `\ZEmu`, so `C:\ZEmu` on a normal Windows box and
+ * `D:\ZEmu` when Windows lives on `D:`), shows it as a plain sentence —
+ * "The game will be installed on / C:\ZEmu" — and adopts it immediately
+ * so Continue works without any input from the user. "Change location"
+ * still opens the OS picker for anyone who wants another drive.
+ *
+ * Adopting the recommendation is only safe because Continue probes the
+ * folder first: if `C:\ZEmu` already holds a previous install, the
+ * parent jumps straight to the Finish checklist instead of re-offering
+ * a 15 GB download.
+ */
+function InstallFolderStep({
+  folder,
+  autoAdopt,
+  onFolderChange,
+  onBack,
+  onContinue,
+  t,
+}: InstallFolderStepProps) {
   const [isPicking, setIsPicking] = useState(false)
+  const [isChecking, setIsChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** The launcher's suggestion for this machine; `null` until read or
+   *  when the IPC call failed (plain-Vite dev). */
+  const [recommended, setRecommended] = useState<string | null>(null)
+  /** False once the suggestion has been read (or has failed to load).
+   *  Drives the "detecting…" placeholder so the card never sits empty. */
+  const [isResolving, setIsResolving] = useState(true)
+
+  // Persist + adopt, shared by the picker, the "use recommended" link
+  // and the mount-time default. Callers that show a busy state simply
+  // await it; the mount effect awaits it only so a failure is caught.
+  const adopt = useCallback(
+    async (path: string) => {
+      if (!path) return
+      await onFolderChange(path)
+    },
+    [onFolderChange],
+  )
+
+  // Resolve the recommended folder once. A folder that is already
+  // configured (the user navigated Back into this step) wins — the
+  // suggestion is only offered as a link in that case.
+  useEffect(() => {
+    if (recommended) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const value = await window.gameAPI?.getDefaultInstallDirectory?.()
+        if (cancelled) return
+        const path = typeof value === 'string' ? value.trim() : ''
+        if (!path) return
+        setRecommended(path)
+        if (autoAdopt && !folder) await adopt(path)
+      } catch (err) {
+        // Missing bridge (dev) or a resolver failure: fall back to the
+        // plain "choose a folder" flow rather than blocking the step.
+        void window.debugLog?.write(
+          'onboarding',
+          `step2 default folder failed: ${describeError(err)}`,
+        )
+      } finally {
+        if (!cancelled) setIsResolving(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [recommended, folder, autoAdopt, adopt])
 
   const handlePick = async () => {
     if (isPicking) return
@@ -616,7 +856,7 @@ function InstallFolderStep({ folder, setFolder, onBack, onContinue, t }: Install
     try {
       const picked = await window.gameAPI?.selectDirectory?.()
       if (typeof picked === 'string' && picked.length > 0) {
-        setFolder(picked)
+        await adopt(picked)
       }
     } catch {
       setError(t('toasts.failedToSelectDirectory'))
@@ -625,23 +865,86 @@ function InstallFolderStep({ folder, setFolder, onBack, onContinue, t }: Install
     }
   }
 
+  const handleUseRecommended = async () => {
+    if (!recommended) return
+    setError(null)
+    await adopt(recommended)
+  }
+
+  const handleContinue = async () => {
+    if (!folder || folder === '__existing__' || isChecking) return
+    setIsChecking(true)
+    setError(null)
+    try {
+      const presence = await detectBaseGameIn(folder)
+      onContinue(presence)
+    } finally {
+      setIsChecking(false)
+    }
+  }
+
+  const shownPath = folder && folder !== '__existing__' ? folder : null
+  const isRecommended = !!shownPath && !!recommended && samePath(shownPath, recommended)
+
   return (
     <div>
       <div className="space-y-4">
-        <Button
-          variant="outline"
-          onClick={() => void handlePick()}
-          disabled={isPicking}
-          className="w-full h-12 text-base gap-2.5"
-        >
-          {isPicking ? <Spinner className="size-5" /> : <Folder className="size-5" />}
-          {folder ? t('onboarding.step2.change') : t('onboarding.step2.choose')}
-        </Button>
-        {folder && folder !== '__existing__' ? (
-          <p className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground break-all font-mono">
-            {t('onboarding.step2.pathChosen')} {folder}
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('onboarding.step2.installDestination')}
           </p>
-        ) : null}
+          <div
+            className="mt-2 flex items-start gap-2.5"
+            // The path arrives a tick after the step paints; announce
+            // the resolved location instead of silently swapping text.
+            aria-live="polite"
+          >
+            <HardDrive
+              className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
+            {shownPath ? (
+              <span className="min-w-0 break-all font-mono text-base leading-6 text-foreground">
+                {shownPath}
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                {isResolving
+                  ? t('onboarding.step2.detecting')
+                  : t('onboarding.step2.chooseHint')}
+              </span>
+            )}
+          </div>
+          {isRecommended ? (
+            <p className="mt-2 pl-[26px] text-xs text-muted-foreground">
+              {t('onboarding.step2.destinationHint')}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void handlePick()}
+            disabled={isPicking || isChecking}
+            className="w-full h-12 text-base gap-2.5"
+          >
+            {isPicking ? <Spinner className="size-5" /> : <Folder className="size-5" />}
+            {shownPath ? t('onboarding.step2.change') : t('onboarding.step2.choose')}
+          </Button>
+          {recommended && shownPath && !isRecommended ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleUseRecommended()}
+              disabled={isPicking || isChecking}
+              className="self-center text-xs"
+            >
+              {t('onboarding.step2.useDefault')}
+            </Button>
+          ) : null}
+        </div>
+
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -650,19 +953,38 @@ function InstallFolderStep({ folder, setFolder, onBack, onContinue, t }: Install
       </div>
 
       <div className="mt-6 flex justify-between">
-        <Button variant="ghost" onClick={onBack}>
+        <Button
+          variant="ghost"
+          onClick={onBack}
+          disabled={isPicking || isChecking}
+        >
           {t('common.back')}
         </Button>
         <Button
           variant="gradient"
-          onClick={onContinue}
-          disabled={!folder || folder === '__existing__'}
+          onClick={() => void handleContinue()}
+          disabled={!shownPath || isPicking || isChecking}
         >
+          {isChecking ? <Spinner className="size-4" /> : null}
           {t('onboarding.step2.continue')}
         </Button>
       </div>
     </div>
   )
+}
+
+/**
+ * Compare two user-facing folder paths for equality.
+ *
+ * Windows paths are case-insensitive and `C:\ZEmu` and `C:\ZEmu\` name
+ * the same folder, so the "is this the recommended location?" check
+ * has to normalise both before comparing — otherwise picking the
+ * recommendation through the picker would light up "Use recommended
+ * location" as if the user had moved somewhere else.
+ */
+function samePath(a: string, b: string): boolean {
+  const normalise = (value: string) => value.replace(/[\\/]+$/, '').toLowerCase()
+  return normalise(a) === normalise(b)
 }
 
 interface BaseGameStepProps {
@@ -705,14 +1027,73 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
   //   awaiting_confirm     — player scanned, waiting for phone approval
   //   downloading          — authed, downloading depot
   //   done                 — download finished; wizard advances
-  //   failed               — pipeline errored; `errorMessage` carries the reason
+  //   failed               — pipeline errored; `pipelineError` carries the
+  //                          structured, coded error
   const [pipelineState, setPipelineState] = useState<QrGateState>('idle')
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
-  const [pipelineError, setPipelineError] = useState<string | null>(null)
+  // Structured `{ code, message, detail, retryable }` payload from
+  // `src-tauri/src/errors.rs`. Never render `detail` directly — `ErrorCard`
+  // maps `code` onto localized copy and hides the raw chain behind a
+  // "Technical details" disclosure. Stored as the payload (not a string) so
+  // the card can pick the recovery action from the code.
+  const [pipelineError, setPipelineError] = useState<AppErrorPayload | null>(null)
+
+  // True once a Steam refresh token exists in the keychain — either from a
+  // previous run or from the QR scan that just succeeded. Drives the retry
+  // path: with a token we can retry the depot download alone instead of
+  // forcing the player through a second QR scan (which is what used to
+  // happen, and which is especially punishing after a transient
+  // `steam_busy` / `steam_rate_limited` failure).
+  const [hasStoredToken, setHasStoredToken] = useState(false)
 
   // Depot download progress. Populated by `depot-progress` events
   // from the same pipeline.
   const [depotProgress, setDepotProgress] = useState<DepotProgress | null>(null)
+
+  // Live mirror of `pipelineState` for use inside the event handlers.
+  // The handlers are registered once per `pipelineActive` transition;
+  // reading the ref lets them see the current value without making
+  // every transition tear down and rebuild the whole listener set.
+  const pipelineStateRef = useRef<QrGateState>(pipelineState)
+  useEffect(() => {
+    pipelineStateRef.current = pipelineState
+  }, [pipelineState])
+
+  // True while the pipeline is mid-flight and the Tauri listeners
+  // should be attached. Deliberately excludes `idle` (never started /
+  // user dismissed) and `done` (download finished, wizard advancing)
+  // so the subscription set is stable for the whole run.
+  const pipelineActive = pipelineState !== 'idle' && pipelineState !== 'done'
+
+  // Instrumentation: log every pipeline transition to the Rust debug
+  // log. A report from a user who can't be reached for follow-up
+  // questions is often the only evidence we get, and the
+  // `scan_and_go_begin` storm in a previous report was only
+  // interpretable after seeing which state transitions preceded it.
+  useEffect(() => {
+    if (pipelineState === 'idle') return
+    void window.debugLog?.write(
+      'onboarding',
+      `step3 pipeline_state=${pipelineState} ` +
+        `hasFolder=${folder ? 'yes' : 'no'} ` +
+        `progress=${depotProgress ? 'yes' : 'no'}`,
+    )
+  }, [pipelineState, folder, depotProgress])
+
+  // Instrumentation: log mount/unmount of Step 3. Repeated
+  // `scan_and_go_begin` entries with no user action in between mean
+  // the wizard is being remounted by the gate redirect rather than
+  // the user retrying, and this is the only way to tell those apart
+  // from the log alone.
+  useEffect(() => {
+    void window.debugLog?.write('onboarding', `step3 mounted folder=${folder ?? 'none'}`)
+    return () => {
+      void window.debugLog?.write(
+        'onboarding',
+        `step3 unmounted state=${pipelineStateRef.current}`,
+      )
+    }
+  }, [folder])
 
   // Probe initial auth status on mount.
   useEffect(() => {
@@ -740,6 +1121,11 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
         setAlreadyAuthed(true)
         setAuthInitiated(true)
       }
+      // `accountName` is surfaced whenever a token exists (even on a
+      // fresh install, where `authed` is deliberately false). That makes
+      // it the cheapest reliable "is there a token?" signal, and it lets a
+      // retry skip the QR gate instead of asking the player to scan twice.
+      setHasStoredToken(Boolean(status.accountName))
     })
     return () => {
       cancelled = true
@@ -749,40 +1135,78 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
   // Pipeline-event subscriptions. Active whenever the pipeline is
   // running — covers both QR events and download events because
   // they're emitted by the same orchestrator on the same runtime.
+  //
+  // ## Why the dep is a ref, not `pipelineState`
+  //
+  // This used to depend on the *boolean expression*
+  // `pipelineState === 'idle' || pipelineState === 'done'`. That value
+  // only ever flips twice across the whole lifecycle, so the listener
+  // set was attached on the first non-idle render and torn down on the
+  // return to idle — the subscription lifecycle was decoupled from the
+  // state it was tracking. We now depend on `pipelineActive` (a real
+  // boolean derived from state) and read the live state through a ref
+  // inside the handlers, which keeps the subscription stable across
+  // `connecting → awaiting_scan → awaiting_confirm → downloading`
+  // while still tearing down when the pipeline truly ends.
+  //
+  // ## Why the `disposed` guard matters
+  //
+  // Every `on*` listener in `tauri-bridge.ts` is fire-and-forget:
+  // `listen()` returns a promise, so if cleanup runs before it
+  // resolves, the underlying Tauri listener is never removed and can
+  // fire into an unmounted component — re-running `onContinue()` and
+  // re-advancing the wizard. The bridge now tears down late-resolving
+  // listeners itself, and this guard is the renderer-side belt to that
+  // braces.
   useEffect(() => {
-    if (pipelineState === 'idle' || pipelineState === 'done') return
+    if (!pipelineActive) return
+    let disposed = false
+    // Read the freshest state from inside callbacks without making
+    // them re-subscribe on every transition.
+    const stateRef = pipelineStateRef
     const offs: Array<() => void> = []
     const offQr = window.steamApi?.onQr?.((dataUrl) => {
+      if (disposed) return
       setQrDataUrl(dataUrl)
       setPipelineState('awaiting_scan')
     })
     const offScanned = window.steamApi?.onScanned?.(() => {
+      if (disposed) return
       setPipelineState('awaiting_confirm')
     })
     const offAuthed = window.steamApi?.onAuthed?.((name) => {
+      if (disposed) return
       setAccountName(name)
+      // The QR flow persists the refresh token before emitting
+      // `steam-authed`, so a later retry can go straight to the
+      // download-only command without another scan.
+      setHasStoredToken(true)
       // Drop the QR immediately so the wizard UI transitions to the
       // progress bar without flashing a stale "scan me" image.
       setQrDataUrl(null)
     })
-    const offLoginError = window.steamApi?.onLoginError?.((message) => {
-      setPipelineError(message)
+    const offLoginError = window.steamApi?.onLoginError?.((error) => {
+      if (disposed) return
+      setPipelineError(normalizeAppError(error))
       setPipelineState('failed')
     })
     const offProgress = window.steamApi?.onDepotProgress?.((p) => {
+      if (disposed) return
       setDepotProgress(p)
       // First progress event marks the auth → download transition.
-      if (pipelineState !== 'downloading') {
+      if (stateRef.current !== 'downloading') {
         setPipelineState('downloading')
       }
     })
     const offDone = window.steamApi?.onDepotDone?.(() => {
+      if (disposed) return
       setPipelineState('done')
       setDepotProgress(null)
       onContinue()
     })
-    const offDepotError = window.steamApi?.onDepotError?.((message) => {
-      setPipelineError(message)
+    const offDepotError = window.steamApi?.onDepotError?.((error) => {
+      if (disposed) return
+      setPipelineError(normalizeAppError(error))
       setPipelineState('failed')
     })
     if (offQr) offs.push(offQr)
@@ -793,12 +1217,10 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
     if (offDone) offs.push(offDone)
     if (offDepotError) offs.push(offDepotError)
     return () => {
+      disposed = true
       offs.forEach((off) => off())
     }
-    // We intentionally read `pipelineState` once at subscribe-time;
-    // the cleanup tears everything down on unmount or state flip.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipelineState === 'idle' || pipelineState === 'done', onContinue])
+  }, [pipelineActive, onContinue, pipelineStateRef])
 
   const beginScanAndGo = useCallback(async () => {
     if (!folder || folder === '__existing__' || !window.steamApi) return
@@ -810,7 +1232,11 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
     try {
       await window.steamApi.startInstallPipeline(folder)
     } catch (e) {
-      setPipelineError(e instanceof Error ? e.message : String(e))
+      // `startInstallPipeline` is fire-and-forget and rejects with a plain
+      // string (the command's spawn error), unlike `installDepot` which
+      // rejects with a classified `AppErrorPayload`. Normalizing here keeps
+      // both paths rendering the same card.
+      setPipelineError(normalizeAppError(e))
       setPipelineState('failed')
     }
   }, [folder])
@@ -826,12 +1252,55 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
     setDepotProgress(null)
   }, [])
 
-  const retryPipeline = useCallback(() => {
+  // When a returning user is already authed, drop them straight into
+  // the download-only path (no QR scan needed). Also used by `retry`
+  // when a token is already in the keychain.
+  const startDownloadOnly = useCallback(async () => {
+    if (!folder || folder === '__existing__' || !window.steamApi) return
+    setPipelineState('downloading')
+    setPipelineError(null)
+    setDepotProgress(null)
+    setAuthInitiated(true)
+    try {
+      await window.steamApi.installDepot(folder)
+      setPipelineState('done')
+      onContinue()
+    } catch (e) {
+      // The command rejects with `{ code, message, detail, retryable }`
+      // once the backend has classified the failure — no parsing needed.
+      setPipelineError(normalizeAppError(e))
+      setPipelineState('failed')
+    }
+  }, [folder, onContinue])
+
+  /**
+   * Retry after a failure.
+   *
+   * If a Steam token is already stored we retry just the depot download:
+   * re-running the QR gate for a transient `steam_busy` /
+   * `steam_rate_limited` / CDN hiccup made the player scan a second QR code
+   * for no reason.
+   *
+   * The exception is a *dead* token (`steam_session_expired`,
+   * `steam_not_signed_in`, `steam_account_missing`): retrying the
+   * download would fail identically, so those go back through the QR gate
+   * (which overwrites the stored token).
+   */
+  const retryPipeline = useCallback(async () => {
+    const code = pipelineError?.code
+    const tokenIsDead =
+      code === 'steam_session_expired' ||
+      code === 'steam_not_signed_in' ||
+      code === 'steam_account_missing'
     setPipelineError(null)
     setQrDataUrl(null)
     setDepotProgress(null)
-    void beginScanAndGo()
-  }, [beginScanAndGo])
+    if (hasStoredToken && !tokenIsDead) {
+      await startDownloadOnly()
+    } else {
+      await beginScanAndGo()
+    }
+  }, [beginScanAndGo, hasStoredToken, pipelineError, startDownloadOnly])
 
   const signOut = useCallback(async () => {
     try {
@@ -846,25 +1315,8 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
     setDepotProgress(null)
     setAlreadyAuthed(false)
     setAuthInitiated(false)
+    setHasStoredToken(false)
   }, [])
-
-  // When a returning user is already authed, drop them straight into
-  // the download-only path (no QR scan needed).
-  const startDownloadOnly = useCallback(async () => {
-    if (!folder || folder === '__existing__' || !window.steamApi) return
-    setPipelineState('downloading')
-    setPipelineError(null)
-    setDepotProgress(null)
-    setAuthInitiated(true)
-    try {
-      await window.steamApi.installDepot(folder)
-      setPipelineState('done')
-      onContinue()
-    } catch (e) {
-      setPipelineError(e instanceof Error ? e.message : String(e))
-      setPipelineState('failed')
-    }
-  }, [folder, onContinue])
 
   // Convenience flags. Plain equality only — no derived state that
   // could collide with itself across renders. (`isIdle` was
@@ -881,17 +1333,20 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
   //                     Show the green "Signed in as X" card and
   //                     a Start-download CTA in the bottom bar.
   //   2. `downloading` — pipeline in flight. Show progress card.
-  //   3. `qr`          — anything else (idle, connecting, scan,
-  //                     confirm, failed). Show `QrSteamGate`; it
-  //                     owns its own UI for failed/connecting/etc.
-
+  //   3. `qr`          — idle / connecting / scan / confirm. Show
+  //                     `QrSteamGate`.
+  //
+  // `failed` is deliberately NOT part of the gate anymore: the error card
+  // below is the single place that explains the failure and offers
+  // recovery actions. Rendering both duplicated the message (the gate
+  // showed the raw string and the card showed it again).
   const authedIdle =
     authInitiated &&
     alreadyAuthed &&
     pipelineState === 'idle' &&
     !isDownloading &&
     !isFailed
-  const showQrGate = !authedIdle && !isDownloading
+  const showQrGate = !authedIdle && !isDownloading && !isFailed
   const showProgress = isDownloading
 
   return (
@@ -926,7 +1381,11 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
           state={pipelineState}
           dataUrl={qrDataUrl}
           accountName={accountName}
-          errorMessage={pipelineError}
+          // The gate never renders its `failed` branch anymore (see
+          // `showQrGate`); failures are owned by `ErrorCard` below so the
+          // message isn't duplicated and the recovery actions live in one
+          // place.
+          errorMessage={null}
           onBegin={beginScanAndGo}
           onCancel={cancelPipeline}
           onRetry={retryPipeline}
@@ -975,27 +1434,46 @@ function BaseGameStep({ folder, onBack, onContinue, t }: BaseGameStepProps) {
         </div>
       ) : null}
 
-      {isFailed ? (
-        <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-          <p className="font-medium">{t('onboarding.step3.errorTitle')}</p>
-          <p>{pipelineError}</p>
-          <div className="flex justify-end gap-2 pt-2">
-            {pipelineError && !pipelineError.toLowerCase().includes('bridge missing') ? (
+      {isFailed && pipelineError ? (
+        <ErrorCard
+          error={pipelineError}
+          actions={
+            <>
+              {shouldSuggestAnotherAccount(pipelineError.code) ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void signOut()}
+                >
+                  <LogOut className="size-4" />
+                  {t('errors.actions.useAnotherAccount')}
+                </Button>
+              ) : null}
+              {pipelineError.code === 'steam_depot_not_owned' ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    void openUrl(H1Z1_STORE_URL).catch(() => {
+                      /* OS handler missing — the URL is in the description */
+                    })
+                  }}
+                >
+                  <ExternalLink className="size-4" />
+                  {t('errors.actions.openStore')}
+                </Button>
+              ) : null}
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => void signOut()}
+                onClick={() => void retryPipeline()}
               >
-                <LogOut className="size-4" />
-                {t('onboarding.step3.qrGate.signOut')}
+                <RotateCw className="size-4" />
+                {t('common.retry')}
               </Button>
-            ) : null}
-            <Button variant="outline" size="sm" onClick={retryPipeline}>
-              <RotateCw className="size-4" />
-              {t('common.retry')}
-            </Button>
-          </div>
-        </div>
+            </>
+          }
+        />
       ) : null}
 
       <div className="mt-6 flex justify-between">

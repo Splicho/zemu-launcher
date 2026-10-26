@@ -6,7 +6,6 @@ import { Plus, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import type { FriendsActionResult } from '@/lib/friends'
 import { normalizeFriendRelationship } from '@/lib/friends'
@@ -151,21 +150,17 @@ export function FriendsPanel({ active }: FriendsPanelProps) {
   // saves (or generates) a key and launches the game once.
   if (active && !authKeyReady) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <ScrollArea className="flex-1">
-          <div className="flex flex-col gap-3 px-4 py-6 text-sm text-muted-foreground">
-            <h3 className="text-base font-semibold text-foreground">
-              {t('friends.authKeyRequired')}
-            </h3>
-            <p>{t('friends.authKeyRequiredDesc')}</p>
-          </div>
-        </ScrollArea>
+      <div className="flex flex-col gap-3 px-4 py-6 text-sm text-muted-foreground">
+        <h3 className="text-base font-semibold text-foreground">
+          {t('friends.authKeyRequired')}
+        </h3>
+        <p>{t('friends.authKeyRequiredDesc')}</p>
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <>
       {page === 'add' ? (
         <AddFriendsPage onBack={() => setPage('list')} />
       ) : page === 'requests' ? (
@@ -189,7 +184,7 @@ export function FriendsPanel({ active }: FriendsPanelProps) {
           removeMutation={removeMutation}
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -247,7 +242,7 @@ function FriendsListPage({
   return (
     <>
       {/* Sticky header: "+ Add a friend" button. */}
-      <div className="border-b bg-popover px-4 py-3">
+      <div className="sticky top-0 z-10 border-b bg-popover px-4 py-3">
         <Button
           variant="gradient"
           className="h-11 w-full gap-2 text-sm font-semibold"
@@ -258,56 +253,55 @@ function FriendsListPage({
         </Button>
       </div>
 
-      {/* Scrollable body: lists, empty states, error line. */}
-      <ScrollArea className="flex-1">
-        <div className="flex flex-col gap-6 px-4 py-4">
-          {errorMessage ? (
-            <p
-              role="status"
-              aria-live="polite"
-              className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
-            >
-              {errorMessage}
-            </p>
-          ) : null}
+      {/* Body: lists, empty states, error line. The outer sheet-level
+       * `ScrollArea` provides the actual scrolling; this is just the
+       * content stack. */}
+      <div className="flex flex-col gap-6 px-4 py-4">
+        {errorMessage ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+          >
+            {errorMessage}
+          </p>
+        ) : null}
 
-          {/* Incoming requests row — always shown when there are
-           * pending requests, independently of whether the user
-           * already has any accepted friends. Nesting this inside
-           * the friends section (the previous layout) hid it for
-           * brand-new users who have only incoming requests and no
-           * accepted friends yet, leaving the toast as the only way
-           * to accept/decline. */}
-          {result.incoming.length > 0 ? (
-            <FriendRequestsRow
-              people={result.incoming}
-              count={result.incoming.length}
-              onClick={onRequestsClick}
-            />
-          ) : null}
+        {/* Incoming requests row — always shown when there are
+         * pending requests, independently of whether the user
+         * already has any accepted friends. Nesting this inside
+         * the friends section (the previous layout) hid it for
+         * brand-new users who have only incoming requests and no
+         * accepted friends yet, leaving the toast as the only way
+         * to accept/decline. */}
+        {result.incoming.length > 0 ? (
+          <FriendRequestsRow
+            people={result.incoming}
+            count={result.incoming.length}
+            onClick={onRequestsClick}
+          />
+        ) : null}
 
-          {result.outgoing.length > 0 ? (
-            <PeopleSection
-              title={t('friends.sections.outgoing')}
-              people={result.outgoing}
-              renderActions={(person) =>
-                renderRowActions(person, 'outgoing')
-              }
-            />
-          ) : null}
+        {result.outgoing.length > 0 ? (
+          <PeopleSection
+            title={t('friends.sections.outgoing')}
+            people={result.outgoing}
+            renderActions={(person) =>
+              renderRowActions(person, 'outgoing')
+            }
+          />
+        ) : null}
 
-          {result.friends.length > 0 ? (
-            <PeopleSection
-              title={t('friends.sections.friends')}
-              people={result.friends}
-              renderActions={(person) =>
-                renderRowActions(person, 'friend')
-              }
-            />
-          ) : null}
-        </div>
-      </ScrollArea>
-
+        {result.friends.length > 0 ? (
+          <PeopleSection
+            title={t('friends.sections.friends')}
+            people={result.friends}
+            renderActions={(person) =>
+              renderRowActions(person, 'friend')
+            }
+          />
+        ) : null}
+      </div>
     </>
   )
 }
@@ -443,37 +437,37 @@ function AddFriendsPage({ onBack }: AddFriendsPageProps) {
         </div>
       </div>
 
-      {/* Scrollable body: search results (or a hint when nothing searched yet). */}
-      <ScrollArea className="flex-1">
-        <div className="flex flex-col gap-4 px-4 py-4">
-          {errorMessage ? (
-            <p
-              role="status"
-              aria-live="polite"
-              className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
-            >
-              {errorMessage}
-            </p>
-          ) : null}
+      {/* Body: search results (or a hint when nothing searched yet).
+       * The outer sheet-level `ScrollArea` provides the actual
+       * scrolling; this is just the content stack. */}
+      <div className="flex flex-col gap-4 px-4 py-4">
+        {errorMessage ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+          >
+            {errorMessage}
+          </p>
+        ) : null}
 
-          {searched ? (
-            searchQuery.isFetching && result.results.length === 0 ? (
-              <PeopleSection
-                title={t('friends.sections.resultsFound', { count: 0 })}
-                people={SKELETON_RESULTS}
-                renderActions={() => null}
-                renderItem={() => <SearchResultSkeleton />}
-              />
-            ) : (
-              <PeopleSection
-                title={t('friends.sections.resultsFound', { count: result.results.length })}
-                people={result.results}
-                renderActions={renderSearchRowActions}
-              />
-            )
-          ) : null}
-        </div>
-      </ScrollArea>
+        {searched ? (
+          searchQuery.isFetching && result.results.length === 0 ? (
+            <PeopleSection
+              title={t('friends.sections.resultsFound', { count: 0 })}
+              people={SKELETON_RESULTS}
+              renderActions={() => null}
+              renderItem={() => <SearchResultSkeleton />}
+            />
+          ) : (
+            <PeopleSection
+              title={t('friends.sections.resultsFound', { count: result.results.length })}
+              people={result.results}
+              renderActions={renderSearchRowActions}
+            />
+          )
+        ) : null}
+      </div>
     </>
   )
 }
@@ -520,38 +514,38 @@ function FriendRequestsPage({
         </div>
       </div>
 
-      {/* Scrollable body: incoming request rows. */}
-      <ScrollArea className="flex-1">
-        <div className="flex flex-col gap-2 px-4 py-4">
-          {result.incoming.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-xs text-muted-foreground/80">
-              {t('friends.requestsEmpty')}
-            </p>
-          ) : (
-            <div className="flex flex-col">
-              {result.incoming.map((person) => (
-                <div
-                  key={person.id}
-                  className="flex items-center gap-3 rounded-md px-2.5 py-2.5"
-                >
-                  <AvatarFallbackOrImage person={person} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium leading-tight">
-                      {person.displayName}
-                    </p>
-                  </div>
-                  <AcceptDeclineActions
-                    targetId={person.id}
-                    onAccept={(id) => acceptMutation.mutate({ targetId: id })}
-                    onDecline={(id) => declineMutation.mutate({ targetId: id })}
-                    disabled={isBusy}
-                  />
+      {/* Body: incoming request rows. The outer sheet-level
+       * `ScrollArea` provides the actual scrolling; this is just the
+       * content stack. */}
+      <div className="flex flex-col gap-2 px-4 py-4">
+        {result.incoming.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-xs text-muted-foreground/80">
+            {t('friends.requestsEmpty')}
+          </p>
+        ) : (
+          <div className="flex flex-col">
+            {result.incoming.map((person) => (
+              <div
+                key={person.id}
+                className="flex items-center gap-3 rounded-md px-2.5 py-2.5"
+              >
+                <AvatarFallbackOrImage person={person} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium leading-tight">
+                    {person.displayName}
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+                <AcceptDeclineActions
+                  targetId={person.id}
+                  onAccept={(id) => acceptMutation.mutate({ targetId: id })}
+                  onDecline={(id) => declineMutation.mutate({ targetId: id })}
+                  disabled={isBusy}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </>
   )
 }

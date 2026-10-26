@@ -8,6 +8,11 @@
  * the visual `MAX_PLAYERS` cap; `lobby` / `inMatch` are surfaced
  * later if the design wants a richer read-out.
  *
+ * Region is a query parameter (`?region=eu|na`); no parameter is the
+ * api's EU default. Each region has its own upstream and cache, so the
+ * launcher must ask for the region it is about to render — a shared
+ * "global" total would put the EU headcount under the Chicago heading.
+ *
  * Auth:
  *   The api gates this route with `LauncherOrInternalGuard`, which
  *   accepts either a launcher JWT (verified by
@@ -16,11 +21,14 @@
  *   shared secret is baked into the renderer bundle.
  *
  * Failure posture:
- *   - Transport errors → thrown, the hook renders an "offline" pill.
- *   - Non-200 → thrown, same fallback.
- *   - Malformed JSON → thrown, same fallback.
- *   The hook catches all three and projects them to `{ ok: false }`
- *   so the page never has to `try/catch`.
+ *   - Transport errors → caught, `{ ok: false }`.
+ *   - Non-200 → `{ ok: false }` with the HTTP status.
+ *   - Malformed JSON → caught, `{ ok: false }`.
+ *   - Region mismatch → `{ ok: false }`; never paint another region's
+ *     number under this one.
+ *   - `ok: false` / `source: "unavailable"` from the api → `{ ok:
+ *     false }`, so the page shows "N/A" instead of a zero-filled bar.
+ *   Consumers check the boolean; the page never has to `try/catch`.
  *
  * Why a hand-rolled fetcher (not `fetch`):
  *   `httpFetch` is the shared Tauri-aware transport, identical to the
@@ -33,6 +41,18 @@ import { httpFetch } from '@/lib/http-fetch'
 import { readPersistedToken } from '@/lib/auth'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
+/**
+ * Regions the api's `/v1/playercount` understands. Kept in sync with
+ * `PLAYERCOUNT_REGIONS` in `zemu-website/apps/api/src/playercount` —
+ * a region the api doesn't know is a 400, not a silent zero.
+ */
+export type PlayerCountRegion = 'eu' | 'na'
+
+/** Where the api got the reading from. `cache` is the api's own 30s
+ *  grace window after an upstream hiccup; `unavailable` means it has
+ *  no reading at all (upstream down or not configured). */
+export type PlayerCountSource = 'live' | 'cache' | 'unavailable'
+
 export interface PlayerCountWorld {
   name: string
   players: number
@@ -41,6 +61,13 @@ export interface PlayerCountWorld {
 }
 
 export interface PlayerCount {
+  /** Which region's server answered. The api echoes the request's
+   *  region so a misrouted poll is detectable. */
+  region?: PlayerCountRegion
+  /** `false` when the api has no reading for the region. Optional in
+   *  the payload — an upstream that omits it is still reporting a
+   *  real count. */
+  ok?: boolean
   /** Total humans across lobby + in-match. What the progress bar reads. */
   total: number
   /** Humans currently sitting in the lobby. */
@@ -51,6 +78,8 @@ export interface PlayerCount {
   worlds?: ReadonlyArray<PlayerCountWorld>
   /** Server-side timestamp (unix seconds). Used for stale detection. */
   updatedAt: number
+  /** Provenance of the reading, see {@link PlayerCountSource}. */
+  source?: PlayerCountSource
 }
 
 export interface PlayerCountResult {
@@ -70,9 +99,11 @@ function resolveApiBaseUrl(): string {
 }
 
 /**
- * Fetch the live player count. The api returns a single global
- * payload (one region today — EU) — region is a hook-time concern
- * (cache key, polling), not a URL concern.
+ * Fetch the live player count for one region.
+ *
+ * `region` is required: the api keeps a separate upstream and cache per
+ * region, and defaulting here would hide a caller that forgot to say
+ * which server it is drawing.
  *
  * Note: `httpFetch` doesn't forward `AbortSignal` (it goes through
  * the Tauri IPC bridge on desktop and a plain `fetch` on web).
@@ -85,9 +116,11 @@ function resolveApiBaseUrl(): string {
  * Never throws — failures are projected to `{ ok: false, error }`
  * so consumers just check the boolean.
  */
-export async function fetchPlayerCount(): Promise<PlayerCountResult> {
+export async function fetchPlayerCount(
+  region: PlayerCountRegion,
+): Promise<PlayerCountResult> {
   const base = resolveApiBaseUrl().replace(/\/+$/, '')
-  const url = `${base}/v1/playercount`
+  const url = `${base}/v1/playercount?region=${encodeURIComponent(region)}`
   // The api's `/v1/playercount` accepts either the launcher's
   // session JWT or the shared internal key (`LauncherOrInternalGuard`).
   // We send the launcher's JWT when one is persisted — same
@@ -111,6 +144,34 @@ export async function fetchPlayerCount(): Promise<PlayerCountResult> {
       return { ok: false, error: `HTTP ${res.status} ${res.statusText}` }
     }
     const data = (await res.json()) as PlayerCount
+
+    // Region echo check. The api answers with the region it actually
+    // drew from, so a response that doesn't match the request means
+    // the number belongs to a different server.
+    //
+    // EU tolerates a *missing* echo: it is the api's default region,
+    // so an older api that ignores `?region=` is still returning EU
+    // data. NA does not — that api would be handing back the EU count,
+    // and putting it under the Chicago heading is exactly the
+    // confident-looking wrong number this guard exists to prevent.
+    const echoed = data.region
+    const echoTrustworthy =
+      echoed === region || (echoed === undefined && region === 'eu')
+    if (!echoTrustworthy) {
+      return {
+        ok: false,
+        error: `Player count for "${region}" came back as "${echoed ?? 'unspecified region'}"`,
+      }
+    }
+
+    // A 200 with `ok: false` (or `source: "unavailable"`) is the api
+    // saying it has no reading — its upstream is down or not
+    // configured. Rendering that as a zero-filled bar would advertise
+    // an empty server, so project it to the error state instead.
+    if (data.ok === false || data.source === 'unavailable') {
+      return { ok: false, error: `No player count for "${region}"` }
+    }
+
     return { ok: true, data }
   } catch (err) {
     return {

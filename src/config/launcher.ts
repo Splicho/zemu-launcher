@@ -1,6 +1,6 @@
 export const LAUNCHER_CONFIG = {
   name: 'ZEmu Launcher',
-  version: '0.1.57',
+  version: '0.1.71',
   company: 'ZEmu',
   // Public URL the launcher hits to fetch version.json + .tar.zst archives.
   // Bundled into update-config.json by scripts/sync-launcher-config.cjs.
@@ -67,5 +67,10 @@ export const LAUNCHER_CONFIG = {
   // into the install root to override the depot's copy. The
   // launcher has no business re-downloading the original over
   // the top of it.
-  updateSkipFiles: ['ClientConfig.ini', 'dinput8.dll'],
+  //
+  // `catnip-client.cfg` is in here because the launcher writes the
+  // user's auth key into it on every launch — the ZEmu anti-cheat
+  // (`CatnipAC.exe`) reads the key from that file. Without this
+  // filter, the local edit would look like a tampered file forever.
+  updateSkipFiles: ['catnip-client.cfg'],
 } as const

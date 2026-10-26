@@ -6,6 +6,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { FriendsPanel } from '@/components/friends-panel'
 
 interface FriendsSheetProps {
@@ -17,7 +18,16 @@ interface FriendsSheetProps {
 /**
  * Right-side Sheet wrapper for the Friends panel. Owns the
  * `SheetHeader` (title only — no description) and forwards the rest
- * of the layout to `<FriendsPanel />`.
+ * of the layout to `<FriendsPanel />`. The body is wrapped in a
+ * single top-level `ScrollArea` so the sheet scrolls as a unit —
+ * the page-level sticky headers inside `FriendsPanel` stick
+ * relative to this viewport, so the back button + search input
+ * stay pinned while the user scrolls through long friend lists or
+ * search results. Previously the scroll lived inside each page
+ * via a nested `ScrollArea`, which was redundant nesting (a
+ * `ScrollArea` inside another `ScrollArea` doesn't measure its
+ * viewport correctly) and made the sticky headers behave
+ * unpredictably.
  */
 export function FriendsSheet({ open, onOpenChange }: FriendsSheetProps) {
   const { t } = useTranslation()
@@ -31,9 +41,9 @@ export function FriendsSheet({ open, onOpenChange }: FriendsSheetProps) {
         <SheetHeader className="border-b">
           <SheetTitle>{t('friends.title')}</SheetTitle>
         </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col">
+        <ScrollArea className="min-h-0 min-w-0 flex-1">
           <FriendsPanel active={open} />
-        </div>
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   )

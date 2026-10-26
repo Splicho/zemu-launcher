@@ -13,6 +13,92 @@ export default {
       maximize: 'Maximizar',
       restore: 'Restaurar',
     },
+    // Veja `src-tauri/src/errors.rs`: um bloco por código de erro. O
+    // launcher mostra `.title` / `.description` e deixa a cadeia técnica
+    // bruta atrás de "Detalhes técnicos".
+    errors: {
+      actions: {
+        details: 'Detalhes técnicos',
+        copy: 'Copiar detalhes',
+        copied: 'Copiado',
+        useAnotherAccount: 'Usar outra conta',
+        openStore: 'Abrir Z1 Battle Royale na Steam',
+      },
+      steam_depot_not_owned: {
+        title: 'Sua conta Steam não possui H1Z1: King of the Kill',
+        description:
+          'Entre com a conta que possui o jogo ou adicione Z1 Battle Royale a esta conta (é gratuito). Se você já possui o jogo, aguarde um instante e tente de novo — a Steam também recusa a chave do depot quando está sobrecarregada.',
+      },
+      steam_not_signed_in: {
+        title: 'Entre com a Steam para baixar o jogo',
+        description:
+          'O launcher ainda não tem um login Steam salvo. Escaneie o QR code com o app Steam Mobile para continuar.',
+      },
+      steam_session_expired: {
+        title: 'Seu login da Steam expirou',
+        description:
+          'A Steam não aceita mais o login salvo. Saia e escaneie o QR code novamente.',
+      },
+      steam_login_failed: {
+        title: 'A Steam recusou o login',
+        description:
+          'Saia e tente de novo. Se continuar falhando, verifique a situação da conta na Steam e o log do launcher.',
+      },
+      steam_account_missing: {
+        title: 'Os dados salvos da conta Steam estão incompletos',
+        description:
+          'Saia e escaneie o QR code novamente para o launcher salvar o nome da conta.',
+      },
+      steam_busy: {
+        title: 'A Steam está ocupada no momento',
+        description:
+          'A Steam não respondeu ao pedido de download a tempo. Aguarde alguns segundos e tente de novo.',
+      },
+      steam_rate_limited: {
+        title: 'A Steam está limitando os pedidos de download',
+        description:
+          'Muitos pedidos chegaram à Steam em pouco tempo. Aguarde um minuto e tente de novo.',
+      },
+      steam_network: {
+        title: 'Não foi possível conectar à Steam',
+        description: 'Verifique sua conexão, VPN e firewall e tente de novo.',
+      },
+      steam_cdn_auth: {
+        title: 'O servidor de download da Steam recusou o pedido',
+        description:
+          'O token do CDN foi recusado. Inicie o download de novo; se continuar acontecendo, saia e entre novamente.',
+      },
+      steam_manifest_unavailable: {
+        title: 'A Steam não serve mais esta versão de H1Z1',
+        description:
+          'O manifest de 2017 não está mais disponível. Use as instruções manuais de depot da Steam em Propriedades → Guia de instalação.',
+      },
+      disk_full: {
+        title: 'Espaço em disco insuficiente',
+        description:
+          'Libere espaço na unidade de instalação (H1Z1 precisa de cerca de 20 GB) e tente de novo.',
+      },
+      disk_permission: {
+        title: 'A pasta de instalação não permite gravação',
+        description:
+          'Escolha uma pasta fora de Program Files ou corrija as permissões e tente de novo.',
+      },
+      disk_error: {
+        title: 'Falha ao gravar os arquivos do jogo',
+        description:
+          'Verifique o espaço livre e as permissões da pasta e tente de novo. Os detalhes técnicos abaixo mostram o arquivo e o erro exatos.',
+      },
+      keychain_error: {
+        title: 'Não foi possível salvar o login da Steam',
+        description:
+          'O cofre do sistema recusou a gravação. Desbloqueie o cofre (ou o Gerenciador de Credenciais do Windows) e entre novamente.',
+      },
+      unknown: {
+        title: 'O download da Steam falhou',
+        description:
+          'Um erro inesperado interrompeu o download. Envie os detalhes técnicos abaixo ao suporte.',
+      },
+    },
     bootstrap: {
       status: 'Verificando atualizações do lançador',
       detail: 'Procurando uma versão mais recente do lançador antes de abrir o aplicativo.',
@@ -62,11 +148,17 @@ export default {
           'Não foi possível carregar sua chave salva automaticamente ({{reason}}). Cole-a abaixo para continuar.',
       },
       step2: {
-        title: 'Escolha onde instalar',
-        description: 'Escolha uma pasta para o jogo base e os patches do ZEmu. Vamos manter tudo organizado nessa pasta.',
+        title: 'Pasta de instalação',
+        description:
+          'O jogo e os patches do ZEmu vão ficar nesta pasta. Troque se preferir outro disco.',
         choose: 'Escolher pasta',
-        change: 'Trocar pasta',
-        pathChosen: 'Escolhido:',
+        change: 'Trocar local',
+        installDestination: 'O jogo será instalado em',
+        detecting: 'Detectando o seu disco principal…',
+        chooseHint: 'Nenhuma pasta selecionada ainda.',
+        destinationHint:
+          'Detectado a partir do disco onde o seu sistema está instalado.',
+        useDefault: 'Usar o local recomendado',
         continue: 'Continuar',
       },
       step3: {
@@ -141,16 +233,17 @@ export default {
       unknownUser: 'Usuário desconhecido',
       title: 'Conta',
       authKey: 'Chave de autenticação',
-      description: 'Gerencie sua conta e credenciais salvas.',
+      description:
+        'Veja a chave de autenticação sincronizada da sua conta. Para rotacionar a chave, abra as configurações da conta no site.',
       keyLabel: 'Chave de autenticação',
-      keyDescription: 'A chave usada pelo jogo para identificar sua sessão.',
+      keyDescription:
+        'Sincronizada do servidor quando você abre esta página e armazenada localmente para que as execuções não precisem da rede.',
       revealKey: 'Mostrar chave',
       hideKey: 'Ocultar chave',
       copyKey: 'Copiar chave',
       copied: 'Chave de autenticação copiada para a área de transferência.',
-      changeKey: 'Alterar chave de autenticação',
-      addKey: 'Adicionar chave de autenticação',
-      noKey: 'Nenhuma chave de autenticação definida. Adicione uma para poder jogar.',
+      noKey:
+        'Nenhuma chave de autenticação definida ainda. Execute a configuração do launcher novamente para obter uma da sua conta.',
       // Banner above the key panel when the launcher's server-side
       // fetch returned a `revoked` row. Mirrors the onboarding
       // banner — the user has to walk over to the website to ask
@@ -160,10 +253,10 @@ export default {
       revokedBannerLink: 'Abrir configurações da conta',
       // Soft note when the auto-fetch failed. We surface the
       // upstream reason so the bug report has something useful in
-      // it, but the wording still tells the user they can edit the
-      // key by hand if they want to.
+      // it; the field below keeps showing whatever was last saved
+      // on disk.
       fetchFallback:
-        'Não foi possível carregar sua chave salva automaticamente ({{reason}}). Você ainda pode colar outra chave abaixo.',
+        'Não foi possível sincronizar sua chave de autenticação do servidor ({{reason}}). O valor exibido é o último salvo localmente.',
       errors: {
         unavailable: 'A ponte do launcher está indisponível.',
       },
@@ -365,7 +458,7 @@ export default {
       master: 'Mestre',
       royalty: 'Realeza',
       regionEU: 'EU',
-      regionNA: 'NA (Em breve)',
+      regionNA: 'NA',
       regionAsia: 'ÁSIA (Em breve)',
       modeSolo: 'Solo',
       modeDuo: 'Duo',
@@ -385,7 +478,6 @@ export default {
       rowsPerPage: 'Linhas',
       empty: 'Nenhum jogador corresponde aos filtros.',
       heroYou: 'Você',
-      heroFilteredOut: 'Filtrado',
       expandingLoading: 'Carregando partidas…',
       expandingEmpty: 'Nenhuma partida recente para mostrar.',
       playerTier: 'Divisão do jogador',
@@ -537,6 +629,9 @@ export default {
       etaRemaining: '{{eta}} restante',
     },
     // Update toasts
+    siteNotice: {
+      dismiss: 'Dispensar aviso',
+    },
     update: {
       updatingKotK: 'Atualizando KotK',
       updateComplete: 'Atualização concluída',
