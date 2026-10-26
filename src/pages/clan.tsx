@@ -4,9 +4,9 @@ import { ArrowLeft } from 'lucide-react'
 
 import { fetchClanBySlug, type ClanProfile } from '@/lib/clan'
 import { useHashRouter } from '@/hooks/use-hash'
+import { usePageBackground } from '@/contexts/page-background-context'
 import { Button } from '@/components/ui/button'
-import { ClanCover } from '@/components/clan/clan-cover'
-import { ClanIdentityRow } from '@/components/clan/clan-identity-row'
+import { ClanHero } from '@/components/clan/clan-hero'
 import { ClanActions } from '@/components/clan/clan-actions'
 import { ClanSkeleton } from '@/components/clan/clan-skeleton'
 import { ClanTabs } from '@/components/clan/clan-tabs'
@@ -15,10 +15,9 @@ import { ClanTabs } from '@/components/clan/clan-tabs'
  * Clan profile page — mounted at `#/clan/:slug`.
  *
  * Mirrors the website's `apps/web/app/clans/[slug]/page.tsx`:
- *   - Back button row
- *   - Cover banner (`h-64`, `brightness-50`)
- *   - Identity row (`-mt-14 sm:-mt-20`, avatar overlapping the
- *     banner with a `border-4 border-page` ring; rounded-4xl avatar)
+ *   - Back button floating over the top-left of the hero
+ *   - Full-bleed hero: cover image, avatar, name, clantag and
+ *     headline stats
  *   - Action surface (Follow / Request to join / leader-only
  *     Manage clan / per-member Leave-clan overflow)
  *   - Tabbed section (members, followers, match-history stub, about)
@@ -26,8 +25,7 @@ import { ClanTabs } from '@/components/clan/clan-tabs'
  * The page itself only handles routing + data fetching and the
  * orchestration of the header pieces. Each header element lives in
  * its own component under `components/clan/`:
- *   - `ClanCover`       — cover banner image
- *   - `ClanIdentityRow` — avatar + name + clantag badge
+ *   - `ClanHero`        — cover + identity + headline stats
  *   - `ClanActions`     — follow / join / manage / leave (owns the
  *                          leave-confirmation dialog and the
  *                          request-join dialog)
@@ -70,30 +68,32 @@ export function ClanPage({ slug }: { slug: string }) {
   }, [decoded])
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center gap-3 px-8 py-3">
+    // `-mx-6 sm:-mx-8` cancels <main>'s horizontal padding so the hero
+    // cover can run edge to edge; the sections below re-apply it.
+    <div className="relative -mx-6 flex flex-1 flex-col overflow-hidden sm:-mx-8">
+      <div className="absolute top-6 left-6 z-20 sm:left-8">
         <Button
           onClick={() => navigate('/clans')}
           variant="outline"
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md border-white/10 bg-black/40 px-3 text-sm text-white/80 backdrop-blur-md transition-colors hover:bg-black/60 hover:text-white"
         >
           <ArrowLeft className="size-4" />
           {t('clan.backToDirectory')}
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-8 pb-10 pt-2">
+      <div className="flex-1 overflow-y-auto pb-10">
         <div className="flex flex-col gap-6">
           {clan === 'loading' && <ClanSkeleton />}
 
           {error && (
-            <p className="text-sm text-muted-foreground">
+            <p className="px-6 pt-20 text-sm text-muted-foreground sm:px-8">
               {t('clan.failedLoad', { error })}
             </p>
           )}
 
           {clan === 'missing' && (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 px-6 pt-20 sm:px-8">
               <h1 className="text-2xl font-semibold">{t('clan.notFound')}</h1>
               <p className="text-sm text-muted-foreground">
                 {t('clan.notFoundDesc', { slug: decoded })}
@@ -111,34 +111,17 @@ export function ClanPage({ slug }: { slug: string }) {
 }
 
 /**
- * Orchestrates the loaded clan profile. Each section of the header
- * (cover, identity row, actions) is a self-contained component under
- * `components/clan/`; this view just lays them out and pairs the
- * identity row with the action surface via a shared flex container.
+ * Orchestrates the loaded clan profile: the hero (with the action
+ * surface slotted into its right side) followed by the tabbed content.
  */
 function ClanView({ clan }: { clan: ClanProfile }) {
+  usePageBackground(clan.coverImageUrl)
   return (
-    <article className="flex flex-col gap-6">
-      <ClanCover coverImageUrl={clan.coverImageUrl} name={clan.name} />
-
-      {/*
-        Identity row + action surface share a single flex container
-        so they align at the same bottom edge. The negative margin
-        that pulls them up into the cover lives on
-        `<ClanIdentityRow>`.
-      */}
-      <div className="flex items-end gap-4 justify-between">
-        <ClanIdentityRow
-          avatarUrl={clan.avatarUrl}
-          name={clan.name}
-          clantag={clan.clantag}
-          isVerified={clan.isVerified}
-          hasCover={Boolean(clan.coverImageUrl)}
-        />
-        <ClanActions clan={clan} />
+    <article className="flex flex-col">
+      <ClanHero clan={clan} actions={<ClanActions clan={clan} />} />
+      <div className="px-6 sm:px-8">
+        <ClanTabs clan={clan} />
       </div>
-
-      <ClanTabs clan={clan} />
     </article>
   )
 }

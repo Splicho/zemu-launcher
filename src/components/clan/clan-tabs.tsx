@@ -61,7 +61,7 @@ export function ClanTabs({
   }, [])
 
   return (
-    <Tabs value={tab} onValueChange={setTab} className="mt-6 w-full">
+    <Tabs value={tab} onValueChange={setTab} className="w-full">
       <div className="border-b">
         <TabsList variant="line">
           <TabsTrigger value="members">{t('clan.tabs.members')}</TabsTrigger>
