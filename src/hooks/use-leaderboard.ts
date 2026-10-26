@@ -10,34 +10,20 @@ import {
   DEFAULT_LEADERBOARD_SELECTION,
   fetchLeaderboardEntries,
   fetchClantags,
-  type LeaderboardEntry,
   type LeaderboardSelection,
 } from '@/lib/leaderboard'
 
 /**
  * Full leaderboard entries with background auto-refresh every 60 seconds.
  *
- * "All modes" is the global season board, so its cache entry does not
- * depend on the selected region. Keying it separately avoids a
- * pointless refetch when the user flips EU ↔ NA.
+ * The cache is keyed by the selected region/mode.
  */
 export function useLeaderboardEntries(
-  initialEntries?: LeaderboardEntry[],
   selection: LeaderboardSelection = DEFAULT_LEADERBOARD_SELECTION,
 ) {
-  const season = selection.teamMode === 'all'
   return useQuery({
-    queryKey: [
-      'leaderboard',
-      'entries',
-      season ? 'season' : selection.region,
-      selection.teamMode,
-    ],
+    queryKey: ['leaderboard', 'entries', selection.region, selection.teamMode],
     queryFn: () => fetchLeaderboardEntries(selection),
-    // The preloaded entries are the season board, so they can seed
-    // every "All modes" selection. A mode-specific view starts empty
-    // instead of painting season rows under a Solo/Duo/Fives label.
-    initialData: season ? initialEntries : undefined,
     staleTime: 20_000,
     gcTime: 60_000,
     retry: 1,

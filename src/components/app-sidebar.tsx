@@ -148,9 +148,10 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
   }, [registerOpener, openProperties])
 
   const isActive = (path: string) => {
-    const basePath = hash.replace(/#/, '') || '/'
-    if (path === '/') return basePath === '/' || basePath === ''
-    return basePath.startsWith(path)
+    const current = hash.replace(/#/, '') || '/'
+    // `/` is the Play page now; treat it as `/play` for nav highlighting.
+    const basePath = current === '/' ? '/play' : current
+    return basePath === path || basePath.startsWith(`${path}/`)
   }
 
   const handleLocateGameFiles = React.useCallback(() => {
@@ -236,8 +237,8 @@ export function AppSidebar({ registerOpener }: AppSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem className="space-y-px">
-                <SidebarMenuButton asChild isActive={isActive('/')} size="lg" className="px-4">
-                  <a href="#/">
+                <SidebarMenuButton asChild isActive={isActive('/home')} size="lg" className="px-4">
+                  <a href="#/home">
                     <Home className="size-5!" />
                     <span>{t('nav.home')}</span>
                   </a>

@@ -21,7 +21,7 @@ function setup(fetchLeaderboardEntries) {
       if (name === '@/lib/leaderboard') {
         return {
           fetchLeaderboardEntries,
-          DEFAULT_LEADERBOARD_SELECTION: { region: 'EU', teamMode: 'all' },
+          DEFAULT_LEADERBOARD_SELECTION: { region: 'EU', teamMode: 'Solo' },
         }
       }
       throw new Error(`Unexpected import: ${name}`)
@@ -30,8 +30,7 @@ function setup(fetchLeaderboardEntries) {
   return { client, mount: exports.useLeaderboardEntries }
 }
 
-for (const entries of [[{ name: 'Player', top10TotalScore: 42 }], []]) {
-  test(`first visit starts loading immediately and displays ${entries.length ? 'players' : 'an empty result'} without remounting`, async () => {
+for (const entries of [[{ name: 'Player', top10TotalScore: 42 }], []]) {  test(`first visit starts loading immediately and displays ${entries.length ? 'players' : 'an empty result'} without remounting`, async () => {
     let calls = 0
     let resolveRequest
     const request = new Promise(resolve => { resolveRequest = resolve })
@@ -64,19 +63,3 @@ for (const entries of [[{ name: 'Player', top10TotalScore: 42 }], []]) {
     }
   })
 }
-
-test('explicit preloaded entries remain available without a redundant request', () => {
-  let calls = 0
-  const h = setup(async () => { calls++; return [] })
-  const entries = [{ name: 'Preloaded player' }]
-  const observer = h.mount(entries)
-  const unsubscribe = observer.subscribe(() => {})
-  try {
-    assert.deepEqual(observer.getCurrentResult().data, entries)
-    assert.equal(observer.getCurrentResult().isLoading, false)
-    assert.equal(calls, 0)
-  } finally {
-    unsubscribe()
-    h.client.clear()
-  }
-})

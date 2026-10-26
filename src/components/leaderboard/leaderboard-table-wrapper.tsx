@@ -2,7 +2,11 @@
 
 import { useState, useMemo } from 'react'
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
-import Filter, { DEFAULT_FILTERS, type LeaderboardFilters } from '@/components/leaderboard/filter'
+import Filter from '@/components/leaderboard/filter'
+import {
+  DEFAULT_FILTERS,
+  type LeaderboardFilters,
+} from '@/components/leaderboard/leaderboard-filters'
 import LeaderboardTable from '@/components/leaderboard/leaderboard-table'
 import { HeroRow } from '@/components/leaderboard/hero-row'
 import { useAuthContext } from '@/contexts/auth-context'
@@ -39,7 +43,7 @@ export default function LeaderboardTableWrapper() {
   const [filters, setFilters] = useState<LeaderboardFilters>(DEFAULT_FILTERS)
   const [page, setPage] = useState(1)
 
-  const { data: entries = [], isLoading, isError } = useLeaderboardEntries(undefined, {
+  const { data: entries = [], isLoading, isError } = useLeaderboardEntries({
     region: filters.region,
     teamMode: filters.teamMode,
   })

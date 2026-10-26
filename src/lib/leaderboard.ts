@@ -11,13 +11,7 @@
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 import { httpFetch } from '@/lib/http-fetch'
 
-export type LeaderboardTier =
-  | 'bronze'
-  | 'silver'
-  | 'gold'
-  | 'platinum'
-  | 'diamond'
-  | 'royalty'
+export type LeaderboardTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond' | 'royalty'
 
 /**
  * The upstream game server still labels the top rank "Master", but the
@@ -26,14 +20,7 @@ export type LeaderboardTier =
  * Entries are typed as the api's output — `royalty` only — so this
  * list is the exact set of values a row can carry.
  */
-export const TIER_VALUES: readonly LeaderboardTier[] = [
-  'bronze',
-  'silver',
-  'gold',
-  'platinum',
-  'diamond',
-  'royalty',
-]
+export const TIER_VALUES: readonly LeaderboardTier[] = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'royalty']
 
 /**
  * Accepts a tier straight off the wire and narrows it to our union,
@@ -47,9 +34,7 @@ export const TIER_VALUES: readonly LeaderboardTier[] = [
  * `Cannot read properties of undefined` crash in the tier column.
  */
 export function normalizeTier(value: unknown): LeaderboardTier {
-  return TIER_VALUES.includes(value as LeaderboardTier)
-    ? (value as LeaderboardTier)
-    : 'bronze'
+  return TIER_VALUES.includes(value as LeaderboardTier) ? (value as LeaderboardTier) : 'bronze'
 }
 
 export interface MatchData {
@@ -81,15 +66,13 @@ export interface LeaderboardSelection {
 }
 
 /**
- * The season upstream is global — it ignores region and mode. "All
- * modes" therefore always maps to the season board for either region;
- * the region only scopes the mode-specific recent-match boards.
- *
- * The page opens on EU / All modes.
+ * The season upstream is global — it ignores region and mode. The
+ * launcher opens on EU / Solo; a mode-specific selection asks the api
+ * for that region's recent-match board.
  */
 export const DEFAULT_LEADERBOARD_SELECTION: LeaderboardSelection = {
   region: 'EU',
-  teamMode: 'all',
+  teamMode: 'Solo',
 }
 
 const REGION_PARAM: Record<string, string> = { EU: 'eu', NA: 'na' }
@@ -103,8 +86,8 @@ export function leaderboardPath(selection: LeaderboardSelection): string {
   const region = REGION_PARAM[selection.region]
   const mode = MODE_PARAM[selection.teamMode]
 
-  // The season board has no region or mode split, so every "All modes"
-  // selection shows it. This is the default view.
+  // The season board has no region or mode split; keep this as the
+  // fallback for an unknown/invalid mode.
   if (!mode) {
     return '/leaderboards'
   }
@@ -171,24 +154,28 @@ function toEntry(
     tier?: unknown
   },
 ): LeaderboardEntry {
-  return { ...raw, tier: normalizeTier(raw.tier), country: raw.country ?? null }
+  return {
+    ...raw,
+    tier: normalizeTier(raw.tier),
+    country: raw.country ?? null,
+  }
 }
 
-export async function fetchTopLeaderboard(
-  options: FetchTopLeaderboardOptions = {}
-): Promise<LeaderboardEntry[]> {
+export async function fetchTopLeaderboard(options: FetchTopLeaderboardOptions = {}): Promise<LeaderboardEntry[]> {
   const { limit = 5, tier = 'all' } = options
 
   // This endpoint returns the full standings and ignores tier/limit query
   // parameters. Filter before taking the top rows, including players outside
   // the overall top five, and preserve the server's order and positions.
-  const response = await httpFetch(`${STATS_API_BASE}/leaderboards`, { headers: { Accept: 'application/json' } })
+  const response = await httpFetch(`${STATS_API_BASE}/leaderboards`, {
+    headers: { Accept: 'application/json' },
+  })
   if (!response.ok) {
     throw new Error(`Leaderboard request failed (HTTP ${response.status})`)
   }
   const data = await response.json()
   const entries = ((data.entries ?? []) as Array<Parameters<typeof toEntry>[0]>).map(toEntry)
-  const matchingEntries = tier === 'all' ? entries : entries.filter(entry => entry.tier === tier)
+  const matchingEntries = tier === 'all' ? entries : entries.filter((entry) => entry.tier === tier)
 
   // Sort by Total Score (top10TotalScore), highest first.
   matchingEntries.sort((a, b) => b.top10TotalScore - a.top10TotalScore)
@@ -243,14 +230,34 @@ export interface ClanTagEntry {
  * Resolve a batch of display names to their clantag affiliation.
  * Returns a `Map<nameLower, ClanTagEntry>`. Players without a clan
  * are simply absent from the map.
+ *
+ * The season board can hold thousands of players; sending every name
+ * in one query string exceeds the API's request-header limit (431),
+ * which previously left the whole table without clantags. Batch in
+ * groups of 400 (the API caps a request at 500 names).
  */
-export async function fetchClantags(
-  names: readonly string[]
-): Promise<Map<string, ClanTagEntry>> {
-  if (names.length === 0) return new Map()
-  const qs = encodeURIComponent(names.join(','))
-  const response = await httpFetch(`${CLANTAGS_BASE}/clantags?names=${qs}`, { headers: { Accept: 'application/json' } })
-  if (!response.ok) throw new Error(`Clantags failed (HTTP ${response.status})`)
-  const list = (await response.json()) as ClanTagEntry[]
-  return new Map(list.map(entry => [entry.key, entry]))
+export async function fetchClantags(names: readonly string[]): Promise<Map<string, ClanTagEntry>> {
+  const unique = Array.from(new Set(names.map((name) => name.trim().toLowerCase()).filter(Boolean)))
+  if (unique.length === 0) return new Map()
+
+  const batches: string[][] = []
+  for (let index = 0; index < unique.length; index += 400) {
+    batches.push(unique.slice(index, index + 400))
+  }
+
+  const results = await Promise.allSettled(
+    batches.map(async (batch) => {
+      const qs = encodeURIComponent(batch.join(','))
+      const response = await httpFetch(`${CLANTAGS_BASE}/clantags?names=${qs}`, {
+        headers: { Accept: 'application/json' },
+      })
+      if (!response.ok) {
+        throw new Error(`Clantags failed (HTTP ${response.status})`)
+      }
+      return (await response.json()) as ClanTagEntry[]
+    }),
+  )
+
+  const list = results.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
+  return new Map(list.map((entry) => [entry.key, entry]))
 }
