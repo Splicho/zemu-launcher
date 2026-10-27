@@ -58,11 +58,23 @@ export default defineConfig({
     // the watcher dies with EBUSY. Restricting the watcher to the
     // frontend tree keeps Vite responsive and avoids the spurious
     // crashes when the Rust side is mid-rebuild.
+    //
+    // The `.tmpdir` / `.tmp` patterns cover editor and tooling
+    // atomic-save staging: some writers stage a file as
+    // `<dir>/.<name>.<pid>.<uuid>.tmpdir/<name>.tmp` next to the
+    // target and rename it into place. Chokidar tries to attach to the
+    // staged copy while the writer still holds it and dies with the
+    // same EBUSY, which kills the dev server (and therefore
+    // `tauri dev`) on every save. Ignoring the staging paths keeps the
+    // watcher alive through edits.
     watch: {
       ignored: [
         '**/src-tauri/target/**',
         '**/src-tauri/Cargo.lock',
         '**/.git/**',
+        '**/*.tmpdir',
+        '**/*.tmpdir/**',
+        '**/*.tmp',
       ],
     },
   },

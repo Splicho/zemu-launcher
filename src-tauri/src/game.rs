@@ -43,9 +43,13 @@ use windows_sys::Win32::System::Threading::{
 const GAME_PROCESS_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const GAME_LAUNCH_STATE_EVENT: &str = "game-launch-state";
 const DEFAULT_GAME_EXECUTABLE: &str = "H1Z1.exe";
-/// Folder name the onboarding wizard proposes when the user has never
-/// picked an install location. See [`default_install_directory`].
+/// Folder name the launcher proposes when the user has never picked an
+/// install location. See [`default_install_directory`].
 const DEFAULT_INSTALL_FOLDER_NAME: &str = "ZEmu";
+/// Parent folder under the volume root, so the default reads
+/// `<drive>\Games\ZEmu` instead of dropping a bare `ZEmu` folder at the
+/// top of the drive.
+const DEFAULT_INSTALL_PARENT_FOLDER: &str = "Games";
 
 pub fn get_game_directory(app: &AppHandle) -> Result<Option<String>> {
     let config = load_launcher_config(app)?;
@@ -64,6 +68,212 @@ pub fn clear_game_directory(app: &AppHandle) -> Result<bool> {
     config.game_directory = None;
     save_launcher_config(app, &config)?;
     Ok(true)
+}
+
+// ── Installation job record ────────────────────────────────────────────────
+//
+// Persisted in `launcher-config.json` so an interrupted install can be
+// resumed after a restart (install plan §7). The renderer treats records
+// older than 24 h as stale, so a record that never gets cleared can't
+// latch the Play button.
+
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+pub fn set_install_job(app: &AppHandle, destination: String, stage: String) -> Result<()> {
+    let mut config = load_launcher_config(app)?;
+    config.install_job = Some(crate::models::InstallJobRecord {
+        destination,
+        stage,
+        updated_at_unix: now_unix(),
+    });
+    save_launcher_config(app, &config)?;
+    Ok(())
+}
+
+pub fn clear_install_job(app: &AppHandle) -> Result<()> {
+    let mut config = load_launcher_config(app)?;
+    if config.install_job.take().is_some() {
+        save_launcher_config(app, &config)?;
+    }
+    Ok(())
+}
+
+pub fn get_install_job(app: &AppHandle) -> Result<Option<crate::models::InstallJobRecord>> {
+    Ok(load_launcher_config(app)?.install_job)
+}
+
+// ── Base-build fingerprint ─────────────────────────────────────────────────
+
+/// blake3 of a file, streamed so a 50 MB executable doesn't land in RAM.
+pub fn hash_file_blake3(path: &Path) -> Result<String> {
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path)
+        .with_context(|| format!("opening {} for hashing", path.display()))?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = vec![0u8; 1024 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .with_context(|| format!("reading {}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+/// Identity of the base-game executable inside `directory`, when present.
+/// Used both to record the base build after a depot download and to
+/// re-check a folder the user points us at.
+pub fn fingerprint_executable(directory: &Path) -> Option<(String, u64, String)> {
+    let name = DEFAULT_GAME_EXECUTABLE.to_string();
+    let path = directory.join(&name);
+    let size = std::fs::metadata(&path).ok()?.len();
+    let hash = hash_file_blake3(&path).ok()?;
+    Some((name, size, hash))
+}
+
+/// What a folder looks like relative to the recorded supported build.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BaseBuildCheck {
+    /// `supported` | `patched` | `mismatch` | `unknown` | `missing`
+    pub status: String,
+    /// The hash recorded in `base-build.json`, when there was one.
+    pub recorded_hash: Option<String>,
+    /// The hash on disk right now, when the executable exists.
+    pub actual_hash: Option<String>,
+}
+
+/// Reference fingerprint of the supported build, shipped with the launcher
+/// (`src/base_build_reference.json`).
+///
+/// Generated from a verified install (pinned Steam depot + ZEmu patch) by
+/// `cargo run --example fingerprint -- <files>`. It lets the launcher
+/// recognise a folder it did *not* download itself — the "Already
+/// installed? Locate existing game" path — which would otherwise read
+/// `unknown` because there is no local `base-build.json`.
+///
+/// Only files the patch never rewrites are in the list, so a patched
+/// install still matches. `H1Z1.exe` is the primary identity; the packs
+/// catch a folder where the executable is right but the asset data is not.
+const BASE_BUILD_REFERENCE_JSON: &str = include_str!("base_build_reference.json");
+
+#[derive(Debug, serde::Deserialize)]
+struct ReferenceFile {
+    path: String,
+    size: u64,
+    blake3: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ReferenceExecutable {
+    size: u64,
+    blake3: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct BaseBuildReference {
+    executable: ReferenceExecutable,
+    files: Vec<ReferenceFile>,
+}
+
+fn base_build_reference() -> Option<BaseBuildReference> {
+    serde_json::from_str(BASE_BUILD_REFERENCE_JSON).ok()
+}
+
+/// Compare a folder against the supported build (install plan §3).
+///
+/// Two sources are consulted, in order:
+///
+/// 1. `base-build.json` inside the folder — written by *our* depot
+///    download. Fast and exact.
+/// 2. The embedded reference shipped with the launcher — covers installs
+///    the user downloaded/copied themselves.
+///
+/// Statuses:
+/// - `supported` — executable hash matches (plus, for the reference, the
+///   stable asset packs match too).
+/// - `patched` — the executable differs *and* a patch manifest is present.
+///   Expected if a future patch rewrites `H1Z1.exe`; the current patch does
+///   not, which is why a patched install normally reads `supported`.
+/// - `mismatch` — a reference/record exists but the files on disk differ.
+/// - `unknown` — nothing to compare against.
+/// - `missing` — no `H1Z1.exe`.
+pub fn check_base_build(directory: &str) -> BaseBuildCheck {
+    let dir = Path::new(directory);
+
+    let Some((_name, exe_size, actual_hash)) = fingerprint_executable(dir) else {
+        return BaseBuildCheck {
+            status: "missing".to_string(),
+            recorded_hash: None,
+            actual_hash: None,
+        };
+    };
+
+    let recorded_hash = std::fs::read_to_string(dir.join("base-build.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|value| {
+            value
+                .get("exe")
+                .and_then(|exe| exe.get("hash"))
+                .and_then(|hash| hash.as_str())
+                .map(|hash| hash.to_string())
+        });
+
+    let recorded_matches = recorded_hash
+        .as_deref()
+        .is_some_and(|recorded| recorded.eq_ignore_ascii_case(&actual_hash));
+
+    let reference = base_build_reference();
+    let reference_exe_matches = reference.as_ref().is_some_and(|r| {
+        r.executable.size == exe_size && r.executable.blake3.eq_ignore_ascii_case(&actual_hash)
+    });
+
+    // Asset packs: sizes first (cheap) so a wrong folder fails fast without
+    // hashing ~380 MB. Only worth doing once the executable already matches.
+    let reference_files_match = if reference_exe_matches {
+        reference.as_ref().is_some_and(|r| {
+            r.files.iter().all(|file| {
+                let path = dir.join(&file.path);
+                let Ok(meta) = std::fs::metadata(&path) else {
+                    return false;
+                };
+                if !meta.is_file() || meta.len() != file.size {
+                    return false;
+                }
+                hash_file_blake3(&path)
+                    .map(|hash| hash.eq_ignore_ascii_case(&file.blake3))
+                    .unwrap_or(false)
+            })
+        })
+    } else {
+        false
+    };
+
+    let status = if recorded_matches || (reference_exe_matches && reference_files_match) {
+        "supported"
+    } else if dir.join("manifest.json").exists() {
+        "patched"
+    } else if recorded_hash.is_some() || reference.is_some() {
+        "mismatch"
+    } else {
+        "unknown"
+    };
+
+    BaseBuildCheck {
+        status: status.to_string(),
+        recorded_hash,
+        actual_hash: Some(actual_hash),
+    }
 }
 
 /// Sum the byte sizes of every regular file inside `directory`,
@@ -179,19 +389,82 @@ pub fn set_game_executable(app: &AppHandle, executable: String) -> Result<()> {
 /// Folder the launcher proposes when the user has never picked an
 /// install location.
 ///
-/// Windows: `<system drive>\ZEmu`, where the system drive is the volume
-/// Windows itself booted from (`%SystemDrive%` — `C:` on almost every
-/// machine, but `D:` / `E:` when the OS lives there). That keeps the
-/// install on the drive the user's OS already owns instead of dropping
-/// it into a per-user `Documents` path that is easy to lose track of.
+/// Windows: `<system drive>\Games\ZEmu`, where the system drive is the
+/// volume Windows itself booted from (`%SystemDrive%` — `C:` on almost
+/// every machine, but `D:` / `E:` when the OS lives there). That keeps
+/// the install on the drive the user's OS already owns instead of
+/// dropping it into a per-user `Documents` path that is easy to lose
+/// track of, and the `Games` parent keeps a bare `ZEmu` folder off the
+/// drive root.
 ///
-/// Linux/macOS (the Wine/Proton builds): `$HOME/ZEmu`, because those
-/// platforms have no drive letters to detect.
+/// Linux/macOS (the Wine/Proton builds): `$HOME/Games/ZEmu`, because
+/// those platforms have no drive letters to detect.
 ///
 /// The path is a suggestion only — it is not created here, and the
-/// wizard lets the user change it before anything is downloaded.
+/// install dialog lets the user change it before anything is downloaded.
+/// It is consulted **only** when `game_directory` is unset: an existing
+/// install (including the legacy `C:\ZEmu` default) is never migrated.
 pub fn default_install_directory() -> PathBuf {
-    recommended_install_root().join(DEFAULT_INSTALL_FOLDER_NAME)
+    recommended_install_root()
+        .join(DEFAULT_INSTALL_PARENT_FOLDER)
+        .join(DEFAULT_INSTALL_FOLDER_NAME)
+}
+
+/// Free bytes available to the caller on the volume that holds `path`.
+///
+/// The install dialog shows this next to the destination so a user cannot
+/// start a 15 GB download onto a nearly full drive. The path does not have
+/// to exist yet — a new install's folder usually doesn't — so this walks up
+/// to the nearest existing ancestor and measures that volume instead.
+///
+/// Returns `None` on platforms where we have no implementation (the
+/// Wine/Proton builds); the dialog then simply omits the row rather than
+/// showing a made-up number.
+pub fn free_space_bytes(path: &str) -> Option<u64> {
+    let mut candidate = PathBuf::from(path);
+    loop {
+        if candidate.is_dir() {
+            return platform_free_space(&candidate);
+        }
+        if !candidate.pop() {
+            return None;
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn platform_free_space(directory: &std::path::Path) -> Option<u64> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+
+    let wide: Vec<u16> = directory
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut free_to_caller: u64 = 0;
+    // SAFETY: `wide` is a NUL-terminated UTF-16 path and the out-pointer is
+    // a valid, aligned `u64`. Passing NULL for total/total-free is allowed.
+    let ok = unsafe {
+        GetDiskFreeSpaceExW(
+            wide.as_ptr(),
+            &mut free_to_caller,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+
+    if ok == 0 {
+        None
+    } else {
+        Some(free_to_caller)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn platform_free_space(_directory: &std::path::Path) -> Option<u64> {
+    None
 }
 
 #[cfg(target_os = "windows")]
@@ -1130,6 +1403,24 @@ mod linux_tests {
 mod tests {
     use super::*;
 
+    /// Opt-in check of the embedded reference against a real install.
+    ///
+    /// ```text
+    /// ZEMU_REFERENCE_TEST_DIR="C:\ZEmu" cargo test --lib reference_matches -- --nocapture
+    /// ```
+    ///
+    /// Returns early when the env var is unset, so CI (which has no game
+    /// install) stays green. This is the only end-to-end exercise of
+    /// `base_build_reference.json` without launching the app.
+    #[test]
+    fn reference_matches_a_real_install_when_requested() {
+        let Ok(directory) = std::env::var("ZEMU_REFERENCE_TEST_DIR") else {
+            return;
+        };
+        let check = check_base_build(&directory);
+        assert_eq!(check.status, "supported", "unexpected base-build check: {check:?}");
+    }
+
     #[test]
     fn default_install_directory_is_the_recommended_folder() {
         let dir = default_install_directory();
@@ -1169,12 +1460,17 @@ mod tests {
     #[test]
     fn default_install_directory_lands_on_the_system_drive() {
         // `SystemDrive` is what the resolver prefers, so the default must
-        // sit directly under that volume root (e.g. `C:\ZEmu`).
+        // sit under that volume root (`<drive>\Games\ZEmu`).
         if let Some(expected_root) = std::env::var("SystemDrive")
             .ok()
             .and_then(|drive| windows_drive_root(&drive))
         {
-            assert_eq!(default_install_directory(), expected_root.join("ZEmu"));
+            assert_eq!(
+                default_install_directory(),
+                expected_root
+                    .join(DEFAULT_INSTALL_PARENT_FOLDER)
+                    .join(DEFAULT_INSTALL_FOLDER_NAME)
+            );
         }
     }
 }

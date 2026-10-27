@@ -195,11 +195,77 @@ pub fn game_select_directory(app: tauri::AppHandle) -> Result<Option<String>, St
     game::select_game_directory(&app).map_err(|e| e.to_string())
 }
 
-/// Folder the onboarding wizard pre-selects when the user has not
-/// chosen an install location yet. On Windows this is the drive the OS
-/// is installed on plus `\ZEmu` (e.g. `C:\ZEmu`, or `D:\ZEmu` when
-/// Windows lives on `D:`); on the Wine/Proton builds it is
-/// `$HOME/ZEmu`. See [`game::default_install_directory`].
+/// Pick a folder **without** committing it as the game directory.
+///
+/// `game_select_directory` persists its result, which is wrong for the
+/// install dialog's "Change" button: the user is still editing the
+/// destination and may cancel. This only returns the picked path; the
+/// dialog persists it via `game_set_directory` when they hit Install.
+#[tauri::command]
+pub fn game_pick_folder(start_dir: Option<String>) -> Result<Option<String>, String> {
+    let mut dialog = rfd::FileDialog::new().set_title("Select Game Installation Directory");
+    if let Some(dir) = start_dir.filter(|dir| !dir.trim().is_empty()) {
+        dialog = dialog.set_directory(dir);
+    }
+    Ok(dialog
+        .pick_folder()
+        .map(|path| path.to_string_lossy().to_string()))
+}
+
+/// Free bytes on the volume that would hold `path`.
+///
+/// Backs the install dialog's "Free space" row. `None` means "no
+/// implementation on this platform" (Wine/Proton) — the dialog omits the
+/// row instead of showing a fabricated number.
+#[tauri::command]
+pub fn game_get_free_space(path: String) -> Result<Option<u64>, String> {
+    Ok(game::free_space_bytes(&path))
+}
+
+/// In-flight installation job (destination + stage), persisted so an
+/// interrupted install can be resumed after a restart.
+#[tauri::command]
+pub fn game_get_install_job(
+    app: tauri::AppHandle,
+) -> Result<Option<crate::models::InstallJobRecord>, String> {
+    game::get_install_job(&app).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn game_set_install_job(
+    app: tauri::AppHandle,
+    destination: String,
+    stage: String,
+) -> Result<(), String> {
+    game::set_install_job(&app, destination, stage).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn game_clear_install_job(app: tauri::AppHandle) -> Result<(), String> {
+    game::clear_install_job(&app).map_err(|e| e.to_string())
+}
+
+/// Compare a folder's executable against the recorded supported build
+/// (`supported` / `patched` / `mismatch` / `unknown` / `missing`).
+///
+/// Async + `spawn_blocking`: the check hashes the executable and the
+/// stable asset packs (~430 MB), which must not run on the UI thread.
+#[tauri::command]
+pub async fn game_check_base_build(
+    directory: String,
+) -> Result<crate::game::BaseBuildCheck, String> {
+    tauri::async_runtime::spawn_blocking(move || crate::game::check_base_build(&directory))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Folder the install dialog pre-selects when the user has not chosen
+/// an install location yet. On Windows this is the drive the OS is
+/// installed on plus `\Games\ZEmu` (e.g. `C:\Games\ZEmu`, or
+/// `D:\Games\ZEmu` when Windows lives on `D:`); on the Wine/Proton
+/// builds it is `$HOME/Games/ZEmu`. Consulted only for new installs —
+/// an existing configured directory is never migrated. See
+/// [`game::default_install_directory`].
 #[tauri::command]
 pub fn game_get_default_install_directory() -> Result<String, String> {
     Ok(game::default_install_directory()
@@ -1069,6 +1135,12 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         launcher_get_app_data_dir,
         launcher_open_app_data_dir,
         game_select_directory,
+        game_pick_folder,
+        game_get_free_space,
+        game_get_install_job,
+        game_set_install_job,
+        game_clear_install_job,
+        game_check_base_build,
         game_get_default_install_directory,
         game_is_installed,
         game_get_local_version,

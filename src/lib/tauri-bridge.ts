@@ -84,6 +84,21 @@ export interface DepotProgress {
   etaSeconds?: number | null
 }
 
+/** Persisted installation job (`launcher-config.json` → `installJob`). */
+export interface InstallJobRecord {
+  destination: string
+  /** `client` while the depot download runs, `patch` once it finished. */
+  stage: string
+  updatedAtUnix: number
+}
+
+/** Result of comparing a folder's executable against the recorded build. */
+export interface BaseBuildCheck {
+  status: 'supported' | 'patched' | 'mismatch' | 'unknown' | 'missing' | string
+  recordedHash?: string | null
+  actualHash?: string | null
+}
+
 // ─── Pre-launch integrity check ──────────────────────────────────────────
 //
 // Wire types for `gameAPI.verifyAndRepair`. Mirrors the Rust types in
@@ -246,6 +261,15 @@ function setupCompatibilityBridge() {
     getDirectory: () => invoke<string | null>('game_get_directory'),
     setDirectory: (path: string) => invoke<boolean>('game_set_directory', { directory: path }),
     selectDirectory: () => invoke<string | null>('game_select_directory'),
+    pickFolder: (startDir?: string) =>
+      invoke<string | null>('game_pick_folder', { startDir: startDir ?? null }),
+    getFreeSpace: (path: string) => invoke<number | null>('game_get_free_space', { path }),
+    getInstallJob: () => invoke<InstallJobRecord | null>('game_get_install_job'),
+    setInstallJob: (destination: string, stage: string) =>
+      invoke<void>('game_set_install_job', { destination, stage }),
+    clearInstallJob: () => invoke<void>('game_clear_install_job'),
+    checkBaseBuild: (directory: string) =>
+      invoke<BaseBuildCheck>('game_check_base_build', { directory }),
     getDefaultInstallDirectory: () =>
       invoke<string>('game_get_default_install_directory'),
     clearDirectory: () => invoke<boolean>('game_clear_directory'),
@@ -626,11 +650,31 @@ declare global {
       setDirectory: (path: string) => Promise<boolean>
       selectDirectory: () => Promise<string | null>
       /**
-       * Folder the onboarding wizard pre-selects when no install
-       * directory is configured yet: the volume the OS is installed on
-       * plus `\ZEmu` (`C:\ZEmu` on a default Windows machine,
-       * `$HOME/ZEmu` on the Wine/Proton builds). Never creates the
-       * folder — the depot download does that.
+       * Pick a folder **without** persisting it as the game directory.
+       * Used by the install dialog's "Change" button; the dialog commits
+       * the path with `setDirectory` only when the user hits Install.
+       */
+      pickFolder: (startDir?: string) => Promise<string | null>
+      /**
+       * Free bytes on the volume that would hold `path` (nearest existing
+       * ancestor is measured when the folder doesn't exist yet). `null`
+       * on platforms without an implementation — callers omit the row
+       * rather than invent a number.
+       */
+      getFreeSpace: (path: string) => Promise<number | null>
+      /** Persisted install job; `null` when nothing is in flight. */
+      getInstallJob: () => Promise<InstallJobRecord | null>
+      setInstallJob: (destination: string, stage: string) => Promise<void>
+      clearInstallJob: () => Promise<void>
+      /** Compare a folder's `H1Z1.exe` to the recorded supported build. */
+      checkBaseBuild: (directory: string) => Promise<BaseBuildCheck>
+      /**
+       * Folder the install dialog pre-selects when no install directory
+       * is configured yet: the volume the OS is installed on plus
+       * `\Games\ZEmu` (`C:\Games\ZEmu` on a default Windows machine,
+       * `$HOME/Games/ZEmu` on the Wine/Proton builds). Never creates the
+       * folder — the depot download does that. Existing configured
+       * directories are never migrated to it.
        */
       getDefaultInstallDirectory: () => Promise<string>
       clearDirectory: () => Promise<boolean>

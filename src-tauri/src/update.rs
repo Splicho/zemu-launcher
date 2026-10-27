@@ -10,9 +10,9 @@ use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
 /// Streaming HTTP client + base URL for the compressor CDN.
 ///
@@ -813,11 +813,19 @@ fn compute_files_to_update(
 
         let needs_update = match local_by_path.get(entry.path.as_str()) {
             Some(local_entry) => {
-                // Trust the local manifest's hash. If they match, the
-                // local on-disk file is considered up-to-date. We do
-                // NOT re-read the file from disk to verify — the user
-                // explicitly chose "manifest-only" change detection.
-                local_entry.hash.to_lowercase() != entry.hash.to_lowercase()
+                // Trust the local manifest's hash when the file is still
+                // on disk, but don't trust the manifest alone: a patched
+                // file the user deleted (or truncated) is absent from
+                // the hash comparison yet still needs the "Update"
+                // treatment. Full blake3 verification remains the
+                // pre-launch `verify_and_repair` job; this is the cheap
+                // existence/size gate that makes deletion visible.
+                let local_path = Path::new(game_directory).join(&entry.path);
+                let disk_matches = match fs::metadata(&local_path) {
+                    Ok(meta) => meta.is_file() && meta.len() == entry.size,
+                    Err(_) => false,
+                };
+                local_entry.hash.to_lowercase() != entry.hash.to_lowercase() || !disk_matches
             }
             None => true,
         };
@@ -927,42 +935,6 @@ fn ensure_not_cancelled(state: &AppState) -> Result<()> {
     if is_cancelled(state) {
         return Err(anyhow!("Update cancelled by user"));
     }
-    Ok(())
-}
-
-/// Re-export the legacy "persist manifest from CDN" entry point so
-/// `depot.rs` doesn't break. After a SteamCMD depot download the
-/// launcher now writes a `CompressorManifest` derived from the live CDN
-/// response into `<gameDir>/manifest.json` so subsequent
-/// `check_for_updates` calls have a baseline to diff against.
-pub async fn persist_installed_manifest_from_cdn(
-    app: &AppHandle,
-    game_directory: &std::path::Path,
-) -> Result<()> {
-    let base_url = match app
-        .try_state::<crate::state::AppState>()
-        .map(|state| state.get_update_base_url())
-        .flatten()
-    {
-        Some(url) => url,
-        None => {
-            return Err(anyhow!(
-                "Update service is not configured — cannot fetch CDN manifest"
-            ));
-        }
-    };
-
-    let client = UpdateClient::new(base_url);
-    let manifest = client.get_manifest().await?;
-
-    let target = PathBuf::from(game_directory).join("manifest.json");
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let raw = serde_json::to_string_pretty(&manifest)?;
-    fs::write(&target, raw)?;
-    let _ = save_version_cache(app, &manifest);
-
     Ok(())
 }
 

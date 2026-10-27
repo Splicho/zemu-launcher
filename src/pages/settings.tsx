@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { SUPPORTED_LANGUAGES, normalizeLanguageCode, setPersistedLanguage } from '@/lib/i18n'
-import { clearOnboardingCompleted } from '@/lib/onboarding'
+import { useGameStateContext } from '@/hooks/use-game-state-context'
 
 export type DiscordRpcMode = 'always' | 'playing_only' | 'never'
 
@@ -52,6 +52,7 @@ const RPC_MODE_OPTIONS: { value: DiscordRpcMode; labelKey: string; descriptionKe
 export function GeneralPage() {
   const { t, i18n } = useTranslation()
   const { navigate } = useHashRouter()
+  const { clearDirectory } = useGameStateContext()
   const [discordEnabled, setDiscordEnabled] = useState<boolean | null>(null)
   const [rpcMode, setRpcMode] = useState<DiscordRpcMode | null>(null)
   const [autostartEnabled, setAutostartEnabled] = useState<boolean | null>(null)
@@ -91,12 +92,13 @@ export function GeneralPage() {
     void i18n.changeLanguage(code)
   }
 
-  const handleRerunSetup = () => {
-    // Drop the "completed" flag so the gate re-routes the user into
-    // the wizard at `#/onboarding`. The on-disk checks (key + folder +
-    // base game) will pre-fill whichever steps are already satisfied.
-    clearOnboardingCompleted()
-    navigate('#/onboarding')
+  const handleRerunSetup = async () => {
+    // "Re-run setup" now means "start the install flow again": forget the
+    // configured folder, then hand the user back to the launcher, where
+    // the footer's Play button reads INSTALL and opens the destination
+    // dialog. (The onboarding wizard this used to route to is retired.)
+    await clearDirectory()
+    navigate('#/')
   }
 
   return (

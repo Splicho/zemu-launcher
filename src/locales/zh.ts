@@ -7,6 +7,7 @@ export default {
       cancel: '取消',
       save: '保存',
       close: '关闭',
+      selectLanguage: '选择语言',
       back: '返回',
       minimize: '最小化',
       maximize: '最大化',
@@ -112,99 +113,12 @@ export default {
       restarting: '正在重启启动器',
       restartingDetail: '正在安装新版本并重新打开启动器。',
       updateFailed: '启动器更新失败',
+      installFailed: '安装失败',
       updateFailedDetail: '无法下载或安装更新。',
       splashChecking: '正在检查更新…',
       splashStarting: '正在启动…',
       openLauncher: '打开启动器',
       unexpectedError: '更新程序发生意外错误',
-    },
-    onboarding: {
-      stepIndicator: 'Step {{current}} of {{total}}',
-      step1: {
-        title: '保存您的授权密钥',
-        description: '该密钥用于让游戏识别您的会话。它存储在本机，永不上传到服务器。',
-        continue: '保存并继续',
-        // Banner shown when the server reports an `authkey` row but
-        // it is `status = 'revoked'`. The launcher refuses to
-        // persist a revoked key — saving it locally would let the
-        // user launch the game with a key the admin has explicitly
-        // disabled upstream. The link opens the website's account
-        // settings page so the user can request a restore from an
-        // admin.
-        revokedBanner:
-          '您的授权密钥已被撤销。启动器无法恢复 — 请通过网站联系管理员。',
-        revokedBannerLink: '打开账户设置',
-        // Soft banner shown when the auto-fetch failed (network
-        // blip, server down, expired token, etc.). We surface the
-        // upstream reason so the bug report from the user has
-        // something useful in it, but the wording still tells them
-        // they can paste a key manually below.
-        fetchFallback:
-          '无法自动加载您保存的密钥（{{reason}}）。请在下方粘贴以继续。',
-      },
-      step2: {
-        title: '安装位置',
-        description:
-          '游戏和 ZEmu 补丁将存放在此文件夹。如果想用其他磁盘，可以随时更改。',
-        choose: '选择文件夹',
-        change: '更改位置',
-        installDestination: '游戏将安装到',
-        detecting: '正在检测你的主磁盘…',
-        chooseHint: '尚未选择文件夹。',
-        destinationHint: '根据系统所在的磁盘自动检测。',
-        useDefault: '使用推荐位置',
-        continue: '继续',
-      },
-      step3: {
-        title: '获取底包游戏',
-        description: 'ZEmu 不捆绑底包游戏。请使用 Steam 手机应用登录，将底包游戏直接下载到您的安装文件夹。',
-        auto: {
-          label: '自动下载',
-          description: 'SteamCMD 直接将仓库拉取到您刚选择的文件夹中，无需 Steam 客户端。',
-          unavailable: '此版本不提供自动下载。请改用手动说明。',
-          start: '开始下载',
-          running: '正在下载底包游戏…',
-          flatten: '正在将文件移动到您的文件夹…',
-          done: '底包游戏已安装',
-        },
-        manual: {
-          label: '我手动完成',
-          description: '按照 Steam 仓库控制台说明操作，然后回来完成设置。',
-          open: '打开说明',
-        },
-        qrGate: {
-          button: '使用 Steam 登录',
-          connecting: '正在准备二维码…',
-          scanHint: '使用 Steam 手机应用扫描',
-          scanned: '请在手机上确认连接',
-          authed: '已登录为 {{account}}',
-          authedHint: '您的 Steam 账号已关联。我们会从 Steam 下载仓库文件并放入您选择的文件夹。',
-          timeout: '二维码已过期 — 点击重试',
-          retry: '重试',
-          failedTitle: 'Steam 登录失败',
-          failedHint: '请重新登录，或使用下面的手动说明。',
-          signOut: '退出登录',
-          idleTitle: '登录 Steam 以下载',
-          idleDescription: "Steam 的匿名下载已不再提供 H1Z1 / Z1 Battle Royale。只需登录一次，我们便会直接从 Steam CDN 拉取仓库 — 密码永远不会离开您的手机。",
-          bridgeMissing: '此版本未捆绑 Steam 桥接器。请使用手动说明将底包游戏放入您的文件夹。',
-        },
-        errorTitle: '无法下载底包游戏',
-        errorRetryable: '请重试，或使用手动说明。',
-        errorFatal: 'Steam 不提供此仓库的自动下载。请改用手动说明。',
-        cancel: '取消下载',
-        continue: '继续',
-      },
-      step4: {
-        title: '即将完成',
-        description: '确认一切正常，然后启动 ZEmu。',
-        checklist: {
-          key: '授权密钥已保存',
-          folder: '已选择安装文件夹',
-          baseGame: '底包游戏已就位',
-          patch: 'ZEmu 补丁将在启动时自动应用',
-        },
-        finish: '完成设置',
-      },
     },
     // 预引导界面。位于着陆页（`/`）和 `#/onboarding` 之间 — 询问
     // 老用户是否已安装 Pre-Season 3 客户端，以便他们跳过向导。
@@ -403,13 +317,20 @@ export default {
       updating: '正在更新…',
       checking: '正在检查更新…',
       properties: '属性',
-      activating: '正在激活…',
       authKeyRequired: '需要身份验证密钥',
       updateProgress: '正在更新…{{progress}}%',
       applyingPatch: '正在应用补丁…',
       locatePs3Folder: '定位 PS3 文件夹',
       installPatch: '安装补丁',
       updateAvailable: '有可用更新',
+      update: '更新',
+      patching: '正在打补丁',
+      network: '网络',
+      downloading: '正在下载',
+      preparing: '正在准备…',
+      resume: '继续安装',
+      retryPatch: '重试补丁',
+      retryInstall: '重试安装',
       launchingGame: '正在启动游戏…',
       retry: '重试',
       alreadyInstalled: '已安装？',
@@ -424,6 +345,25 @@ export default {
       // 启动前补丁完整性检查。在用户点击 Play 之后、磁盘上
       // blake3 校验完成(或开始修复下载)之前显示在 Play 按钮上。
       verifying: '正在验证文件…',
+    },
+    installDialog: {
+      title: '安装 ZEmu',
+      description: '下载兼容的游戏客户端，并自动安装最新的 ZEmu 补丁。',
+      location: '安装位置',
+      locationLoading: '正在解析默认文件夹…',
+      change: '更改',
+      install: '安装',
+      locateExisting: '已安装？定位现有游戏',
+      buildMismatchTitle: '此文件夹可能不是受支持的 H1Z1 版本',
+      buildMismatch:
+        '可执行文件与 ZEmu 验证的版本不匹配。启动器仍会尝试安装补丁，但其他版本可能无法启动。',
+      signIn: '登录 Steam',
+      signInDescription: '打开 Steam 手机应用，扫描此二维码并确认登录，以下载兼容的游戏文件。',
+      waiting: '等待确认…',
+      connecting: '正在连接 Steam…',
+      retry: '重试',
+      freeSpace: '可用空间',
+      downloadSize: '下载大小：{{size}}',
     },
     authKey: {
       loadFailed: '无法加载已保存的密钥。',
@@ -452,6 +392,7 @@ export default {
       pleaseWait: '请稍候…',
       loginBtn: '登录',
       noAccount: '没有账户？',
+      createAccount: '创建账号',
       createNewAccount: '创建新账户',
       lastUsed: '上次使用',
       errors: {
@@ -545,6 +486,27 @@ export default {
       playerTier: '玩家段位',
     },
     properties: {
+      wineConfiguration: 'Wine 配置',
+      wineEnable: '使用 Wine / Proton',
+      wineEnableDesc: '通过 Linux 兼容运行时启动 Windows 版游戏。',
+      wineRuntime: 'Wine / Proton 版本',
+      wineRuntimePlaceholder: '选择运行时',
+      wineRuntimeAuto: '自动检测',
+      wineRuntimeCustom: '自定义可执行文件',
+      wineCustomRuntimePlaceholder: '/path/to/wine 或 proton',
+      wineNoRuntimes: '未在系统中检测到 Wine 或 Proton 运行时。',
+      winePrefix: 'Wineprefix / compatdata',
+      winePrefixPlaceholder: '留空以使用默认值',
+      winePrefixDesc:
+        'Proton 会把此目录用作 STEAM_COMPAT_DATA_PATH；Wine 会把它用作 WINEPREFIX。',
+      wineEnv: '环境变量',
+      wineEnvEmpty: '没有自定义变量。',
+      addVariable: '添加变量',
+      removeVariable: '删除变量',
+      envKey: '名称',
+      envValue: '值',
+      refresh: '刷新',
+      saving: '保存中…',
       title: '属性',
       description: '配置 ZEmu: King of the Kill',
       installedFiles: '已安装文件',
@@ -580,20 +542,9 @@ export default {
       languageSaving: '正在保存…',
       languageSaveFailed: '无法保存语言设置：{{error}}',
     },
-    license: {
-      redeem: '兑换',
-      keyRedeemed: '密钥已兑换。',
-      noAccountKeys: '暂无已兑换的账户密钥。',
-      accountKeyNotFound: '未找到此账户密钥，请重试。',
-      accountKeyRevoked: '此账户密钥已被撤销。',
-      accountKeyBoundToOther: '此账户密钥已绑定到其他设备。',
-      couldNotReachServer: '无法连接到账户密钥服务器。',
-      redeemAccountKey: '兑换账户密钥',
-      statusActive: '已激活',
-      statusRevoked: '已撤销',
-      statusChecking: '正在检查…',
-    },
     steamInstructions: {
+      downloadDesc:
+        '我们无法合法分发 H1Z1: King of the Kill，因此你需要通过 Steam 的 depot 控制台下载它。',
       openSteam: '打开计算机上的 Steam。',
       downloadBaseGame: '下载基础游戏',
       description: '我们在法律上不允许附带 KotK，因此您需要通过 Steam 的控制台下载基础游戏。',

@@ -1,0 +1,26 @@
+{
+  "source": "verified supported install (steam depot 433851 + ZEmu patch)",
+  "note": "Files the ZEmu patch never rewrites, used to recognise a supported install the launcher did not download itself. Regenerate with `cargo run --example fingerprint -- <files>` after a pinned-build change.",
+  "executable": {
+    "path": "H1Z1.exe",
+    "size": 54908352,
+    "blake3": "6460bb4805d74f159611d4269baad7ee0b196860edfa20e13735e96912fb72d4"
+  },
+  "files": [
+    {
+      "path": "Resources/Assets/Assets_000.pack",
+      "size": 107366841,
+      "blake3": "f51a1f8554dff8507f47c52ec6614c3d73db72ca4f7eaef07126f0e392609337"
+    },
+    {
+      "path": "Resources/Assets/Assets_113.pack",
+      "size": 148993796,
+      "blake3": "ac0db2f7afe1905ba98e535e4634773ac6a30b9440699045b81132f2a65ac0c3"
+    },
+    {
+      "path": "Resources/Assets/Assets_204.pack",
+      "size": 121299924,
+      "blake3": "9528d86b896191f0a8bfd4fd26443ad8befac9642497b7a3e6762e5d427c44e1"
+    }
+  ]
+}

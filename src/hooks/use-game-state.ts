@@ -111,6 +111,13 @@ const DEFAULT_GAME_LAUNCH_STATE: GameLaunchState = {
 }
 
 /**
+ * How often the launcher re-checks the CDN for a patch in the
+ * background. The probe is silent (see the polling effect): it only
+ * repaints the Play button when the verdict actually flips.
+ */
+const UPDATE_POLL_INTERVAL_MS = 60_000
+
+/**
  * Hook that drives the game-state state machine.
  *
  * The license gate has been removed as part of the auth key rework.
@@ -137,6 +144,13 @@ export function useGameState() {
   const [gameLaunchState, setGameLaunchState] = useState<GameLaunchState>(DEFAULT_GAME_LAUNCH_STATE)
   const [error, setError] = useState<string | null>(null)
   const [justCompletedUpdate, setJustCompletedUpdate] = useState(false)
+  /**
+   * The most recent failure happened during the PATCH stage (not the client
+   * download, not a launch). Drives the footer's "Retry patch" affordance:
+   * the downloaded client is still on disk, so retrying must run only the
+   * patch instead of restarting the whole install.
+   */
+  const [patchFailed, setPatchFailed] = useState(false)
   // True between Play click and `verifyAndRepair` resolution. Drives
   // the `VERIFYING_INTEGRITY` state branch so the user sees a
   // non-clickable label ("Verifying files…") instead of a frozen
@@ -153,6 +167,9 @@ export function useGameState() {
   const isCheckingRef = useRef(false)
   const lastCheckedDirectoryRef = useRef<string | null>(null)
   const hasAutoCheckedOnStartupRef = useRef(false)
+  // Mirrors "a patch is in flight" for the background poll, so the
+  // interval doesn't have to restart whenever that changes.
+  const isBusyRef = useRef(false)
   // Mirror of `justCompletedUpdate` so the `checkForUpdates` callback
   // (whose own deps would otherwise have to include the state setter)
   // can read the latest "we just finished" flag without rebuilding.
@@ -292,8 +309,13 @@ export function useGameState() {
     }
   }, [])
 
-  // Check for updates when directory is set
-  const checkForUpdates = useCallback(async (force = false) => {
+  // Check for updates when directory is set.
+  //
+  // `silent` is for the background poll: it skips the `isChecking` flag
+  // (which is what flips the Play button to "Checking for updates") and
+  // the error reset, so a routine 60s probe only paints when the verdict
+  // actually changes.
+  const checkForUpdates = useCallback(async (force = false, silent = false) => {
     if (!gameDirectory || !window.gameAPI) {
       return
     }
@@ -307,8 +329,10 @@ export function useGameState() {
     }
 
     isCheckingRef.current = true
-    setIsChecking(true)
-    setError(null)
+    if (!silent) {
+      setIsChecking(true)
+      setError(null)
+    }
 
     try {
       // Run both reads in parallel and commit state atomically: setting
@@ -321,39 +345,67 @@ export function useGameState() {
         window.gameAPI.isInstalled(),
       ])
 
-      // If an update just completed, the Rust side may briefly report
-      // stale values while it catches up to the new on-disk state.
-      // Trust the optimistic clear from the progress handler — writing
-      // back `hasUpdate: true` here is what traps the user on the
-      // "Update available" button until they restart the launcher.
+      // `justCompletedUpdate` exists to ignore Rust's transient reads
+      // in the moments right after a patch writes `manifest.json` — but
+      // that protection is only correct for *negative* verdicts. A
+      // fresh `hasUpdate: true` means the CDN manifest and the disk
+      // genuinely disagree (a newer patch, or files deleted/modified
+      // since install), and swallowing it here latches the button on
+      // "Play" for the rest of the session: every later check is
+      // discarded, so deleting a file and refreshing the launcher still
+      // reads "Play" even though Rust reports `has_update=true`. Trust
+      // the positive verdict and drop the latch.
+      if (info.hasUpdate === true && justCompletedUpdateRef.current) {
+        justCompletedUpdateRef.current = false
+        setJustCompletedUpdate(false)
+      }
+
       if (!justCompletedUpdateRef.current) {
-        setUpdateInfo(info)
+        // Keep the previous object when the verdict is unchanged: the
+        // 60s poll would otherwise hand React a new object every minute,
+        // re-rendering the footer (and resetting the poll's own
+        // interval through its `updateInfo` dependency).
+        setUpdateInfo((prev) =>
+          prev &&
+          prev.hasUpdate === info.hasUpdate &&
+          prev.cdnAvailable === info.cdnAvailable
+            ? prev
+            : info,
+        )
         setIsInstalled(installed)
       }
 
+      // `installed` is the half of the verdict Rust can't echo in its
+      // own log line — record it so a "Update flashed then went back to
+      // Play" report can be traced to a check (not to a stale render).
+      window.debugLog?.write(
+        'game-state',
+        `check ok has_update=${info.hasUpdate} installed=${installed}`,
+      )
+
       lastCheckedDirectoryRef.current = gameDirectory
     } catch (err) {
-      // Same reasoning as the success path: a just-completed update
-      // means we already know the install is good and up to date.
-      // Don't clobber it back to "needs install / has update" — that
-      // is exactly the bug that traps users on the wrong button.
-      if (!justCompletedUpdateRef.current) {
-        const errorMsg = err instanceof Error ? err.message : 'Failed to check for updates'
-        lastCheckedDirectoryRef.current = gameDirectory
+      // A failed check must NOT manufacture an "update available"
+      // verdict. This branch used to write `{ hasUpdate: true }` plus
+      // `isInstalled: false`, which flipped the button to UPDATE and
+      // then back to PLAY as soon as the next check succeeded — the
+      // flapping seen after tabbing back into the window when the
+      // check happens to fail (locked config file, CDN hiccup, an IPC
+      // that rejects once). Keep the last known good verdict instead;
+      // only record a neutral one when we have no verdict at all yet,
+      // so the UI leaves CHECKING rather than hanging on it.
+      const errorMsg = err instanceof Error ? err.message : 'Failed to check for updates'
+      lastCheckedDirectoryRef.current = gameDirectory
+      window.debugLog?.write('game-state', `check failed error=${errorMsg}`)
 
-        // If the CDN is unavailable, allow proceeding with base game installation
-        // The patch can be installed later when the CDN is back
-        setUpdateInfo({ hasUpdate: true, cdnAvailable: false })
-        setIsInstalled(false)
-        toast.warning(t('toasts.cdnUnavailable'), {
-          description: t('toasts.cdnUnavailableDescription', { error: errorMsg }),
-        })
+      if (!justCompletedUpdateRef.current && updateInfo === null) {
+        setUpdateInfo({ hasUpdate: false, cdnAvailable: false })
       }
     } finally {
       isCheckingRef.current = false
-      setIsChecking(false)
+      if (!silent) setIsChecking(false)
     }
-  }, [gameDirectory, updateInfo, t])
+  }, [gameDirectory, updateInfo])
 
   // Auto-check when directory is set
   useEffect(() => {
@@ -386,6 +438,39 @@ export function useGameState() {
     return () => clearTimeout(timeoutId)
   }, [gameDirectory, checkForUpdates, updateInfo])
 
+  // Background update check — every 60s while the launcher is open.
+  //
+  // Deliberately silent: a routine probe must not repaint the Play
+  // button as "Checking for updates". `checkForUpdates(true, true)`
+  // leaves `isChecking` alone, and `setUpdateInfo` keeps the previous
+  // object when the verdict hasn't changed, so an idle minute is
+  // completely invisible. Only a real `has_update` flip changes the
+  // button. The startup check (above) is the one that shows "Checking
+  // for updates…", and only because there is no verdict yet.
+  //
+  // `isBusyRef` keeps the poll off an in-flight patch (it would fight
+  // the progress handler's optimistic state), and a pending update
+  // stops the polling until it is installed — there is nothing new to
+  // learn while the button already says UPDATE.
+  useEffect(() => {
+    if (!gameDirectory) return
+
+    const poll = () => {
+      if (isBusyRef.current) return
+      if (updateInfo?.hasUpdate) return
+      void checkForUpdates(true, true)
+    }
+
+    const id = window.setInterval(poll, UPDATE_POLL_INTERVAL_MS)
+    return () => window.clearInterval(id)
+  }, [gameDirectory, updateInfo, checkForUpdates])
+
+  // Mirror the "don't race a patch" flags for the poll without making
+  // the interval restart every time they change.
+  useEffect(() => {
+    isBusyRef.current = isUpdating || isApplyingPatch
+  }, [isUpdating, isApplyingPatch])
+
   // Listen for update progress
   useEffect(() => {
     if (!window.gameAPI) return
@@ -415,6 +500,9 @@ const handleProgress = (status: UpdateStatus) => {
         if (previousError !== status.error) {
           lastErrorRef.current = status.error
           setError(status.error)
+          // A progress-level error during a patch is the "client is on
+          // disk, only the patch failed" case → offer Retry patch.
+          setPatchFailed(true)
           toast.error(t('toasts.updateFailed', { error: status.error }))
         }
       } else {
@@ -434,6 +522,7 @@ const handleProgress = (status: UpdateStatus) => {
         // landing them on "Play".
         setJustCompletedUpdate(true)
         setIsInstalled(true)
+        setPatchFailed(false)
         setUpdateInfo((prev) =>
           prev ? { ...prev, hasUpdate: false } : { hasUpdate: false, cdnAvailable: true }
         )
@@ -508,6 +597,43 @@ const handleProgress = (status: UpdateStatus) => {
     }
   }, [t])
 
+  /**
+   * Persist an explicit install destination (the install dialog's
+   * "Install" button) and re-derive the state machine against it.
+   *
+   * Same bookkeeping as `selectDirectory`, minus the native picker: the
+   * caller already has a path — either the Rust-provided default
+   * (`<SystemDrive>\Games\ZEmu`) or one the user chose via "Change".
+   */
+  const setDestination = useCallback(async (path: string): Promise<boolean> => {
+    if (!window.gameAPI) return false
+    const trimmed = path.trim()
+    if (!trimmed) return false
+
+    try {
+      await window.gameAPI.setDirectory(trimmed)
+      // A new destination invalidates a job recorded against the old one.
+      try {
+        await window.gameAPI.clearInstallJob?.()
+      } catch {
+        // Non-fatal: the resume prompt is gated on the directory below.
+      }
+      setUpdateInfo(null)
+      setGameDirectory(trimmed)
+      setError(null)
+      hasAutoCheckedOnStartupRef.current = false
+      lastCheckedDirectoryRef.current = null
+      const installed = await window.gameAPI.isInstalled()
+      setIsInstalled(installed)
+      return true
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : t('toasts.failedToSelectDirectory')
+      setError(errorMsg)
+      toast.error(t('toasts.failedToSelectDirectory'), { description: errorMsg })
+      return false
+    }
+  }, [t])
+
   const cancelDownload = useCallback(() => {
     if (!window.gameAPI) return
     window.gameAPI.cancelDownload()
@@ -560,6 +686,7 @@ const handleProgress = (status: UpdateStatus) => {
     setIsUpdating(true)
     setUpdateStatus(null)
     setError(null)
+    setPatchFailed(false)
     setJustCompletedUpdate(false)
     // Clear the dedupe ref so a retry of the SAME error string still
     // surfaces as a fresh toast — without this, a user retrying after
@@ -576,6 +703,7 @@ const handleProgress = (status: UpdateStatus) => {
         const error = new Error(result.error || 'Update failed')
         setIsUpdating(false)
         setError(error.message)
+        setPatchFailed(true)
         toast.error(t('toasts.updateFailed', { error: error.message }))
         throw error
       }
@@ -584,6 +712,7 @@ const handleProgress = (status: UpdateStatus) => {
       setIsUpdating(false)
       const errorMsg = err instanceof Error ? err.message : 'Update failed'
       setError(errorMsg)
+      setPatchFailed(true)
       toast.error(t('toasts.updateFailed', { error: errorMsg }))
       throw err
     } finally {
@@ -720,6 +849,13 @@ const handleProgress = (status: UpdateStatus) => {
     }
 
     await window.gameAPI.clearDirectory()
+    // Forget any interrupted-install record too: with no destination the
+    // footer must offer INSTALL, not RESUME from a stale job.
+    try {
+      await window.gameAPI.clearInstallJob?.()
+    } catch {
+      // A stale record is already handled by the 24 h expiry.
+    }
     setGameDirectory(null)
     setUpdateInfo(null)
     setIsInstalled(false)
@@ -808,6 +944,11 @@ const handleProgress = (status: UpdateStatus) => {
   // doesn't strand the directory. Keep the old name forwarding so
   // the call-site doesn't need a parallel rename.
   const refreshAuthKey = refreshFromDisk
+
+  // Switching install folders retires the previous patch failure.
+  useEffect(() => {
+    setPatchFailed(false)
+  }, [gameDirectory])
 
   // Derive state
   //
@@ -935,7 +1076,10 @@ const handleProgress = (status: UpdateStatus) => {
     isUpdating,
     isApplyingPatch,
     error,
+    /** Last failure came from the patch stage → footer offers "Retry patch". */
+    patchFailed,
     selectDirectory,
+    setDestination,
     clearDirectory,
     checkForUpdates,
     startUpdate,

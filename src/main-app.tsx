@@ -2,14 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 
 import { LoginPage } from '@/pages/login'
 import { HomePage } from '@/pages/home'
+import { AccessKeyProvisioner } from '@/components/new-launcher/access-key-provisioner'
 import { MainLayout } from '@/components/main-layout'
 import type { SidebarType } from '@/components/main-layout'
 import { TitleBar } from '@/components/title-bar'
 import { SiteNoticeBar } from '@/components/site-notice-bar'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
-import { OnboardingPage } from '@/pages/onboarding'
-import { InstallCheckPage } from '@/pages/install-check'
 import { PlayPage } from '@/pages/play'
 import { StreamsPage } from '@/pages/streams'
 import { LeaderboardPage } from '@/pages/leaderboard'
@@ -24,11 +23,9 @@ import { AdvancedPage } from '@/pages/advanced'
 import { AccountPage } from '@/pages/account'
 import { AuthProvider, useAuthContext } from '@/contexts/auth-context'
 import { useHash } from '@/hooks/use-hash'
-import { useOnboardingGate } from '@/hooks/use-onboarding-gate'
 import { UpdateProvider } from '@/contexts/update-context'
 import { GameStateProvider } from '@/contexts/game-state-context'
 import { Toaster } from '@/components/ui/sonner'
-import { useDownloadSpeedToast } from '@/hooks/use-download-speed-toast'
 import { useFriendsIncomingToast } from '@/hooks/use-friends-incoming-toast'
 import { useFriendsPresence } from '@/hooks/use-friends-presence'
 import { useFriendsRealtimeSync } from '@/hooks/use-friends'
@@ -38,7 +35,11 @@ import { useEnrollHardware } from '@/hooks/use-enroll-hardware'
 const INTENDED_HASH_KEY = 'zemu-launcher.intended-hash'
 
 function parseRoute(hash: string | null): { page: string; params?: Record<string, string> } {
-  if (!hash || hash === '/') return { page: 'play' }
+  // UI REWORK: the launcher lands on the (currently blank) home canvas
+  // while the new main page is being built — with the sidebar
+  // commented out there is no nav to reach `#/home` otherwise.
+  // Revert to `{ page: 'play' }` to restore the old landing page.
+  if (!hash || hash === '/') return { page: 'home' }
 
   const newsMatch = hash.match(/^\/news\/(.+)$/)
   if (newsMatch) return { page: 'news-slug', params: { slug: newsMatch[1] } }
@@ -71,8 +72,6 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
   if (hash === '/news') return { page: 'news' }
   if (hash === '/clans') return { page: 'clans' }
   if (hash === '/servers') return { page: 'servers' }
-  if (hash === '/onboarding') return { page: 'onboarding' }
-  if (hash === '/install-check') return { page: 'install-check' }
   if (hash === '/play') return { page: 'play' }
   if (hash === '/streams') return { page: 'streams' }
   if (hash === '/leaderboard') return { page: 'leaderboard' }
@@ -82,11 +81,6 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
   if (hash === '/account') return { page: 'account' }
 
   return { page: 'home' }
-}
-
-function DownloadSpeedToast() {
-  useDownloadSpeedToast()
-  return null
 }
 
 /** Mounted at the top level so friend-request toasts fire even when the Friends panel is closed. */
@@ -170,7 +164,7 @@ export default function MainApp() {
       <UpdateProvider>
         <GameStateProvider>
           <AuthedApp />
-          <DownloadSpeedToast />
+          <AccessKeyProvisioner />
           <FriendsIncomingToastHost />
           <FriendsRealtimeSyncHost />
           <FriendsPresenceHost />
@@ -196,8 +190,6 @@ function AuthedApp() {
   const hash = useHash()
   const route = parseRoute(hash)
   const isDeepRoute = hash !== null && hash !== '/' && route.page === 'home'
-  const onboardingGate = useOnboardingGate()
-  const { state: gateState, refresh: refreshGate } = onboardingGate
 
   useEffect(() => {
     document.documentElement.classList.add('main-window')
@@ -261,44 +253,6 @@ function AuthedApp() {
     sessionStorage.removeItem(INTENDED_HASH_KEY)
   }, [status])
 
-  // First-run wizard redirect.
-  //
-  // For an authed user whose on-disk setup is incomplete, push them
-  // into the install-check pre-screen at `#/install-check`. That
-  // screen asks "do you already have the Pre-Season 3 client?" —
-  // clicking "Yes" commits the Rust-side
-  // `LauncherConfig.onboarding_completed` flag and lands them on
-  // `/` directly, while "No, I need to download" routes them into
-  // the wizard at `#/onboarding`. This split avoids re-walking a
-  // returning user whose disk has drifted out of sync with the gate
-  // (e.g. the `.zemu-install-v1` marker is missing because they
-  // copied an old PS3 folder by hand).
-  //
-  // We deliberately run *after* the intended-hash restore effect
-  // above so a deep-link sign-in (e.g. OAuth callback returning to
-  // `/play`) lands on its real destination first; only the landing
-  // page (`/` or empty hash) gets pushed into the install-check.
-  //
-  // Returning users whose onboarding flag was reset but who still
-  // have a valid install on disk are caught by the gate and skip
-  // straight to `/` (handled inside `useOnboardingGate`).
-  useEffect(() => {
-    if (status !== 'authed') return
-    if (route.page === 'onboarding' || route.page === 'install-check') return
-    if (gateState.kind === 'loading') return
-    if (gateState.kind === 'complete') return
-
-    // Don't override an in-flight deep-link sign-in.
-    const intended = sessionStorage.getItem(INTENDED_HASH_KEY)
-    if (intended && intended !== '/') return
-
-    queueMicrotask(() => {
-      if (window.location.hash !== '#/install-check') {
-        window.location.hash = '#/install-check'
-      }
-    })
-  }, [status, route.page, gateState.kind])
-
   if (status === 'loading') {
     return null
   }
@@ -315,46 +269,15 @@ function AuthedApp() {
     )
   }
 
-  // The install-check pre-screen and the onboarding wizard both
-  // own the full screen — no `<MainLayout>`, no sidebar. They
-  // render their own `<TitleBar />` inside the page for visual
-  // consistency with the rest of the app. Both pages receive the
-  // same `initialChecks` shape so they can hydrate from the same
-  // gate evaluation.
-  if (route.page === 'install-check' || route.page === 'onboarding') {
-    const initialChecks =
-      gateState.kind === 'incomplete'
-        ? gateState.inputs
-        : {
-            hasKey: false,
-            hasFolder: false,
-            hasBaseGame: false,
-            hasMarker: false,
-            folderPath: null,
-          }
-
-    if (route.page === 'install-check') {
-      return (
-        <InstallCheckPage
-          initialChecks={initialChecks}
-          onRefreshGate={refreshGate}
-        />
-      )
-    }
-
-    return (
-      <OnboardingPage
-        initialChecks={initialChecks}
-        onRefreshGate={refreshGate}
-        bearerToken={token?.token ?? null}
-      />
-    )
-  }
+  // The install flow lives in the launcher footer (see
+  // `C:\ZEmu\plan.md`), so no route owns the full screen anymore.
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
+    <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg text-foreground border border-muted">
         <MainLayout
-          backgroundSrc={route.page === 'play' ? '/background/kotk_bg.webp' : undefined}
+          // Launcher background: one image for every authed route. It
+          // used to be play-page-only (`kotk_bg.webp`), which is gone.
+          backgroundSrc="/background/app-bg.png"
           routeKey={hash ?? ''}
           sidebarType={sidebarType}
         >

@@ -7,6 +7,7 @@ export default {
       cancel: "Annuler",
       save: "Enregistrer",
       close: "Fermer",
+      selectLanguage: "Choisir la langue",
       back: "Retour",
       exit: "Quitter",
       open: "Ouvrir",
@@ -123,99 +124,12 @@ export default {
       restarting: "Redémarrage du lanceur",
       restartingDetail: "Installation de la nouvelle version et réouverture du lanceur.",
       updateFailed: "Échec de la mise à jour du lanceur",
+      installFailed: "Échec de l'installation",
       updateFailedDetail: "La mise à jour n'a pas pu être téléchargée ou installée.",
       splashChecking: "Vérification des mises à jour...",
       splashStarting: "Démarrage...",
       openLauncher: "Ouvrir le lanceur",
       unexpectedError: "Erreur inattendue du programme de mise à jour",
-    },
-    onboarding: {
-      step1: {
-        title: 'Enregistrez votre clé d’authentification',
-        description: 'La clé permet au jeu d’identifier votre session. Elle est stockée sur cette machine et n’est jamais envoyée à un serveur.',
-        continue: 'Enregistrer et continuer',
-        // Banner shown when the server reports an `authkey` row but
-        // it is `status = 'revoked'`. The launcher refuses to
-        // persist a revoked key — saving it locally would let the
-        // user launch the game with a key the admin has explicitly
-        // disabled upstream. The link opens the website's account
-        // settings page so the user can request a restore from an
-        // admin.
-        revokedBanner:
-          'Votre clé d’authentification a été révoquée. Le lanceur ne peut pas la restaurer — veuillez contacter un administrateur via le site web.',
-        revokedBannerLink: 'Ouvrir les paramètres du compte',
-        // Soft banner shown when the auto-fetch failed (network
-        // blip, server down, expired token, etc.). We surface the
-        // upstream reason so the bug report from the user has
-        // something useful in it, but the wording still tells them
-        // they can paste a key manually below.
-        fetchFallback:
-          'Impossible de charger votre clé enregistrée automatiquement ({{reason}}). Collez-la ci-dessous pour continuer.',
-      },
-      step2: {
-        title: 'Dossier d’installation',
-        description:
-          'Le jeu et les correctifs ZEmu seront installés dans ce dossier. Changez-le si vous préférez un autre disque.',
-        choose: 'Choisir un dossier',
-        change: 'Changer d’emplacement',
-        installDestination: 'Le jeu sera installé dans',
-        detecting: 'Détection de votre disque principal…',
-        chooseHint: 'Aucun dossier sélectionné pour l’instant.',
-        destinationHint:
-          'Détecté à partir du disque où votre système est installé.',
-        useDefault: 'Utiliser l’emplacement recommandé',
-        continue: 'Continuer',
-      },
-      step3: {
-        title: 'Obtenir le jeu de base',
-        description: "ZEmu n’embarque pas le jeu de base. Connectez-vous avec l’application Steam Mobile pour télécharger le jeu de base directement dans votre dossier d’installation.",
-        auto: {
-          label: 'Télécharger automatiquement',
-          description: 'SteamCMD extrait le dépôt directement dans le dossier que vous venez de choisir. Aucun client Steam requis.',
-          unavailable: 'Le téléchargement automatique n’est pas disponible dans cette build. Utilisez les instructions manuelles.',
-          start: 'Démarrer le téléchargement',
-          running: 'Téléchargement du jeu de base…',
-          flatten: 'Déplacement des fichiers dans votre dossier…',
-          done: 'Jeu de base installé',
-        },
-        manual: {
-          label: 'Je le ferai moi-même',
-          description: 'Suivez les instructions de la console de dépôt Steam, puis revenez terminer la configuration.',
-          open: 'Ouvrir les instructions',
-        },
-        qrGate: {
-          button: 'Se connecter avec Steam',
-          connecting: 'Préparation du QR code…',
-          scanHint: 'Scannez avec l’application Steam Mobile',
-          scanned: 'Approuvez la connexion sur votre téléphone',
-          authed: 'Connecté en tant que {{account}}',
-          authedHint: 'Votre compte Steam est désormais relié. Nous allons télécharger les fichiers du dépôt depuis Steam et les placer dans le dossier choisi.',
-          timeout: 'QR expiré — cliquez pour réessayer',
-          retry: 'Réessayer',
-          failedTitle: 'La connexion Steam a échoué',
-          failedHint: 'Reconnectez-vous, ou utilisez les instructions manuelles ci-dessous.',
-          signOut: 'Se déconnecter',
-          idleTitle: 'Connectez-vous à Steam pour télécharger',
-          idleDescription: "Le téléchargement anonyme de Steam ne sert plus H1Z1 / Z1 Battle Royale. Connectez-vous une fois et nous récupérerons le dépôt directement depuis le CDN Steam — aucun mot de passe ne quitte votre téléphone.",
-          bridgeMissing: 'Le pont Steam n’a pas été inclus dans cette build. Utilisez les instructions manuelles pour placer le jeu de base dans votre dossier.',
-        },
-        errorTitle: 'Impossible de télécharger le jeu de base',
-        errorRetryable: 'Réessayez, ou utilisez les instructions manuelles.',
-        errorFatal: 'Steam ne propose pas ce dépôt en téléchargement automatique. Utilisez les instructions manuelles.',
-        cancel: 'Annuler le téléchargement',
-        continue: 'Continuer',
-      },
-      step4: {
-        title: 'Presque terminé',
-        description: 'Vérifiez que tout est correct, puis lancez ZEmu.',
-        checklist: {
-          key: 'Clé d’authentification enregistrée',
-          folder: 'Dossier d’installation sélectionné',
-          baseGame: 'Jeu de base présent',
-          patch: 'Le correctif ZEmu s’appliquera automatiquement au lancement',
-        },
-        finish: 'Terminer la configuration',
-      },
     },
     // Écran de pré-configuration. Se place entre la page
     // d'accueil (`/`) et `#/onboarding` — demande aux utilisateurs
@@ -413,13 +327,20 @@ export default {
       updating: "Mise à jour…",
       checking: "Vérification des mises à jour…",
       properties: "Propriétés",
-      activating: "Activation…",
       authKeyRequired: "Clé d'authentification requise",
       updateProgress: "Mise à jour…{{progress}}%",
       applyingPatch: "Application du correctif…",
       locatePs3Folder: "Localiser le dossier PS3",
       installPatch: "Installer le correctif",
       updateAvailable: "Mise à jour disponible",
+      update: "Mettre à jour",
+      patching: "Correctif en cours",
+      network: "Réseau",
+      downloading: "Téléchargement",
+      preparing: "Préparation…",
+      resume: "Reprendre",
+      retryPatch: "Réessayer le correctif",
+      retryInstall: "Réessayer l'installation",
       launchingGame: "Lancement du jeu…",
       retry: "Réessayer",
       alreadyInstalled: "Déjà installé ?",
@@ -435,6 +356,27 @@ export default {
       // between the click and the on-disk blake3 verification
       // completing (or starting its repair download).
       verifying: 'Vérification des fichiers…',
+    },
+    installDialog: {
+      title: "Installer ZEmu",
+      description:
+        "Télécharge le client de jeu compatible et installe automatiquement le dernier correctif ZEmu.",
+      location: "Emplacement d'installation",
+      locationLoading: "Résolution du dossier par défaut…",
+      change: "Modifier",
+      install: "Installer",
+      locateExisting: "Déjà installé ? Localiser le jeu existant",
+      buildMismatchTitle: "Ce dossier n'est peut-être pas la version H1Z1 prise en charge",
+      buildMismatch:
+        "L'exécutable ne correspond pas à la version validée pour ZEmu. Le launcher essaiera quand même d'appliquer le correctif, mais une autre version peut ne pas démarrer.",
+      signIn: "Se connecter à Steam",
+      signInDescription:
+        "Ouvrez l'application Steam mobile, scannez ce code et approuvez la connexion pour télécharger les fichiers de jeu compatibles.",
+      waiting: "En attente de validation…",
+      connecting: "Connexion à Steam…",
+      retry: "Réessayer",
+      freeSpace: "Espace libre",
+      downloadSize: "Téléchargement : {{size}}",
     },
     authKey: {
       loadFailed: "Impossible de charger la clé enregistrée.",
@@ -555,19 +497,6 @@ export default {
         northAmerica: { label: "Amérique du Nord" },
         asia: { label: "Asie" },
       },
-    },
-    license: {
-      redeem: 'Activer',
-      keyRedeemed: 'Clé activée.',
-      noAccountKeys: 'No account keys redeemed yet.',
-      accountKeyNotFound: "Cette clé n'a pas été trouvée. Veuillez réessayer.",
-      accountKeyRevoked: "Cette clé a été révoquée",
-      accountKeyBoundToOther: "Cette clé est liée à une autre machine.",
-      couldNotReachServer: "Impossible de contacter le serveur de clé.",
-      redeemAccountKey: 'Activer une clé',
-      statusActive: 'Active',
-      statusRevoked: 'Revoquée',
-      statusChecking: 'Vérification…',
     },
     properties: {
       wineConfiguration: "Configuration Wine",

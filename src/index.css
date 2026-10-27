@@ -3,26 +3,16 @@
 @import "shadcn/tailwind.css";
 @import "./typeset.css";
 
-@font-face {
-  font-family: "Google Sans";
-  src: url("/fonts/GoogleSans-VariableFont.ttf") format("truetype");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Google Sans";
-  src: url("/fonts/GoogleSans-Italic-VariableFont.ttf") format("truetype");
-  font-weight: 100 900;
-  font-style: italic;
-  font-display: swap;
-}
-
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: 'Google Sans', ui-sans-serif, system-ui, sans-serif;
+  /* Launcher typeface. Arial is a system font, so there is no
+     @font-face to declare — it resolves from the OS in every Tauri
+     webview (Windows/macOS/Linux all ship a metric-compatible Arial
+     or a Helvetica/Liberation Sans stand-in). The stack after it only
+     exists to keep glyph coverage sane on Linux builds that map Arial
+     to Liberation Sans. */
+  --font-sans: Arial, 'Helvetica Neue', Helvetica, ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);

@@ -260,7 +260,61 @@ pub fn start_scan_and_go(app: AppHandle, dest_dir: PathBuf) -> Result<()> {
             }
         };
         rt.block_on(async move {
-            // 1. QR login.
+            // 1. Prefer the persisted session.
+            //
+            // This used to jump straight into `drive_qr`, so *every* install —
+            // including one resumed the next day — stopped on a QR code even
+            // though a valid refresh token was sitting in the store. A
+            // returning user should only be asked again when Steam actually
+            // rejects the token.
+            if let Ok(Some(refresh_token)) = read_refresh_token(&app_for_thread) {
+                let account_name = read_account_name(&app_for_thread).unwrap_or_default();
+                match drive_download(
+                    &app_for_thread,
+                    refresh_token,
+                    &dest_dir,
+                    Some(account_name),
+                )
+                .await
+                {
+                    Ok(total) => {
+                        let _ = debug_log::append(
+                            &app_for_thread,
+                            "steam",
+                            &format!("scan_and_go_saved_session_ok bytes={total}"),
+                        );
+                        return;
+                    }
+                    Err(e) => {
+                        let app_error = AppError::from_anyhow(&e);
+                        let _ = debug_log::append(
+                            &app_for_thread,
+                            "steam",
+                            &format!(
+                                "scan_and_go_saved_session_failed {}",
+                                app_error.log_line()
+                            ),
+                        );
+                        // Only an auth problem justifies a new QR scan. A disk
+                        // or network failure would just fail again after the
+                        // user scans, so surface it instead.
+                        let auth_related = matches!(
+                            app_error.code,
+                            "steam_session_expired"
+                                | "steam_not_signed_in"
+                                | "steam_account_missing"
+                                | "steam_login_failed"
+                                | "steam_cdn_auth"
+                        );
+                        if !auth_related {
+                            emit_depot_error(&app_for_thread, &app_error);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // 2. QR login for users without a usable session.
             let tokens = match drive_qr(&app_for_thread).await {
                 Ok(t) => t,
                 Err(e) => {
@@ -276,7 +330,7 @@ pub fn start_scan_and_go(app: AppHandle, dest_dir: PathBuf) -> Result<()> {
             };
             persist_login(&app_for_thread, &tokens);
 
-            // 2. Depot download using the freshly-minted tokens.
+            // 3. Depot download using the freshly-minted tokens.
             if let Err(e) = drive_download(
                 &app_for_thread,
                 tokens.refresh_token,
@@ -640,12 +694,17 @@ async fn drive_download(
         // the progress bar smoothly between whole-file
         // `DepotProgress` updates.
         let mut cumulative_bytes: u64 = 0;
+        // Rate meter. Every emit below used to pass `0.0` for the speed,
+        // so the footer's `NETWORK` line showed an em dash for the whole
+        // download even while bytes were arriving.
+        let mut speed = SpeedMeter::new();
         while let Some(ev) = event_rx.recv().await {
             forward_download_event(
                 &app_for_progress,
                 ev,
                 total_bytes_for_progress,
                 &mut cumulative_bytes,
+                &mut speed,
             );
         }
     });
@@ -708,36 +767,60 @@ async fn drive_download(
         0.0,
     );
 
-    // Persist `manifest.json` so the launcher knows the game is installed
-    // and can transition to "Install Patch" / "Play" without requiring
-    // the user to re-locate the folder. Without this, every user who
-    // completes the depot download is stuck on "Locate PS3 Folder" even
-    // though the files are already present on disk.
+    // Record the BASE BUILD identity — deliberately not the patch
+    // manifest.
     //
-    // ## Ordering matters — this MUST happen before `depot-done`
+    // This used to call `persist_installed_manifest_from_cdn`, which wrote
+    // the CDN `manifest.json` right after the depot download. That made
+    // `is_installed()` true before the patch had been applied, so the
+    // launcher offered "Play" on an unpatched tree and a failed patch left
+    // the button lying. Ownership is now split (install plan §6):
     //
-    // This used to be written *after* the `depot-done` emit. Because
-    // the write is `async` (it fetches the manifest from the patch
-    // CDN), the renderer's `depot-done` handler fired and advanced the
-    // wizard to Step 4 while `isInstalled()` still read `false` — the
-    // store then cached that stale value and the play page showed
-    // "Install Patch" / "Locate PS3 Folder" for a fully-downloaded
-    // game. Emitting `depot-done` is a promise that the install is
-    // fully on disk and self-describing, so the writes come first and
-    // the event comes last.
+    //   depot stage   → `base-build.json`  (identity only)
+    //   patch stage   → `manifest.json`    (the "patch installed" marker)
     //
-    // A failure here is reported to the user rather than swallowed: a
-    // download that finished but couldn't record its own manifest is
-    // not a successful install, and silently advancing the wizard
-    // strands them in the Step 3 ↔ Finish loop.
-    let manifest_result =
-        crate::update::persist_installed_manifest_from_cdn(app, dest_dir).await;
-    if let Err(e) = &manifest_result {
-        let _ = debug_log::append(
-            app,
-            "depot",
-            &format!("manifest.json write failed after depot: {e}"),
-        );
+    // `is_installed()` keeps reading `manifest.json`, so a client-only
+    // install correctly reports "patch needed" and the footer's
+    // INSTALL PATCH label remains truthful.
+    let recorded_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let base_build = serde_json::json!({
+        "source": "steam-depot",
+        // `DepotId` / `ManifestId` are opaque newtypes without a serde
+        // impl; their Display form is the stable on-disk identity.
+        "depotId": depot_id.to_string(),
+        "manifestId": manifest_id.to_string(),
+        "recordedAtUnix": recorded_at,
+        // Fingerprint of the base executable, so a later "locate existing
+        // game" can tell the supported build from Steam's live one (install
+        // plan §3). The patch rewrites this binary, which is why the check
+        // also accepts `patched` once `manifest.json` exists.
+        "exe": crate::game::fingerprint_executable(std::path::Path::new(dest_dir))
+            .map(|(name, size, hash)| serde_json::json!({
+                "name": name,
+                "size": size,
+                "hash": hash,
+            })),
+    });
+    match serde_json::to_vec_pretty(&base_build) {
+        Ok(raw) => {
+            if let Err(e) = std::fs::write(dest_dir.join("base-build.json"), raw) {
+                let _ = debug_log::append(
+                    app,
+                    "depot",
+                    &format!("base-build.json write failed after depot: {e}"),
+                );
+            }
+        }
+        Err(e) => {
+            let _ = debug_log::append(
+                app,
+                "depot",
+                &format!("base-build.json encode failed: {e}"),
+            );
+        }
     }
 
     // Write the `.zemu-install-v1` marker. `detect_base_game_installed`
@@ -752,20 +835,6 @@ async fn drive_download(
             "depot",
             &format!("install marker write failed after depot: {e}"),
         );
-    }
-
-    if let Err(e) = manifest_result {
-        let app_error = AppError::new(
-            ErrorCode::DiskError,
-            format!("depot finished but manifest.json write failed: {e}"),
-        );
-        let _ = debug_log::append(
-            app,
-            "depot",
-            &format!("install_record_failed {}", app_error.log_line()),
-        );
-        emit_depot_error(app, &app_error);
-        return Err(anyhow!("depot finished but manifest write failed: {e}"));
     }
 
     let _ = app.emit(
@@ -975,11 +1044,58 @@ fn emit_depot_error(app: &AppHandle, error: &AppError) {
 /// overrides the accumulator with the authoritative
 /// `stats.bytes_downloaded` value so the UI can never drift
 /// ahead of the actual write.
+/// Exponential-moving-average download rate for the footer's `NETWORK` line.
+///
+/// Samples are taken over a **one-second window** (not per event): CDN chunks
+/// arrive in bursts, so a per-event rate swung between 30 and 100 mbit/s and
+/// looked broken. Each window produces one value, smoothed 60/40 with the
+/// previous one, which keeps the readout legible between updates.
+struct SpeedMeter {
+    window_bytes: u64,
+    window_at: Instant,
+    ema_bps: f64,
+}
+
+impl SpeedMeter {
+    fn new() -> Self {
+        Self {
+            window_bytes: 0,
+            window_at: Instant::now(),
+            ema_bps: 0.0,
+        }
+    }
+
+    /// Feed a cumulative byte count; returns `(bytes_per_second, eta_seconds)`.
+    fn sample(&mut self, bytes: u64, total: u64) -> (f64, f64) {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.window_at).as_secs_f64();
+        if elapsed >= 1.0 {
+            let delta = bytes.saturating_sub(self.window_bytes) as f64;
+            let instant = delta / elapsed;
+            self.ema_bps = if self.ema_bps <= 0.0 {
+                instant
+            } else {
+                self.ema_bps * 0.6 + instant * 0.4
+            };
+            self.window_bytes = bytes;
+            self.window_at = now;
+        }
+
+        let eta = if self.ema_bps > 1.0 && total > bytes {
+            (total - bytes) as f64 / self.ema_bps
+        } else {
+            0.0
+        };
+        (self.ema_bps, eta)
+    }
+}
+
 fn forward_download_event(
     app: &AppHandle,
     ev: DownloadEvent,
     total_bytes: u64,
     cumulative_bytes: &mut u64,
+    speed: &mut SpeedMeter,
 ) {
     match ev {
         DownloadEvent::DownloadStarted {
@@ -1050,14 +1166,15 @@ fn forward_download_event(
             // cumulative total — sum it ourselves so the bar
             // advances smoothly.
             *cumulative_bytes = cumulative_bytes.saturating_add(bytes);
+            let (speed_bps, eta_seconds) = speed.sample(*cumulative_bytes, total_bytes);
             emit_progress(
                 app,
                 "download",
                 "downloading",
                 *cumulative_bytes,
                 total_bytes,
-                0.0,
-                0.0,
+                speed_bps,
+                eta_seconds,
             );
         }
         DownloadEvent::ChunkFailed { error } => {
@@ -1078,7 +1195,19 @@ fn forward_download_event(
             } else {
                 format!("chunk failed: {raw}")
             };
-            emit_progress(app, "download", &msg, 0, total_bytes, 0.0, 0.0);
+            // Keep the byte counter as-is: this event describes a *failed*
+            // chunk that will be retried. Reporting `0` here made the
+            // renderer snap the bar back to 0 % between successful chunks.
+            let (speed_bps, eta_seconds) = speed.sample(*cumulative_bytes, total_bytes);
+            emit_progress(
+                app,
+                "download",
+                &msg,
+                *cumulative_bytes,
+                total_bytes,
+                speed_bps,
+                eta_seconds,
+            );
         }
         DownloadEvent::DepotProgress {
             completed_bytes,
@@ -1088,15 +1217,20 @@ fn forward_download_event(
             // Authoritative total from `steamroom-client`'s
             // internal stats — overwrite the chunk-accumulator
             // so it can never drift past the real write.
-            *cumulative_bytes = completed_bytes;
+            // Authoritative total from `steamroom-client`'s
+            // internal stats — but only ever move the counter forward.
+            // Its snapshot can lag the chunk accumulator by a moment, which
+            // used to make the bar oscillate (13 % → 12 % → 13 %).
+            *cumulative_bytes = (*cumulative_bytes).max(completed_bytes);
+            let (speed_bps, eta_seconds) = speed.sample(completed_bytes, total);
             emit_progress(
                 app,
                 "download",
                 "downloading",
                 completed_bytes,
                 total,
-                0.0,
-                0.0,
+                speed_bps,
+                eta_seconds,
             );
         }
         // Forward-compat: future variants fall through silently.

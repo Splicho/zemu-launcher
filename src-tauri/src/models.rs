@@ -207,6 +207,26 @@ pub struct LauncherConfig {
     /// user past `#/`.
     #[serde(default)]
     pub onboarding_completed: bool,
+    /// In-flight installation job, if any.
+    ///
+    /// Written when the client (depot) stage starts and advanced to
+    /// `patch` once the depot finishes, so a launcher that is closed (or
+    /// crashes) mid-install can offer **Resume installation** on the next
+    /// launch instead of silently restarting a 15 GB download. Cleared as
+    /// soon as the install is up to date. The renderer ignores records
+    /// older than 24 h (`use-install-job.ts`) so a stale record can never
+    /// latch the button.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_job: Option<InstallJobRecord>,
+}
+
+/// A persisted installation job. `stage` is `"client"` or `"patch"`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallJobRecord {
+    pub destination: String,
+    pub stage: String,
+    pub updated_at_unix: u64,
 }
 
 impl Default for LauncherConfig {
@@ -225,6 +245,7 @@ impl Default for LauncherConfig {
             locale: default_locale(),
             wine: WineConfig::default(),
             onboarding_completed: false,
+            install_job: None,
         }
     }
 }

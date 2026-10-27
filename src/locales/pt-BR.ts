@@ -117,100 +117,12 @@ export default {
       restarting: 'Reiniciando lançador',
       restartingDetail: 'Instalando a nova versão e reabrindo o lançador.',
       updateFailed: 'Falha na atualização do lançador',
+      installFailed: 'Falha na instalação',
       updateFailedDetail: 'A atualização não pôde ser baixada ou instalada.',
       splashChecking: 'Verificando atualizações...',
       splashStarting: 'Iniciando...',
       openLauncher: 'Abrir lançador',
       unexpectedError: 'Erro inesperado do atualizador',
-    },
-    onboarding: {
-      stepIndicator: 'Passo {{current}} de {{total}}',
-      step1: {
-        title: 'Salve sua chave de autenticação',
-        description: 'A chave permite que o jogo identifique sua sessão. Ela fica armazenada nesta máquina e nunca é enviada a um servidor.',
-        continue: 'Salvar e continuar',
-        // Banner shown when the server reports an `authkey` row but
-        // it is `status = 'revoked'`. The launcher refuses to
-        // persist a revoked key — saving it locally would let the
-        // user launch the game with a key the admin has explicitly
-        // disabled upstream. The link opens the website's account
-        // settings page so the user can request a restore from an
-        // admin.
-        revokedBanner:
-          'Sua chave de autenticação foi revogada. O launcher não pode restaurá-la — entre em contato com um administrador pelo site.',
-        revokedBannerLink: 'Abrir configurações da conta',
-        // Soft banner shown when the auto-fetch failed (network
-        // blip, server down, expired token, etc.). We surface the
-        // upstream reason so the bug report from the user has
-        // something useful in it, but the wording still tells them
-        // they can paste a key manually below.
-        fetchFallback:
-          'Não foi possível carregar sua chave salva automaticamente ({{reason}}). Cole-a abaixo para continuar.',
-      },
-      step2: {
-        title: 'Pasta de instalação',
-        description:
-          'O jogo e os patches do ZEmu vão ficar nesta pasta. Troque se preferir outro disco.',
-        choose: 'Escolher pasta',
-        change: 'Trocar local',
-        installDestination: 'O jogo será instalado em',
-        detecting: 'Detectando o seu disco principal…',
-        chooseHint: 'Nenhuma pasta selecionada ainda.',
-        destinationHint:
-          'Detectado a partir do disco onde o seu sistema está instalado.',
-        useDefault: 'Usar o local recomendado',
-        continue: 'Continuar',
-      },
-      step3: {
-        title: 'Obtenha o jogo base',
-        description: 'O ZEmu não inclui o jogo base. Entre com o aplicativo Steam Mobile para baixar o jogo base direto na sua pasta de instalação.',
-        auto: {
-          label: 'Baixar automaticamente',
-          description: 'O SteamCMD baixa o depot direto para a pasta que você acabou de escolher. Não precisa do cliente Steam.',
-          unavailable: 'O download automático não está disponível nesta build. Use as instruções manuais.',
-          start: 'Iniciar download',
-          running: 'Baixando o jogo base…',
-          flatten: 'Movendo os arquivos para sua pasta…',
-          done: 'Jogo base instalado',
-        },
-        manual: {
-          label: 'Vou fazer manualmente',
-          description: 'Siga as instruções do console de depot do Steam e volte para finalizar a configuração.',
-          open: 'Abrir instruções',
-        },
-        qrGate: {
-          button: 'Entrar com a Steam',
-          connecting: 'Preparando QR code…',
-          scanHint: 'Escaneie com o aplicativo Steam Mobile',
-          scanned: 'Aprove a conexão no seu telefone',
-          authed: 'Conectado como {{account}}',
-          authedHint: 'Sua conta Steam agora está vinculada. Vamos baixar os arquivos do depot da Steam e colocá-los na pasta escolhida.',
-          timeout: 'QR expirou — clique para tentar novamente',
-          retry: 'Tentar novamente',
-          failedTitle: 'Falha ao entrar na Steam',
-          failedHint: 'Entre novamente, ou use as instruções manuais abaixo.',
-          signOut: 'Sair',
-          idleTitle: 'Entre na Steam para baixar',
-          idleDescription: "O download anônimo da Steam não serve mais H1Z1 / Z1 Battle Royale. Entre uma vez e buscaremos o depot direto do CDN da Steam — nenhuma senha sai do seu telefone.",
-          bridgeMissing: 'A ponte Steam não foi incluída nesta build. Use as instruções manuais para colocar o jogo base na sua pasta.',
-        },
-        errorTitle: 'Não foi possível baixar o jogo base',
-        errorRetryable: 'Tente novamente, ou use as instruções manuais.',
-        errorFatal: 'A Steam não está disponibilizando este depot para download automático. Use as instruções manuais.',
-        cancel: 'Cancelar download',
-        continue: 'Continuar',
-      },
-      step4: {
-        title: 'Quase lá',
-        description: 'Confirme que está tudo certo e inicie o ZEmu.',
-        checklist: {
-          key: 'Chave de autenticação salva',
-          folder: 'Pasta de instalação selecionada',
-          baseGame: 'Jogo base presente',
-          patch: 'O patch do ZEmu será aplicado automaticamente ao iniciar',
-        },
-        finish: 'Concluir configuração',
-      },
     },
     // Tela de pré-onboarding. Fica entre a landing page (`/`) e
     // `#/onboarding` — pergunta a quem já tem o client Pre-Season 3
@@ -393,9 +305,6 @@ export default {
           'Não foi possível localizar a pasta de dados do aplicativo. Reinicie o launcher; se continuar falhando, reinstale.',
       },
     },
-    home: {
-      welcome: 'Bem-vindo',
-    },
     play: {
       install: 'Instalar',
       play: 'Jogar',
@@ -404,13 +313,23 @@ export default {
       checking: 'Verificando atualizações…',
       properties: 'Propriedades',
       // Game action button states
-      activating: 'Ativando…',
+      browseGameFiles: 'Procurar arquivos do jogo',
+      checkForUpdates: 'Verificar atualizações',
+      checkingForUpdates: 'Verificando…',
       authKeyRequired: 'Chave de Autenticação Necessária',
       updateProgress: 'Atualizando…{{progress}}%',
       applyingPatch: 'Aplicando Patch…',
       locatePs3Folder: 'Localizar Pasta do PS3',
       installPatch: 'Instalar Patch',
       updateAvailable: 'Atualização disponível',
+      update: 'Atualizar',
+      patching: 'Aplicando patch',
+      network: 'Rede',
+      downloading: 'Baixando',
+      preparing: 'Preparando…',
+      resume: 'Retomar',
+      retryPatch: 'Tentar patch novamente',
+      retryInstall: 'Tentar instalação novamente',
       launchingGame: 'Iniciando jogo…',
       retry: 'Tentar novamente',
       // Secondary action
@@ -423,6 +342,29 @@ export default {
       verifying: 'Verificando arquivos…',
       // Play header
       gameDescription: 'ZEmu: King of the Kill é um battle royale competitivo e frenético. Paraquede e busque armas, munição, veículos e suprimentos para sobreviver. Enquanto o gás tóxico comprime o mapa, desenvolva uma estratégia vencedora e prepare-se para o confronto final.',
+      playing: 'Em jogo',
+      gameSize: '15 GB',
+    },
+    installDialog: {
+      title: 'Instalar ZEmu',
+      description:
+        'Baixa o cliente de jogo compatível e instala o patch ZEmu mais recente automaticamente.',
+      location: 'Local de instalação',
+      locationLoading: 'Resolvendo pasta padrão…',
+      change: 'Alterar',
+      install: 'Instalar',
+      locateExisting: 'Já instalado? Localizar jogo existente',
+      buildMismatchTitle: 'Esta pasta pode não ser a versão H1Z1 suportada',
+      buildMismatch:
+        'O executável não corresponde à versão verificada do ZEmu. O launcher ainda tentará aplicar o patch, mas outra versão pode não iniciar.',
+      signIn: 'Entrar na Steam',
+      signInDescription:
+        'Abra o aplicativo Steam no celular, escaneie este código e aprove o login para baixar os arquivos compatíveis do jogo.',
+      waiting: 'Aguardando aprovação…',
+      connecting: 'Conectando à Steam…',
+      retry: 'Tentar novamente',
+      freeSpace: 'Espaço livre',
+      downloadSize: 'Download: {{size}}',
     },
     authKey: {
       loadFailed: 'Não foi possível carregar a chave salva.',
@@ -484,6 +426,28 @@ export default {
     },
     // Properties modal
     properties: {
+      wineConfiguration: 'Configuração do Wine',
+      wineEnable: 'Usar Wine / Proton',
+      wineEnableDesc:
+        'Iniciar a versão do jogo para Windows por meio de um runtime de compatibilidade do Linux.',
+      wineRuntime: 'Versão do Wine / Proton',
+      wineRuntimePlaceholder: 'Escolha um runtime',
+      wineRuntimeAuto: 'Detectar automaticamente',
+      wineRuntimeCustom: 'Executável personalizado',
+      wineCustomRuntimePlaceholder: '/caminho/para/wine ou proton',
+      wineNoRuntimes: 'Nenhum runtime Wine ou Proton foi detectado neste sistema.',
+      winePrefix: 'Wineprefix / compatdata',
+      winePrefixPlaceholder: 'Deixe vazio para usar o padrão',
+      winePrefixDesc:
+        'Para Proton, este diretório é usado como STEAM_COMPAT_DATA_PATH. Para Wine, como WINEPREFIX.',
+      wineEnv: 'Variáveis de ambiente',
+      wineEnvEmpty: 'Nenhuma variável personalizada.',
+      addVariable: 'Adicionar variável',
+      removeVariable: 'Remover variável',
+      envKey: 'Nome',
+      envValue: 'Valor',
+      refresh: 'Atualizar',
+      saving: 'Salvando…',
       title: 'Propriedades',
       description: 'Configure o ZEmu: King of the Kill',
       // Installed files section

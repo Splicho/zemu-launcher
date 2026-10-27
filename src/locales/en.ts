@@ -122,99 +122,12 @@ export default {
       restarting: 'Restarting launcher',
       restartingDetail: 'Installing the new build and reopening the launcher.',
       updateFailed: 'Launcher update failed',
+      installFailed: 'Install failed',
       updateFailedDetail: 'The update could not be downloaded or installed.',
       splashChecking: 'Checking for updates...',
       splashStarting: 'Starting...',
       openLauncher: 'Open launcher',
       unexpectedError: 'Unexpected updater error',
-    },
-    onboarding: {
-      stepIndicator: 'Step {{current}} of {{total}}',
-      step1: {
-        title: 'Save your auth key',
-        description: 'The key lets the game identify your session. It is stored on this machine and never sent to a server.',
-        continue: 'Save and continue',
-        // Banner shown when the server reports an `authkey` row but
-        // it is `status = 'revoked'`. The launcher refuses to
-        // persist a revoked key — saving it locally would let the
-        // user launch the game with a key the admin has explicitly
-        // disabled upstream. The link opens the website's account
-        // settings page so the user can request a restore from an
-        // admin.
-        revokedBanner:
-          'Your auth key has been revoked. The launcher cannot restore it — please contact an admin via the website.',
-        revokedBannerLink: 'Open account settings',
-        // Soft banner shown when the auto-fetch failed (network
-        // blip, server down, expired token, etc.). We surface the
-        // upstream reason so the bug report from the user has
-        // something useful in it, but the wording still tells them
-        // they can paste a key manually below.
-        fetchFallback:
-          'We could not load your saved key automatically ({{reason}}). Paste it below to continue.',
-      },
-      step2: {
-        title: 'Install location',
-        description:
-          'The game and the ZEmu patches will live in this folder. Change it if you would rather use another drive.',
-        choose: 'Choose folder',
-        change: 'Change location',
-        installDestination: 'The game will be installed on',
-        detecting: 'Detecting your main drive…',
-        chooseHint: 'No folder selected yet.',
-        destinationHint: 'Detected from the drive your OS is installed on.',
-        useDefault: 'Use recommended location',
-        continue: 'Continue',
-      },
-      step3: {
-        title: 'Get H1Z1: King of the Kill',
-        description: 'ZEmu does not bundle H1Z1: King of the Kill. Sign in with the Steam Mobile app to download the base game straight into your install folder.',
-        auto: {
-          label: 'Download automatically',
-          description: 'SteamCMD pulls the depot straight into the folder you just picked. No Steam client required.',
-          unavailable: 'Automatic download is not available in this build. Use the manual instructions instead.',
-          start: 'Start download',
-          running: 'Downloading H1Z1: King of the Kill…',
-          flatten: 'Moving files into your folder…',
-          done: 'H1Z1: King of the Kill installed',
-        },
-        manual: {
-          label: 'I will do it myself',
-          description: 'Follow the Steam depot-console instructions, then come back and finish setup.',
-          open: 'Open instructions',
-        },
-        qrGate: {
-          button: 'Sign in with Steam',
-          connecting: 'Preparing QR code…',
-          scanHint: 'Scan with the Steam Mobile app',
-          scanned: 'Approve the connection on your phone',
-          authed: 'Signed in as {{account}}',
-          authedHint: 'Your Steam account is now linked. We will download the depot files from Steam and put them in your chosen folder.',
-          timeout: 'QR expired — click to retry',
-          retry: 'Retry',
-          failedTitle: 'Steam sign-in failed',
-          failedHint: 'Sign in again, or use the manual instructions below.',
-          signOut: 'Sign out',
-          idleTitle: 'Sign in with Steam to download',
-          idleDescription: "Steam's anonymous download path no longer serves H1Z1 / Z1 Battle Royale. Sign in once and we will pull the depot straight from Steam's CDN — no password ever leaves your phone.",
-          bridgeMissing: 'The Steam bridge was not bundled with this build. Use the manual instructions to drop H1Z1: King of the Kill into your folder.',
-        },
-        errorTitle: 'Could not download H1Z1: King of the Kill',
-        errorRetryable: 'Try again, or use the manual instructions.',
-        errorFatal: 'Steam is not offering this depot for automatic download. Use the manual instructions instead.',
-        cancel: 'Cancel download',
-        continue: 'Continue',
-      },
-      step4: {
-        title: 'Almost done',
-        description: 'Confirm everything looks right, then launch ZEmu.',
-        checklist: {
-          key: 'Auth key saved',
-          folder: 'Install folder selected',
-          baseGame: 'H1Z1: King of the Kill present',
-          patch: 'ZEmu patch will apply automatically on launch',
-        },
-        finish: 'Finish setup',
-      },
     },
     // Pre-onboarding screen. Mounts between the landing page
     // (`/`) and `#/onboarding` — asks returning users if they
@@ -349,10 +262,7 @@ export default {
           'The app data folder could not be located. Restart the launcher; if this keeps failing, reinstall.',
       },
     },
-    home: {
-      welcome: 'Welcome',
-    },
-      friends: {
+    friends: {
         title: 'Friends',
         refresh: 'Refresh',
         addFriend: 'Add a friend',
@@ -428,7 +338,7 @@ export default {
         accept: 'Accept',
         decline: 'Decline',
       },
-    },
+  },
     appSidebar: {
       play: 'Play',
       checkForUpdates: 'Check for updates',
@@ -443,15 +353,31 @@ export default {
       updating: 'Updating…',
       checking: 'Checking for updates…',
       properties: 'Properties',
-      activate: 'Activate',
       authKeyRequired: 'Auth Key Required',
       updateProgress: 'Updating…{{progress}}%',
       applyingPatch: 'Applying Patch…',
       locatePs3Folder: 'Locate PS3 Folder',
       installPatch: 'Install Patch',
       updateAvailable: 'Update available',
+      // Short label for the footer's Play button when a patch is ready.
+      update: 'Update',
+      // Footer Play button while a patch downloads / applies.
+      patching: 'Patching',
+      // Footer label when an interrupted installation can be continued.
+      resume: 'Resume',
+      // Client (Steam depot) download stage, before the patch runs.
+      downloading: 'Downloading',
+      // Signed in, fetching the depot manifest (no bytes yet).
+      preparing: 'Preparing…',
+      // Footer download stats heading.
+      network: 'Network',
       launchingGame: 'Launching game…',
       retry: 'Retry',
+      // Footer label after a failed patch when the client is already on
+      // disk: retries the patch only, never the 14 GB client download.
+      retryPatch: 'Retry patch',
+      // Footer label after the client (depot) download failed.
+      retryInstall: 'Retry install',
       alreadyInstalled: 'Already installed?',
       locateFolder: 'Locate folder',
       cancelDownload: 'Cancel download',
@@ -465,6 +391,30 @@ export default {
       // between the click and the on-disk blake3 verification
       // completing (or starting its repair download).
       verifying: 'Verifying files…',
+    },
+    // Install destination dialog (new launcher flow). Only rendered when
+    // no game directory is configured; everything after Install reports
+    // progress in the footer.
+    installDialog: {
+      title: 'Install ZEmu',
+      description:
+        'Downloads the compatible game client and installs the latest ZEmu patch automatically.',
+      location: 'Install location',
+      locationLoading: 'Resolving default folder…',
+      freeSpace: 'Free space',
+      downloadSize: 'Download: {{size}}',
+      change: 'Change',
+      install: 'Install',
+      locateExisting: 'Already installed? Locate existing game',
+      buildMismatchTitle: 'This may not be the supported H1Z1 build',
+      buildMismatch:
+        'The executable does not match the version ZEmu is verified against. The launcher will still try to patch it, but a different build may fail to launch.',
+      signIn: 'Sign in to Steam',
+      signInDescription:
+        'Open the Steam mobile app, scan this code, and approve the sign-in to download the compatible game files.',
+      waiting: 'Waiting for approval…',
+      connecting: 'Connecting to Steam…',
+      retry: 'Retry',
     },
     authKey: {
       loadFailed: "Could not load the saved key.",
@@ -698,19 +648,6 @@ export default {
         northAmerica: { label: 'North America' },
         asia: { label: 'Asia' },
       },
-    },
-    license: {
-      redeem: 'Redeem',
-      keyRedeemed: 'Key redeemed.',
-      noAccountKeys: 'No account keys redeemed yet.',
-      accountKeyNotFound: "This account key was not found. Please try again.",
-      accountKeyRevoked: "This account key has been revoked.",
-      accountKeyBoundToOther: "This account key is bound to a different machine.",
-      couldNotReachServer: "Couldn't reach the account key server.",
-      redeemAccountKey: 'Redeem Account Key',
-      statusActive: 'Active',
-      statusRevoked: 'Revoked',
-      statusChecking: 'Checking…',
     },
     download: {
       connecting: 'Connecting...',
