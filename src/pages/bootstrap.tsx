@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 type BootstrapPhase =
   | 'checking'
@@ -265,6 +264,8 @@ export function BootstrapPage() {
       {/* The card *is* the art: `bootstrap-image.png` is exactly 312×360, the
           size this window was designed around, so it's drawn 1:1 instead of a
           bordered/rounded panel sitting on the transparent window. */}
+      {/* No logo: the artwork already carries the brand mark, and the icon
+          duplicated it inside the window. */}
       <div
         className="flex h-[360px] w-[312px] flex-col items-center justify-center overflow-hidden px-10 py-10"
         style={{
@@ -273,16 +274,8 @@ export function BootstrapPage() {
           backgroundRepeat: 'no-repeat',
         }}
       >
-        <div className="flex items-center justify-center">
-          <img
-            src="./assets/icon/app-icon.ico"
-            alt={LAUNCHER_CONFIG.name}
-            className="h-24 w-24 object-contain"
-          />
-        </div>
-
         {splashLabel ? (
-          <p className="mt-6 text-center text-sm tracking-[0.08em] text-white/80">
+          <p className="text-center text-sm tracking-[0.08em] text-white/80">
             {splashLabel}
           </p>
         ) : null}
