@@ -500,7 +500,6 @@ export default {
       statusActive: 'Ativo',
       statusRevoked: 'Revogado',
       statusChecking: 'Verificando…',
-      installationGuide: 'Guia de Instalação',
       // Properties section placeholder
       placeholderTitle: 'Configurações do jogo',
       placeholderDesc: 'As configurações para esta seção aparecerão aqui. Isso é um espaço reservado enquanto o conteúdo da seção é desenvolvido.',
@@ -513,29 +512,6 @@ export default {
       languageSaveFailed: 'Não foi possível salvar o idioma: {{error}}',
     },
     // Steam instructions modal
-    steamInstructions: {
-      openSteam: 'Abra o Steam no seu computador.',
-      downloadBaseGame: 'Baixar o jogo base',
-      downloadDesc: 'Não temos permissão legal para distribuir o KotK, então você precisa baixar o jogo base via console do Steam.',
-      step1OpenSteam: 'Abra o Steam no seu computador.',
-      step2OpenConsole: 'Pressione',
-      step2WinR: 'Win + R',
-      step2Type: 'digite',
-      step2PressEnter: 'e pressione',
-      step2Enter: 'Enter',
-      step2ConsoleOpens: '. A janela do Console do Steam será aberta.',
-      step3RunCommand: 'Na janela do Console do Steam, execute:',
-      step3ThenEnter: 'e pressione',
-      step4WaitDownload: 'Aguarde o download terminar. O depot será salvo em',
-      step5CloseSteam: 'Você pode fechar o Steam quando o download terminar.',
-      step6InstallPatch: 'Instalar ZEmu Patch.',
-      copy: 'Copiar',
-      copied: 'Copiado!',
-      copyCommand: 'Copiar comando',
-      cancel: 'Cancelar',
-      gotIt: 'Entendi',
-      closing: 'Fechando…',
-    },
     // Login page
     login: {
       loggingIn: 'Entrando…',

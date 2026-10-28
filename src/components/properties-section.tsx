@@ -11,7 +11,6 @@ import {
   type PropertiesSectionId,
 } from '@/components/properties-sidebar'
 import { LanguageSection } from '@/components/properties-language-section'
-import { SteamInstructionsSteps } from '@/components/steam-instructions-modal'
 import { WineSection } from '@/components/properties-wine-section'
 import { formatBytes } from '@/lib/format'
 
@@ -23,9 +22,8 @@ interface PropertiesSectionProps {
    *  no folder has been selected yet (or has been cleared). The
    *  Installed Files body needs this to compute size and locate. */
   gameDirectory: string | null
-  /** Trigger the Steam-instructions-aware folder picker. Mirrors the
-   *  sidebar's "Locate game files" handler so behavior is identical
-   *  between the main install flow and the Properties entry point. */
+  /** Open the folder picker for the install directory. Same handler the
+   *  footer's install flow uses, so both entry points behave identically. */
   onChangeFolder: () => void
 }
 
@@ -68,8 +66,6 @@ export function PropertiesSection({
           <WineSection />
         ) : activeId === 'language' ? (
           <LanguageSection />
-        ) : activeId === 'guide' ? (
-          <InstallationGuideSection />
         ) : (
           <p className="text-sm text-muted-foreground">
             {t('properties.placeholderDesc')}
@@ -77,22 +73,6 @@ export function PropertiesSection({
         )}
       </div>
     </ScrollArea>
-  )
-}
-
-/**
- * Read-only render of the Steam depot install instructions. Reuses the
- * exact same `SteamInstructionsSteps` markup the standalone
- * `SteamInstructionsModal` uses, so the prose stays in sync without
- * duplicating it. Intentionally has no footer / "Got it" button: this
- * pane is a reference, not a gate; the seen-flag + Steam launch flow
- * stays on the modal side via the Install / Locate buttons.
- */
-function InstallationGuideSection() {
-  return (
-    <div className="space-y-4">
-      <SteamInstructionsSteps />
-    </div>
   )
 }
 

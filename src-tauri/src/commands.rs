@@ -913,8 +913,7 @@ pub fn launcher_set_onboarding_completed(
 /// clear error than ship a malformed value silently — the launcher
 /// is the source of truth for this field.
 const SUPPORTED_LAUNCHER_LOCALES: &[&str] = &[
-    "en_us", "de_de", "fr_fr", "es_es", "ru_ru", "pt_br", "it_it",
-    "tr_tr", "pl_pl", "zh_cn", "zh_tw", "ja_jp", "ko_kr",
+    "en_us", "fr_fr", "de_de", "es_es", "ko_kr", "pt_br", "ru_ru", "zh_cn",
 ];
 
 fn is_supported_locale(value: &str) -> bool {
@@ -923,12 +922,16 @@ fn is_supported_locale(value: &str) -> bool {
 
 /// Returns the persisted game locale (the lowercase `xx_yy` tag
 /// written into `ClientConfig.ini` before each launch). Falls
-/// back to `en_us` for fresh installs or configs written before
-/// this field existed.
+/// back to `en_us` for fresh installs, configs written before
+/// this field existed, or a tag that has since been dropped from
+/// the supported set (e.g. `pl_pl`).
 #[tauri::command]
 pub fn launcher_get_locale(app: tauri::AppHandle) -> Result<String, String> {
     let config = storage::load_launcher_config(&app).map_err(|e| e.to_string())?;
-    Ok(config.locale.unwrap_or_else(|| "en_us".to_string()))
+    Ok(config
+        .locale
+        .filter(|tag| is_supported_locale(tag))
+        .unwrap_or_else(|| "en_us".to_string()))
 }
 
 /// Persist the game locale. An empty / unknown value clears the

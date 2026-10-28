@@ -26,8 +26,8 @@ interface PropertiesModalProps {
   /** Absolute path to the user's chosen install folder, or null when
    *  none is set. Drives the Installed Files size + Locate buttons. */
   gameDirectory: string | null
-  /** Triggers the Steam-instructions-aware folder picker. Mirrors
-   *  the main sidebar's Locate handler. */
+  /** Opens the install-directory picker (`selectDirectory`), same as the
+   *  footer's install flow. */
   onChangeFolder: () => void
 }
 
