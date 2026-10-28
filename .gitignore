@@ -36,6 +36,10 @@ src-tauri/binaries/system.pem
 # to the repo root even with --noEmit).
 *.tsbuildinfo
 
+# Isolated esbuild temp dir used by `scripts/build-vite.mjs` (see that file
+# for why the build doesn't share %TEMP% with the dev server).
+.tmp-esbuild/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -16,7 +16,7 @@
     "dev": "npm run sync:launcher-config && tauri dev",
     "dev:vite": "vite",
     "build": "npm run sync:launcher-config && tauri build",
-    "build:vite": "vite build",
+    "build:vite": "node scripts/build-vite.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "icon:generate": "powershell -ExecutionPolicy Bypass -File scripts/generate-tauri-icons.ps1",
