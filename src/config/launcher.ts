@@ -31,9 +31,17 @@ export const LAUNCHER_CONFIG = {
   // `/v1/news/:slug` from this host. In dev, set
   // VITE_API_URL=http://localhost:3002 in `.env.local`.
   newsApiBaseUrl: 'https://api.zemu.uk/v1/news',
+  // Public events calendar (launcher home page's "Upcoming events"
+  // table). Same host as news; in dev, VITE_API_URL applies the same
+  // way. Backed by `apps/api/src/events`.
+  eventsApiBaseUrl: 'https://api.zemu.uk/v1/events',
   // Stats API for leaderboards and player data. In dev, set
   // VITE_API_URL=http://localhost:3002 in `.env.local`.
   statsApiBaseUrl: 'https://api.zemu.uk/v1/stats',
+  // Public clan tag lookup (`?names=a,b,c` → name/clantag pairs). Used by
+  // the Slayers table to decorate rows with the equipped clan tag; the
+  // leaderboard app calls the same route.
+  clansApiBaseUrl: 'https://api.zemu.uk/v1/clans',
   // Public zemu.uk website. The launcher uses this for player
   // profile pages and the clan directory — both are public, no
   // auth. JSON shapes mirror the web app's /api routes exactly.

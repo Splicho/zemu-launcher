@@ -1,4 +1,4 @@
-import {
+﻿import {
   type ColumnDef,
   type HeaderContext,
   flexRender,
@@ -29,7 +29,7 @@ function formatRatio(value: number): string {
 // feature-set alias our consumers can plug in, so the type system
 // can't narrow the column/cell/header generic on its own. We use
 // `any` for the slot and let the runtime + `flexRender` carry the
-// contract instead — same approach used by every downstream app
+// contract instead â€” same approach used by every downstream app
 // shipping TanStack v9 with the stock registry.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Features = any
@@ -99,7 +99,7 @@ export const leaderboardColumns: Col[] = [
         <div className="flex items-center gap-2">
           <a
             href={`#/player/${encodeURIComponent(name)}`}
-            className="font-medium hover:underline"
+            className="truncate font-medium hover:underline"
             onClick={(event) => event.stopPropagation()}
           >
             {name}
@@ -204,3 +204,4 @@ export const leaderboardColumns: Col[] = [
 ]
 
 export { flexRender }
+

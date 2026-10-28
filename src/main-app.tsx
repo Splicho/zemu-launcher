@@ -9,6 +9,7 @@ import { TitleBar } from '@/components/title-bar'
 import { SiteNoticeBar } from '@/components/site-notice-bar'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
+import { EventPage } from '@/pages/event'
 import { PlayPage } from '@/pages/play'
 import { StreamsPage } from '@/pages/streams'
 import { LeaderboardPage } from '@/pages/leaderboard'
@@ -43,6 +44,11 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
 
   const newsMatch = hash.match(/^\/news\/(.+)$/)
   if (newsMatch) return { page: 'news-slug', params: { slug: newsMatch[1] } }
+
+  // Event detail — `/event/<id>`. Events have no slug column, so the
+  // route carries the primary key (see `pages/event.tsx`).
+  const eventMatch = hash.match(/^\/event\/([^/]+)$/)
+  if (eventMatch) return { page: 'event', params: { id: eventMatch[1] } }
 
   // Player profile — `/player/<displayName>`. The display name can
   // contain spaces / punctuation, so we match the rest of the
@@ -262,7 +268,7 @@ function AuthedApp() {
       <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
         <TitleBar />
         <SiteNoticeBar />
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           <LoginPage />
         </main>
       </div>
@@ -280,9 +286,12 @@ function AuthedApp() {
           backgroundSrc="/background/app-bg.png"
           routeKey={hash ?? ''}
           sidebarType={sidebarType}
+          // The Play / patch / install column is a home-page surface.
+          showFooter={route.page === 'home'}
         >
         {route.page === 'news' && <NewsPage />}
         {route.page === 'news-slug' && route.params && <NewsSlugPage slug={route.params.slug} />}
+        {route.page === 'event' && route.params && <EventPage id={route.params.id} />}
         {route.page === 'play' && <PlayPage />}
         {route.page === 'streams' && <StreamsPage />}
         {route.page === 'leaderboard' && <LeaderboardPage />}

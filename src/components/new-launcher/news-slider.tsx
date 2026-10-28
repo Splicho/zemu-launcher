@@ -32,7 +32,7 @@ import { cn } from '@/lib/utils'
  * - Slides cross-fade via framer-motion (already a dependency), and
  *   autoplay pauses while the pointer is over the card.
  *
- * Card geometry knobs live on the root: `h-80` is the height and
+ * Card geometry knobs live on the root: `h-64` is the height and
  * `rounded-xl` the corner radius. The outside inset is owned by the
  * page that renders it (see `pages/home.tsx`), not by this component.
  */
@@ -65,7 +65,7 @@ function NewsSliderSkeleton({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'h-80 w-full animate-pulse rounded-xl border border-border bg-muted/30',
+        'h-64 w-full animate-pulse rounded-xl border border-border bg-muted/30',
         className,
       )}
       aria-hidden="true"
@@ -109,7 +109,7 @@ export function NewsSlider({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'group relative h-80 w-full overflow-hidden rounded-xl border border-border bg-muted/20',
+        'group relative h-64 w-full overflow-hidden rounded-xl border border-border bg-muted/20',
         className,
       )}
       onMouseEnter={() => setPaused(true)}
@@ -143,7 +143,7 @@ export function NewsSlider({ className }: { className?: string }) {
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/60 to-transparent"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/60 to-transparent"
       />
 
       {/* Copy, left-aligned and vertically centred. No exit animation:

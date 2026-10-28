@@ -4,8 +4,19 @@ import { Search } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { TIER_VALUES } from '@/lib/leaderboard'
+import { cn } from '@/lib/utils'
 
 import { DEFAULT_FILTERS, type LeaderboardFilters } from './leaderboard-filters'
+
+/**
+ * Accent used by every filter control. Kept in one place so the search
+ * field, the five selects and any future control stay in sync â€” this is the
+ * only surface in the app that tints its inputs (global inputs stay
+ * `text-foreground`).
+ */
+// Bold + accent text; `[&_svg]` also repaints the chevron inside each select
+// trigger, which the shared `SelectTrigger` paints `text-muted-foreground`.
+const FILTER_TEXT = 'text-[#c73e3e] font-bold [&_svg]:text-[#c73e3e]'
 
 const regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
 
@@ -64,7 +75,7 @@ export default function Filter({
     <div className="flex flex-wrap items-center gap-4 rounded-lg border border-foreground/10 bg-background/50 px-4 py-3">
       {/* Search */}
       <div className="relative">
-        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-[#c73e3e]" />
         <Input
           placeholder={t('leaderboardPage.searchPlaceholder')}
           value={search}
@@ -72,7 +83,7 @@ export default function Filter({
             setSearch(e.target.value)
             emit({ search: e.target.value })
           }}
-          className="w-52 pr-3 pl-9"
+          className={cn('w-52 pr-3 pl-9', FILTER_TEXT, 'placeholder:text-[#c73e3e]')}
         />
       </div>
 
@@ -84,7 +95,7 @@ export default function Filter({
           emit({ tier: v })
         }}
       >
-        <SelectTrigger className="w-32" size="sm">
+        <SelectTrigger className={cn('w-32', FILTER_TEXT)} size="sm">
           <SelectValue placeholder={t('leaderboard.allTiers')} />
         </SelectTrigger>
         <SelectContent>
@@ -106,7 +117,7 @@ export default function Filter({
           emit({ country: next })
         }}
       >
-        <SelectTrigger className="w-40" size="sm">
+        <SelectTrigger className={cn('w-40', FILTER_TEXT)} size="sm">
           <SelectValue placeholder={t('leaderboardPage.countryAll')} />
         </SelectTrigger>
         <SelectContent>
@@ -128,7 +139,7 @@ export default function Filter({
         </SelectContent>
       </Select>
 
-      {/* Region Select — EU is the default. There is no global-region
+      {/* Region Select â€” EU is the default. There is no global-region
           option: the season board is global, so the region only scopes
           the Solo/Duo/Fives recent-match views. */}
       <Select
@@ -138,7 +149,7 @@ export default function Filter({
           emit({ region: v })
         }}
       >
-        <SelectTrigger className="w-32" size="sm">
+        <SelectTrigger className={cn('w-32', FILTER_TEXT)} size="sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -158,7 +169,7 @@ export default function Filter({
           emit({ teamMode: v })
         }}
       >
-        <SelectTrigger className="w-28" size="sm">
+        <SelectTrigger className={cn('w-28', FILTER_TEXT)} size="sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -181,7 +192,7 @@ export default function Filter({
             }
           }}
         >
-          <SelectTrigger className="w-20" size="sm">
+          <SelectTrigger className={cn('w-20', FILTER_TEXT)} size="sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -196,3 +207,4 @@ export default function Filter({
     </div>
   )
 }
+

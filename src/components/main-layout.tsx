@@ -72,11 +72,18 @@ export function MainLayout({
   children,
   backgroundSrc,
   routeKey,
+  showFooter = true,
 }: {
   children: ReactNode
   backgroundSrc?: string
   routeKey?: string
   sidebarType?: SidebarType
+  /**
+   * Footer carries the game action column (Play / patch / install), network
+   * stats and the site notice. It belongs to the home canvas only — other
+   * routes (news, leaderboard, settings…) own their full height.
+   */
+  showFooter?: boolean
 }) {
   // UI REWORK: `AppSidebar` used to register the Properties modal
   // opener here. Commented out together with the sidebar block below
@@ -164,7 +171,15 @@ export function MainLayout({
                   {/* UI REWORK: new header goes here. */}
                   <motion.main
                     key={`content-${routeKey}`}
-                    className="flex flex-1 flex-col"
+                    // `overflow-y-auto` makes the route area the scroll
+                    // container for pages that simply grow (home, play,
+                    // settings, streams). Without it their content was
+                    // clipped by the shell's `overflow-hidden` and no
+                    // scrollbar could ever appear. Pages that own their
+                    // scroll region (news detail, event, servers,
+                    // leaderboard) are `overflow-hidden` at their root, so
+                    // they never overflow this one — no double bar.
+                    className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]"
                     initial={{ opacity: 0, y: 12, filter: 'blur(4px)' }}
                     animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                     transition={{ duration: 0.35, ease: EASING }}
@@ -173,8 +188,8 @@ export function MainLayout({
                   </motion.main>
                   {/* Pinned to the bottom of the window, outside the
                       route transition so it doesn't re-animate on
-                      navigation. */}
-                  <Footer />
+                      navigation. Home only. */}
+                  {showFooter ? <Footer /> : null}
                 </div>
               </div>
             </div>

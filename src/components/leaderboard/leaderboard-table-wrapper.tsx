@@ -144,7 +144,6 @@ export default function LeaderboardTableWrapper() {
         entries={visibleEntries}
         clanTags={clanTagRecord}
         isLoading={isLoading}
-        filters={filters}
       />
 
       {totalPages > 1 && (

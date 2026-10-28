@@ -24,29 +24,32 @@ export function StreamsPage() {
   })
 
   return (
-    <div className="flex flex-1 flex-col gap-6 py-6">
-      <header className="px-2">
-        <h1 className="text-3xl tracking-tight">
-          {t('streams.title')}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t('streams.subtitle')}
-        </p>
-      </header>
+    // Same shell as the servers page: a fixed header block with `px-8`,
+    // then a scrolling body with the matching horizontal inset, so both
+    // sections line up under the navbar.
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex shrink-0 flex-col gap-2 px-8 pt-6 pb-4">
+        <header>
+          <h1 className="text-3xl tracking-tight">{t('streams.title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t('streams.subtitle')}</p>
+        </header>
+      </div>
 
-      {isLoading ? (
-        <StreamsGridSkeleton />
-      ) : error && !data ? (
-        <p role="alert" className="text-sm text-destructive">
-          {t('streams.failedLoad', { error: error.message })}
-        </p>
-      ) : data ? (
-        <StreamsTabs twitch={data.twitch} kick={data.kick} />
-      ) : (
-        <p className="py-12 text-center text-sm text-muted-foreground">
-          {t('streams.noStreams')}
-        </p>
-      )}
+      <div className="flex-1 overflow-y-auto px-8 pb-8">
+        {isLoading ? (
+          <StreamsGridSkeleton />
+        ) : error && !data ? (
+          <p role="alert" className="text-sm text-destructive">
+            {t('streams.failedLoad', { error: error.message })}
+          </p>
+        ) : data ? (
+          <StreamsTabs twitch={data.twitch} kick={data.kick} />
+        ) : (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            {t('streams.noStreams')}
+          </p>
+        )}
+      </div>
     </div>
   )
 }
