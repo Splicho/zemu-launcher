@@ -12,6 +12,7 @@
 //! (`process_integrity`) has been removed — the launcher no longer
 //! enumerates the game's loaded DLLs or reports them to the api.
 
+use crate::client_config;
 use crate::debug_log;
 use crate::models::{
     CompressorManifest, IntegrityCache, IntegrityCacheEntry, TamperReason, TamperedFile,
@@ -73,7 +74,13 @@ pub async fn verify_and_repair(
 
     let total = manifest.files.len();
     for (index, entry) in manifest.files.iter().enumerate() {
-        if should_skip_entry(&entry.path, skip_files) {
+        // Seed files (`ClientConfig.ini`) are rewritten by the game at
+        // runtime and are merged by the updater when the depot ships a
+        // new default. Hashing the live file here would report it as
+        // tampered on every single launch and re-download it forever.
+        if should_skip_entry(&entry.path, skip_files)
+            || client_config::is_seed_path(&entry.path)
+        {
             continue;
         }
         let target = PathBuf::from(game_directory).join(&entry.path);

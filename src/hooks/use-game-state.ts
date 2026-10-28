@@ -3,6 +3,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { AUTH_KEY_CHANGED_EVENT } from '@/lib/auth-key'
+
 export interface GameLaunchState {
   isLaunching: boolean
   isRunning: boolean
@@ -649,7 +651,9 @@ const handleProgress = (status: UpdateStatus) => {
     setError(null)
 
     try {
-      const result = await window.gameAPI.downloadUpdate(gameDirectory)
+      const result = await window.gameAPI.downloadUpdate(gameDirectory, [
+        ...LAUNCHER_CONFIG.updateSkipFiles,
+      ])
 
       if (!result.success) {
         throw new Error(result.error || 'Patch application failed')
@@ -696,7 +700,9 @@ const handleProgress = (status: UpdateStatus) => {
 
     try {
       console.log('[useGameState] Calling window.gameAPI.downloadUpdate...')
-      const result = await window.gameAPI.downloadUpdate(gameDirectory)
+      const result = await window.gameAPI.downloadUpdate(gameDirectory, [
+        ...LAUNCHER_CONFIG.updateSkipFiles,
+      ])
       console.log('[useGameState] downloadUpdate result:', result)
 
       if (!result.success) {
@@ -944,6 +950,21 @@ const handleProgress = (status: UpdateStatus) => {
   // doesn't strand the directory. Keep the old name forwarding so
   // the call-site doesn't need a parallel rename.
   const refreshAuthKey = refreshFromDisk
+
+  // Keep the in-memory gate in sync with the key store. Sign-in
+  // provisioning, the Account page and sign-out all go through
+  // `lib/auth-key.ts`, which fires this event — without it the Play
+  // page kept the key it read at mount (or the previous account's key)
+  // until a full launcher restart.
+  useEffect(() => {
+    const onAuthKeyChanged = () => {
+      void refreshFromDisk()
+    }
+    window.addEventListener(AUTH_KEY_CHANGED_EVENT, onAuthKeyChanged)
+    return () => {
+      window.removeEventListener(AUTH_KEY_CHANGED_EVENT, onAuthKeyChanged)
+    }
+  }, [refreshFromDisk])
 
   // Switching install folders retires the previous patch failure.
   useEffect(() => {

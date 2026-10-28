@@ -11,6 +11,7 @@ import {
   type AuthToken,
   type Provider,
 } from '@/lib/auth'
+import { clearStoredAuthKey } from '@/lib/auth-key'
 
 /**
  * Top-level auth state machine for the renderer.
@@ -329,6 +330,15 @@ export function useAuth(): UseAuthResult {
     setToken(null)
     setStatus('auth')
     setError(null)
+    // Drop the machine's auth key too. It is account-bound (it is passed
+    // to the game as the session id) and lives in the OS keychain, which
+    // survives sign-out — leaving it behind is exactly how the next
+    // account ends up launching with the previous account's key. The
+    // next sign-in re-provisions it from `GET /my-key`; sign-in requires
+    // network anyway, so this never strands an offline session.
+    void clearStoredAuthKey().catch((error) => {
+      console.warn('[auth] failed to clear the stored auth key on sign-out', error)
+    })
   }, [])
 
   return { token, status, error, login, loginWithProvider, logout }

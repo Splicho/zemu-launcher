@@ -17,6 +17,7 @@ import {
   type FriendsRequestPayload,
 } from '@/lib/friends'
 import { friendsDebugLog } from '@/lib/zemu-game-api'
+import { AUTH_KEY_CHANGED_EVENT } from '@/lib/auth-key'
 
 /**
  * Query keys for the friends surface. Kept as a const so every hook
@@ -40,6 +41,13 @@ export const friendsKeys = {
  * in-process Rust call) but `enabled` gates still want the value
  * to settle before the polling layer kicks in — the initial
  * `null` is expected on cold start.
+ *
+ * Re-reads on `AUTH_KEY_CHANGED_EVENT` as well as on `enabled`
+ * transitions. On a fresh install the key is written by
+ * `AccessKeyProvisioner` *after* its `GET /my-key` returns, i.e.
+ * after this hook's first read — without the listener the friends
+ * graph and avatar sync stayed disabled for the rest of the session
+ * even though a key had arrived a moment later.
  */
 export function useZemuAuthKeyReady(enabled: boolean = true): boolean {
   const [ready, setReady] = useState(false)
@@ -49,18 +57,23 @@ export function useZemuAuthKeyReady(enabled: boolean = true): boolean {
       return
     }
     let cancelled = false
-    void window.launcherAPI
-      .getAuthKey()
-      .then((key) => {
-        if (cancelled) return
-        setReady(typeof key === 'string' && key.length > 0)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setReady(false)
-      })
+    const read = () => {
+      void window.launcherAPI
+        .getAuthKey()
+        .then((key) => {
+          if (cancelled) return
+          setReady(typeof key === 'string' && key.trim().length > 0)
+        })
+        .catch(() => {
+          if (cancelled) return
+          setReady(false)
+        })
+    }
+    read()
+    window.addEventListener(AUTH_KEY_CHANGED_EVENT, read)
     return () => {
       cancelled = true
+      window.removeEventListener(AUTH_KEY_CHANGED_EVENT, read)
     }
   }, [enabled])
   return ready

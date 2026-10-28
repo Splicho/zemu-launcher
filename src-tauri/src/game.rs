@@ -712,6 +712,20 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
         // `client_config::set_locale` is a no-op if the value is
         // already correct, so this is cheap.
         let client_ini = PathBuf::from(&game_directory).join("ClientConfig.ini");
+        // Restore the shipped defaults if the live file disappeared (the
+        // updater keeps them in `ClientConfig.default.ini`). Best-effort:
+        // a missing default just falls through to `set_locale`, which
+        // creates a minimal file.
+        if client_config::seed_if_missing(&client_ini).unwrap_or(false) {
+            let _ = debug_log::append(
+                app,
+                "game",
+                &format!(
+                    "launch_game client_config_seeded path={}",
+                    client_ini.display()
+                ),
+            );
+        }
         client_config::set_locale(&client_ini, locale.unwrap_or(""))
             .context("write ClientConfig.ini locale")?;
 

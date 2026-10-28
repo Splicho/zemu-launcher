@@ -7,6 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { fetchMyAuthKey } from '@/lib/auth'
+import {
+  clearStoredAuthKey,
+  saveAuthKeyIfChanged,
+} from '@/lib/auth-key'
 import { useAuthContext } from '@/contexts/auth-context'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
@@ -117,55 +121,60 @@ export function AccountPage() {
         if (cancelled) return
 
         if (result.ok && result.key && result.status === 'active') {
-          // Save server value to disk if it differs — covers the
-          // case where the user previously pasted a key that's now
-          // been re-minted upstream. Writing the same value is
-          // cheap and idempotent, so we don't bother diffing.
-          if (result.key !== existing) {
-            try {
-              await window.launcherAPI?.setAuthKey?.(result.key)
-            } catch (err) {
-              // Disk write failed but we still show the key — the
-              // user can copy it. Persisting on next visit will
-              // retry naturally.
-              //
-              // Log the reason: this `catch` used to be completely
-              // silent, so a machine whose keychain write was failing
-              // looked identical to a healthy one from the log.
-              void window.debugLog?.write(
-                'account',
-                `auth key re-save failed: ${
-                  err instanceof Error ? err.message : String(err)
-                }`,
-              )
-            }
+          // Reconcile the on-disk value with the server. Covers the
+          // case where the user previously pasted a stale key, the
+          // server re-minted it, or the machine still holds the
+          // previous account's key (the OS keychain survives both
+          // an uninstall and a deleted app-data folder).
+          try {
+            await saveAuthKeyIfChanged(result.key)
+          } catch (err) {
+            // Disk write failed but we still show the key — the
+            // user can copy it. Persisting on next visit will
+            // retry naturally.
+            //
+            // Log the reason: this `catch` used to be completely
+            // silent, so a machine whose keychain write was failing
+            // looked identical to a healthy one from the log.
+            void window.debugLog?.write(
+              'account',
+              `auth key re-save failed: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            )
           }
           setAuthKey(result.key)
           setBanner(null)
         } else if (result.ok && result.status === 'revoked') {
-          // Refuse to persist a revoked key locally. If we already
-          // had a key on disk from a previous session, blank it so
+          // Refuse to persist a revoked key locally. Blank it so
           // the play page stops trusting it — otherwise the user
           // could launch the game with a key the admin explicitly
           // disabled.
+          try {
+            await clearStoredAuthKey()
+          } catch {
+            // best-effort
+          }
+          setAuthKey(null)
+          setBanner({ kind: 'revoked' })
+        } else if (result.ok && result.key === null) {
+          // The signed-in account has no key yet. A key on disk can
+          // only belong to a *different* account, so drop it rather
+          // than reporting it as this account's key.
           if (existing && existing.length > 0) {
             try {
-              await window.launcherAPI?.setAuthKey?.('')
+              await clearStoredAuthKey()
             } catch {
               // best-effort
             }
           }
           setAuthKey(null)
-          setBanner({ kind: 'revoked' })
         } else if (!result.ok) {
           // Network blip / server unreachable. Disk value (if any)
           // stays on screen; surface a soft note explaining why
           // we're not updating it from the server.
           setBanner({ kind: 'fetch-failed', reason: result.reason })
         }
-        // `key === null && status === null` is the "no key on
-        // server" case — nothing to do, the panel already shows
-        // "no key set" via the `hasKey` check.
       }
 
       if (!cancelled) setIsLoading(false)

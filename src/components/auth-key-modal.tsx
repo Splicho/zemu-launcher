@@ -13,6 +13,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { fetchMyAuthKey } from '@/lib/auth'
+import {
+  clearStoredAuthKey,
+  saveAuthKeyIfChanged,
+} from '@/lib/auth-key'
 
 interface AuthKeyModalProps {
   open: boolean
@@ -155,7 +159,7 @@ export function AuthKeyModal({
           return
         }
       }
-      await window.launcherAPI.setAuthKey(trimmed)
+      await saveAuthKeyIfChanged(trimmed)
       setSavedKey(trimmed || null)
       onSaved?.()
       onOpenChange(false)
@@ -171,7 +175,7 @@ export function AuthKeyModal({
     setIsSaving(true)
     setError(null)
     try {
-      await window.launcherAPI.setAuthKey('')
+      await clearStoredAuthKey()
       setSavedKey(null)
       setValue('')
       onSaved?.()

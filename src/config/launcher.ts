@@ -50,27 +50,29 @@ export const LAUNCHER_CONFIG = {
   // Executable the launcher spawns after a successful install + launch.
   gameExecutable: 'H1Z1.exe',
   // Files the update check + pre-launch integrity verifier should
-  // ignore — typically files the launcher itself writes to at
-  // runtime, so a hash mismatch with the remote manifest doesn't
-  // trip a false positive, and files the user installs alongside
-  // the game that aren't part of the curated depot. Matched by
-  // exact filename (case insensitive), relative to the game
-  // install root.
+  // ignore entirely — they are never hashed on disk, never part of the
+  // "update available" verdict, and never re-downloaded. Matched by
+  // exact filename (case insensitive), relative to the game install
+  // root.
   //
-  // `ClientConfig.ini` is in here because the launcher's locale
-  // picker writes `[Internationalization] Locale=` into it on
-  // every launch — without this filter, that local edit would
-  // look like a tampered file forever.
+  // `updateSkipFiles` is for files the launcher owns outright and that
+  // the depot never has a useful version of. Only `catnip-client.cfg`
+  // belongs here: the launcher rewrites `auth_key` /
+  // `allow_insecure_http` on every launch and everything else in the
+  // file is user state.
   //
-  // `dinput8.dll` is in here because users commonly drop a custom
-  // build (graphics fix, ultrawide patch, FPS-unlocker, etc.)
-  // into the install root to override the depot's copy. The
-  // launcher has no business re-downloading the original over
-  // the top of it.
-  //
-  // `catnip-client.cfg` is in here because the launcher writes the
-  // user's auth key into it on every launch — the ZEmu anti-cheat
-  // (`CatnipAC.exe`) reads the key from that file. Without this
-  // filter, the local edit would look like a tampered file forever.
+  // `ClientConfig.ini` is deliberately **not** in this list even
+  // though H1Z1 rewrites it at runtime. Skipping it would mean a
+  // shipped default change never reaches existing installs; not
+  // skipping it means the pre-launch verifier re-downloads it on
+  // every launch because its hash can never match the manifest. The
+  // updater instead treats it as a **seed file**
+  // (`client_config::is_seed_path`): update detection compares the
+  // manifest hashes only (never the live file's size/hash), the
+  // downloaded default is three-way-merged into the user's file
+  // (`ClientConfig.ini` vs. the previous default kept in
+  // `ClientConfig.default.ini`) instead of overwriting it, and the
+  // integrity walk skips it. `dinput8.dll`-style user overrides can
+  // go in this list if they should never be touched.
   updateSkipFiles: ['catnip-client.cfg'],
 } as const

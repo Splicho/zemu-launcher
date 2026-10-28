@@ -281,8 +281,11 @@ function setupCompatibilityBridge() {
       getLocalVersion: () => invoke<CompressorManifest | null>('game_get_local_version'),
     checkUpdate: (skipFiles: string[] = []) =>
       invoke<UpdateInfo>('game_check_update', { skipFiles }),
-    downloadUpdate: (gameDirectory: string) =>
-      invoke<{ success: boolean; error?: string }>('game_download_update', { gameDirectory }),
+    downloadUpdate: (gameDirectory: string, skipFiles: string[] = []) =>
+      invoke<{ success: boolean; error?: string }>('game_download_update', {
+        gameDirectory,
+        skipFiles,
+      }),
     getUpdateStatus: () => invoke<UpdateStatus | null>('game_get_update_status'),
     getLaunchState: () => invoke<GameLaunchState>('game_get_launch_state'),
     cancelDownload: () => {
@@ -698,7 +701,10 @@ declare global {
       pathExists: (path: string) => Promise<boolean>
       getLocalVersion: () => Promise<CompressorManifest | null>
       checkUpdate: (skipFiles?: string[]) => Promise<UpdateInfo>
-      downloadUpdate: (gameDirectory: string) => Promise<{ success: boolean; error?: string }>
+      downloadUpdate: (
+        gameDirectory: string,
+        skipFiles?: string[],
+      ) => Promise<{ success: boolean; error?: string }>
       getUpdateStatus: () => Promise<UpdateStatus | null>
       getLaunchState: () => Promise<GameLaunchState>
       cancelDownload: () => void

@@ -189,7 +189,15 @@ fn apply_keys(contents: &str, auth_key: &str) -> String {
 
 /// Detect whether the file uses `\r\n` or `\n` line endings.
 /// Returns the separator and the body.
+///
+/// A UTF-8 BOM is stripped from the body: `char::is_whitespace` does not
+/// consider U+FEFF whitespace, so without this a file saved by an editor
+/// as "UTF-8 with BOM" would present its first key as
+/// `\u{feff}auth_key` — the writer would fail to match it, append a
+/// second `auth_key` line, and leave the stale value first for Catnip to
+/// read.
 fn detect_line_ending(contents: &str) -> (String, String) {
+    let contents = contents.strip_prefix('\u{feff}').unwrap_or(contents);
     if contents.contains("\r\n") {
         ("\r\n".to_string(), contents.to_string())
     } else {
@@ -281,6 +289,17 @@ mod tests {
         let input = "auth_key=old\n";
         let out = apply_keys(input, "new");
         assert_eq!(out, "auth_key = new\nallow_insecure_http = true\n");
+    }
+
+    #[test]
+    fn bom_prefixed_key_is_replaced_not_duplicated() {
+        // A cfg saved as "UTF-8 with BOM" used to leave the old key as the
+        // first `auth_key` line and append the new one below it, so Catnip
+        // (which reads the first match) kept using the stale key.
+        let input = "\u{feff}auth_key = old\nallow_insecure_http = true\n";
+        let out = apply_keys(input, "new");
+        assert_eq!(out, "auth_key = new\nallow_insecure_http = true\n");
+        assert_eq!(out.matches("auth_key").count(), 1);
     }
 
     #[test]

@@ -414,8 +414,21 @@ pub async fn game_download_update(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     game_directory: String,
+    // Files the renderer wants excluded from the install phase as well
+    // as the update verdict — matched case-insensitively against the
+    // basename of each manifest entry. Mirrors the list already passed
+    // to `game_check_update` / `game_verify_and_repair`; without it a
+    // patch would overwrite the launcher-owned `catnip-client.cfg`
+    // (and report files as updated that the check never counted).
+    skip_files: Option<Vec<String>>,
 ) -> Result<CommandResult, String> {
-    Ok(update::start_download_and_install(app, state.inner().clone(), game_directory).await)
+    Ok(update::start_download_and_install(
+        app,
+        state.inner().clone(),
+        game_directory,
+        skip_files.unwrap_or_default(),
+    )
+    .await)
 }
 
 #[tauri::command]

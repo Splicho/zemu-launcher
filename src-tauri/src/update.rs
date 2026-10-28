@@ -1,3 +1,4 @@
+use crate::client_config;
 use crate::debug_log;
 use crate::models::{
     CompressorManifest, CompressorManifestEntry, FileProgress, FileUpdateItem, TamperedFile,
@@ -235,6 +236,11 @@ pub async fn start_download_and_install(
     app: AppHandle,
     state: AppState,
     game_directory: String,
+    // Basenames the caller wants excluded from the install phase as
+    // well as the update verdict — the launcher-owned runtime files
+    // (`catnip-client.cfg` today). `ClientConfig.ini` is NOT skipped
+    // here: it is a seed file handled by `client_config` instead.
+    skip_files: Vec<String>,
 ) -> crate::models::CommandResult {
     let start = (|| -> Result<()> {
         if !PathBuf::from(&game_directory).exists() {
@@ -266,7 +272,8 @@ pub async fn start_download_and_install(
 
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        let result = download_and_install(&app_handle, &state, &game_directory).await;
+        let result =
+            download_and_install(&app_handle, &state, &game_directory, &skip_files).await;
         match result {
             Ok(()) => {
                 let _ = debug_log::append(&app_handle, "update", "download_and_install completed");
@@ -298,6 +305,7 @@ async fn download_and_install(
     app: &AppHandle,
     state: &AppState,
     game_directory: &str,
+    skip_files: &[String],
 ) -> Result<()> {
     let base_url = state.get_update_base_url().ok_or_else(|| {
         anyhow!("Update service is not configured. Build the launcher with `update-config.json`.")
@@ -316,9 +324,8 @@ async fn download_and_install(
         ),
     );
 
-    let skip_files: Vec<String> = Vec::new();
     let files_to_update =
-        compute_files_to_update(&remote_manifest, game_directory, &skip_files)?;
+        compute_files_to_update(&remote_manifest, game_directory, skip_files)?;
     let _ = debug_log::append(
         app,
         "update",
@@ -329,7 +336,7 @@ async fn download_and_install(
         // Nothing to download — but we still need to run the delete
         // phase and persist the new manifest so a user who jumped
         // versions sees a consistent state on the next check.
-        finalize_after_download(app, state, game_directory, &remote_manifest, &skip_files, 0)?;
+        finalize_after_download(app, state, game_directory, &remote_manifest, skip_files, 0)?;
         return Ok(());
     }
 
@@ -388,7 +395,7 @@ async fn download_and_install(
         state,
         game_directory,
         &remote_manifest,
-        &skip_files,
+        skip_files,
         files_to_update.len(),
     )?;
     Ok(())
@@ -580,7 +587,12 @@ fn finalize_after_download(
     let mut deleted = 0usize;
     if local_exists {
         for entry in &remote_manifest.removed {
-            if should_skip_path(&entry.path, skip_files) {
+            // Never delete a seed file: `ClientConfig.ini` is the user's
+            // live settings file, and dropping it when the depot
+            // reorganises its files would silently reset every setting.
+            if should_skip_path(&entry.path, skip_files)
+                || client_config::is_seed_path(&entry.path)
+            {
                 let _ = debug_log::append(
                     app,
                     "update",
@@ -761,8 +773,26 @@ async fn download_and_apply_single_file(
             format!("failed to create parent dir {} for {}", parent.display(), file_item.path)
         })?;
     }
-    fs::write(&target, &decoded)
-        .with_context(|| format!("failed to write {}", target.display()))?;
+
+    if client_config::is_seed_path(&file_item.path) {
+        // `ClientConfig.ini` is rewritten by H1Z1 at runtime. Writing the
+        // manifest bytes over it would wipe the user's settings and then
+        // look "tampered" again on the next launch. Merge the new default
+        // into the live file instead and refresh the pristine baseline.
+        let changed = client_config::apply_seed_bytes(&target, &decoded)
+            .with_context(|| format!("failed to merge {}", target.display()))?;
+        let _ = debug_log::append(
+            app,
+            "update",
+            &format!(
+                "seed_merged path={} changed={}",
+                file_item.path, changed
+            ),
+        );
+    } else {
+        fs::write(&target, &decoded)
+            .with_context(|| format!("failed to write {}", target.display()))?;
+    }
 
     if let Some(files) = status.files.as_mut() {
         if let Some(file) = files.get_mut(file_index) {
@@ -808,6 +838,30 @@ fn compute_files_to_update(
     let mut files_to_update = Vec::new();
     for entry in &remote.files {
         if should_skip_path(&entry.path, skip_files) {
+            continue;
+        }
+
+        // Seed files (`ClientConfig.ini`) are rewritten by the game on
+        // every run, so their on-disk size/hash can never match the
+        // manifest. For these, the *manifest* hash is the only signal
+        // that matters: if the depot shipped a different default since
+        // the last apply, download it; otherwise leave the user's file
+        // alone. This is what stops the pre-launch verifier from
+        // re-downloading the config every single launch while still
+        // delivering a shipped default change.
+        if client_config::is_seed_path(&entry.path) {
+            let needs_update = match local_by_path.get(entry.path.as_str()) {
+                Some(local_entry) => {
+                    local_entry.hash.to_lowercase() != entry.hash.to_lowercase()
+                }
+                None => true,
+            };
+            if needs_update {
+                files_to_update.push(FileUpdateItem {
+                    path: entry.path.clone(),
+                    entry: entry.clone(),
+                });
+            }
             continue;
         }
 
