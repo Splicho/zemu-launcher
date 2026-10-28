@@ -489,6 +489,7 @@ export default {
       regionEU: '欧洲',
       regionNA: '北美',
       regionAsia: '亚洲（即将推出）',
+      modeAll: '全部模式',
       modeSolo: '单人',
       modeDuo: '双人',
       modeFives: '五人',

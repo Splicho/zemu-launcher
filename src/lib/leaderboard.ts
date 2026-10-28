@@ -66,13 +66,15 @@ export interface LeaderboardSelection {
 }
 
 /**
- * The season upstream is global — it ignores region and mode. The
- * launcher opens on EU / Solo; a mode-specific selection asks the api
- * for that region's recent-match board.
+ * The season board is global — it ignores region and mode. "All modes"
+ * therefore maps to `/v1/stats/leaderboards`, the view the website opens on;
+ * a specific mode selects that region's recent-match board. The launcher
+ * default has to match the website's (`EU` + all modes), otherwise the two
+ * apps show entirely different rankings — see `leaderboardPath` below.
  */
 export const DEFAULT_LEADERBOARD_SELECTION: LeaderboardSelection = {
   region: 'EU',
-  teamMode: 'Solo',
+  teamMode: 'all',
 }
 
 const REGION_PARAM: Record<string, string> = { EU: 'eu', NA: 'na' }
@@ -200,16 +202,19 @@ export async function fetchLeaderboardEntries(
   if (!response.ok) throw new Error(`Leaderboard request failed (HTTP ${response.status})`)
   const data = await response.json()
   const entries = ((data.entries ?? []) as Array<Parameters<typeof toEntry>[0]>).map(toEntry)
-  // The upstream game server assigns `position` by its own array
-  // order, which does NOT match our launcher's ranking metric
-  // (`top10TotalScore`, computed server-side by summing each player's
-  // top 10 matches). If we trusted the upstream positions, the `#`
-  // column would disagree with the default "sort by top10TotalScore"
-  // the table applies on load — #3 could sit above #2 in the list.
-  // So sort by top10TotalScore and reassign positions 1-N so the
-  // launcher's "rank" is consistent with the column the table is
-  // sorted by default.
-  const ranked = [...entries].sort((a, b) => b.top10TotalScore - a.top10TotalScore)
+  // The upstream game server assigns `position` by its own array order, which
+  // does NOT match the ranking metric the website shows (`top10TotalScore`,
+  // computed server-side by summing each player's top 10 matches) — and the
+  // two apps must agree, because they read the same endpoint. Mirror
+  // `rankEntries` in `apps/leaderboard`: sort by `top10TotalScore`, tie-break
+  // by `topMatchScore`, then reassign positions 1-N. The tie-break matters:
+  // without it, players on equal totals can render in a different order than
+  // the site.
+  const ranked = [...entries].sort((a, b) => {
+    const scoreDiff = b.top10TotalScore - a.top10TotalScore
+    if (scoreDiff !== 0) return scoreDiff
+    return b.topMatchScore - a.topMatchScore
+  })
   ranked.forEach((entry, index) => {
     entry.position = index + 1
   })

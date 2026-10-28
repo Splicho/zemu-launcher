@@ -14,12 +14,12 @@ import { cn } from '@/lib/utils'
 /** Where the Help item points. */
 const HELP_URL = 'https://help.zemu.uk'
 
-/** Same set the retired sidebar footer used. */
+/** Official ZEmu channels. */
 const SOCIAL_LINKS = [
   { label: 'Discord', href: 'https://discord.gg/h1z1kotk', Icon: DiscordFilled },
   { label: 'X', href: 'https://x.com/H1Z1ZEMU', Icon: Twitter },
-  { label: 'YouTube', href: 'https://www.youtube.com/@Ghostskappa', Icon: YouTube },
-  { label: 'Twitch', href: 'https://www.twitch.tv/ZEmu_KotK', Icon: Twitch },
+  { label: 'YouTube', href: 'https://www.youtube.com/@ZEmuKOTK', Icon: YouTube },
+  { label: 'Twitch', href: 'https://www.twitch.tv/h1z1zemu', Icon: Twitch },
 ] as const
 
 /**

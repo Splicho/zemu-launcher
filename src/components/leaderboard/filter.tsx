@@ -161,23 +161,25 @@ export default function Filter({
         </SelectContent>
       </Select>
 
-      {/* Team Mode */}
-      <Select
-        value={teamMode}
-        onValueChange={(v) => {
-          setTeamMode(v)
-          emit({ teamMode: v })
-        }}
-      >
-        <SelectTrigger className={cn('w-28', FILTER_TEXT)} size="sm">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="Solo">{t('leaderboard.modeSolo')}</SelectItem>
-          <SelectItem value="Duo">{t('leaderboard.modeDuo')}</SelectItem>
-          <SelectItem value="Fives">{t('leaderboard.modeFives')}</SelectItem>
-        </SelectContent>
-      </Select>
+        {/* Team Mode — "All modes" is the global season board, the same
+            default the website opens on. */}
+        <Select
+          value={teamMode}
+          onValueChange={(v) => {
+            setTeamMode(v)
+            emit({ teamMode: v })
+          }}
+        >
+          <SelectTrigger className={cn('w-28', FILTER_TEXT)} size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('leaderboard.modeAll')}</SelectItem>
+            <SelectItem value="Solo">{t('leaderboard.modeSolo')}</SelectItem>
+            <SelectItem value="Duo">{t('leaderboard.modeDuo')}</SelectItem>
+            <SelectItem value="Fives">{t('leaderboard.modeFives')}</SelectItem>
+          </SelectContent>
+        </Select>
 
       {/* Rows per page */}
       <div className="ml-auto flex items-center gap-2">
