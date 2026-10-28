@@ -3,12 +3,56 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 
 import { fetchPlayerByDisplayName, type PlayerProfile } from '@/lib/player-profile'
+import {
+  fetchPlayerMatchStats,
+  fetchPlayerRank,
+  fetchPlayerRecentMatches,
+  type PlayerMatchStats,
+  type PlayerRank,
+  type PlayerRecentMatch,
+} from '@/lib/player-stats'
 import { useHashRouter } from '@/hooks/use-hash'
 import { Button } from '@/components/ui/button'
 import { PlayerCover } from '@/components/player/player-cover'
 import { PlayerIdentityRow } from '@/components/player/player-identity-row'
 import { PlayerTabs } from '@/components/player/player-tabs'
 import { PlayerSkeleton } from '@/components/player/player-skeleton'
+
+/** Everything the Overview tab needs, fetched alongside the profile. */
+interface PlayerStatsBundle {
+  matchStats: PlayerMatchStats | null
+  recentMatches: PlayerRecentMatch[]
+  rank: PlayerRank | null
+  /**
+   * Clock snapshot taken when the stats were fetched. The chart's 7/14/30-day
+   * cutoffs read from this instead of calling `Date.now()` during render
+   * (impure), which also keeps a re-render from sliding the window.
+   */
+  now: number
+}
+
+const EMPTY_STATS: PlayerStatsBundle = {
+  matchStats: null,
+  recentMatches: [],
+  rank: null,
+  now: 0,
+}
+
+/**
+ * Fetch the three Ghost-backed reads in parallel.
+ *
+ * `1000` matches wide because the Overview chart's 7/14/30-day filters need
+ * enough history to fill the widest window; the API caps what it will return.
+ * None of these reject — a Ghost outage degrades to em dashes.
+ */
+async function loadPlayerStats(displayName: string): Promise<PlayerStatsBundle> {
+  const [matchStats, recentMatches, rank] = await Promise.all([
+    fetchPlayerMatchStats(displayName),
+    fetchPlayerRecentMatches(displayName, 1000),
+    fetchPlayerRank(displayName),
+  ])
+  return { matchStats, recentMatches: recentMatches.matches, rank, now: Date.now() }
+}
 
 /**
  * Player profile page — mounted at `#/player/:displayName`.
@@ -42,16 +86,26 @@ export function PlayerPage({ displayName }: { displayName: string }) {
   const { navigate } = useHashRouter()
   const decoded = decodeURIComponent(displayName)
   const [profile, setProfile] = useState<PlayerProfile | null | 'loading' | 'missing'>('loading')
+  const [stats, setStats] = useState<PlayerStatsBundle>(EMPTY_STATS)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setProfile('loading')
+    setStats(EMPTY_STATS)
     setError(null)
     fetchPlayerByDisplayName(decoded)
       .then((result) => {
         if (cancelled) return
         setProfile(result ?? 'missing')
+        if (!result) return
+        // Stats are fetched only after the profile resolves: a 404 for an
+        // unknown or banned player should never spend three extra requests.
+        // Each helper degrades to null/empty, so a Ghost outage leaves the
+        // profile intact.
+        void loadPlayerStats(decoded).then((bundle) => {
+          if (!cancelled) setStats(bundle)
+        })
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -95,7 +149,7 @@ export function PlayerPage({ displayName }: { displayName: string }) {
           )}
 
           {profile && profile !== 'loading' && profile !== 'missing' && (
-            <PlayerView profile={profile} />
+            <PlayerView profile={profile} stats={stats} />
           )}
         </div>
       </div>
@@ -104,12 +158,18 @@ export function PlayerPage({ displayName }: { displayName: string }) {
 }
 
 /** Orchestrates the loaded profile. Composes cover + identity row + tabs. */
-function PlayerView({ profile }: { profile: PlayerProfile }) {
+function PlayerView({ profile, stats }: { profile: PlayerProfile; stats: PlayerStatsBundle }) {
   return (
     <article className="flex flex-col gap-6">
       <PlayerCover profile={profile} />
-      <PlayerIdentityRow profile={profile} />
-      <PlayerTabs profile={profile} />
+      <PlayerIdentityRow profile={profile} rank={stats.rank} />
+      <PlayerTabs
+        profile={profile}
+        matchStats={stats.matchStats}
+        recentMatches={stats.recentMatches}
+        rank={stats.rank}
+        now={stats.now}
+      />
     </article>
   )
 }

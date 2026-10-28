@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
-import { CountryFlagThumb } from '@/components/leaderboard/country-flag-thumb'
-import { ClantagBadge } from '@/components/leaderboard/clantag-badge'
+import { DisplayName } from '@/components/player/display-name'
 import { CardTable } from '@/components/new-launcher/card-table'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import {
@@ -103,22 +102,20 @@ export function SlayersOfTheWeek({ className }: { className?: string }) {
               <TableRow key={entry.name}>
                 <TableCell className="text-muted-foreground tabular-nums">{index + 1}</TableCell>
                 <TableCell className="max-w-0">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate font-medium" title={entry.name}>
-                      {entry.name}
-                    </span>
-                    {entry.clanTag ? (
-                      <ClantagBadge
-                        tag={entry.clanTag}
-                        href={entry.clanSlug ? `#/clan/${entry.clanSlug}` : undefined}
-                        size="sm"
-                        className="shrink-0"
-                      />
-                    ) : null}
-                    {entry.country ? (
-                      <CountryFlagThumb code={entry.country} size={16} className="shrink-0" />
-                    ) : null}
-                  </div>
+                  <DisplayName
+                    name={entry.name}
+                    href={`#/player/${encodeURIComponent(entry.name)}`}
+                    country={entry.country}
+                    clan={
+                      entry.clanTag
+                        ? {
+                            tag: entry.clanTag,
+                            href: entry.clanSlug ? `#/clan/${entry.clanSlug}` : undefined,
+                          }
+                        : null
+                    }
+                    className="font-medium"
+                  />
                 </TableCell>
                 <TableCell className="text-right font-semibold tabular-nums">
                   {entry.kills}

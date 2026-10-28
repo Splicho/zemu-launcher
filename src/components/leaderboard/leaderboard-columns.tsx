@@ -6,8 +6,7 @@ import {
 
 import type { LeaderboardEntry, LeaderboardTier } from '@/lib/leaderboard'
 import { RankBadge } from '@/components/leaderboard/rank-badge'
-import { CountryFlagThumb } from '@/components/leaderboard/country-flag-thumb'
-import { ClantagBadge } from '@/components/leaderboard/clantag-badge'
+import { DisplayName } from '@/components/player/display-name'
 import { SortableHeader } from '@/components/leaderboard/sortable-header'
 
 function formatPercent(ratio: number): string {
@@ -84,7 +83,8 @@ export const leaderboardColumns: Col[] = [
     header: (ctx) => sortableHeader('Name', {}, ctx),
     cell: (ctx) => {
       const name = ctx.getValue() as string
-      const country = ctx.row.original.country ?? null
+      const entry = ctx.row.original as LeaderboardEntry
+      const country = entry.country ?? null
       const meta = ctx.table.options.meta as
         | {
             clanTags?: Record<
@@ -95,27 +95,19 @@ export const leaderboardColumns: Col[] = [
         | undefined
       const key = name.toLowerCase()
       const tag = meta?.clanTags?.[key] ?? null
+      // Same rule the website's leaderboard applies: only the season's #1
+      // Royalty player gets the gilded name.
+      const royalty = entry.position === 1 && entry.tier === 'royalty'
+
       return (
-        <div className="flex items-center gap-2">
-          <a
-            href={`#/player/${encodeURIComponent(name)}`}
-            className="truncate font-medium hover:underline"
-            onClick={(event) => event.stopPropagation()}
-          >
-            {name}
-          </a>
-          {country && (
-            <CountryFlagThumb code={country} size={16} className="shrink-0" />
-          )}
-          {tag && (
-            <ClantagBadge
-              tag={tag.clantag}
-              href={`#/clan/${tag.clanSlug}`}
-              size="sm"
-              className="shrink-0"
-            />
-          )}
-        </div>
+        <DisplayName
+          name={name}
+          href={`#/player/${encodeURIComponent(name)}`}
+          country={country}
+          clan={tag ? { tag: tag.clantag, href: `#/clan/${tag.clanSlug}` } : null}
+          royalty={royalty}
+          className="font-medium text-foreground"
+        />
       )
     },
   },

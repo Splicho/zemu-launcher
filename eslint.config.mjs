@@ -83,6 +83,17 @@ export default [
         clearInterval: 'readonly',
         requestAnimationFrame: 'readonly',
         cancelAnimationFrame: 'readonly',
+        // Canvas / WebGL surface used by the royalty shaders
+        // (`components/player/royalty-shader.tsx`).
+        HTMLCanvasElement: 'readonly',
+        CanvasRenderingContext2D: 'readonly',
+        ResizeObserver: 'readonly',
+        getComputedStyle: 'readonly',
+        WebGLRenderingContext: 'readonly',
+        WebGLShader: 'readonly',
+        WebGLProgram: 'readonly',
+        WebGLBuffer: 'readonly',
+        WebGLTexture: 'readonly',
         React: 'readonly',
         // DOM type constructors used in `React.HTMLAttributes<...>`
         // generic constraints and elsewhere. ESLint's no-undef needs

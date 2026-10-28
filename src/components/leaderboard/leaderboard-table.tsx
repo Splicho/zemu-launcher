@@ -131,12 +131,22 @@ export default function LeaderboardTable({
           {t('leaderboardPage.empty')}
         </div>
       ) : (
-        rows.map(row => {
+        rows.map((row, index) => {
           const entry = row.original as LeaderboardEntry
           const isExpanded = expandedRow === row.id
 
           return (
-            <div key={row.id} className="overflow-hidden rounded-lg border border-foreground/10 bg-muted">
+            <div
+              key={row.id}
+              className={cn(
+                'overflow-hidden rounded-lg border border-foreground/10',
+                // Zebra stripes: odd rows on `muted` (#262626), even rows one
+                // step down (#1f1f1f). Both are solid and sit above the page
+                // background, so the alternation reads as two surfaces rather
+                // than one surface with gaps.
+                index % 2 === 0 ? 'bg-muted' : 'bg-[#1f1f1f]',
+              )}
+            >
               <div
                 role="button"
                 tabIndex={0}

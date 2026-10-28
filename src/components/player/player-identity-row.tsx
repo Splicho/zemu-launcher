@@ -1,6 +1,8 @@
 import { ClanCardTooltip } from '@/components/clan/clan-card-tooltip'
 import { CountryFlagThumb } from '@/components/leaderboard/country-flag-thumb'
+import { RoyaltyName } from '@/components/player/royalty-shader'
 import type { PlayerProfile } from '@/lib/player-profile'
+import type { PlayerRank } from '@/lib/player-stats'
 
 /**
  * Avatar + identity row that overlaps the player cover banner.
@@ -21,9 +23,17 @@ import type { PlayerProfile } from '@/lib/player-profile'
  *   - If the player belongs to a clan, the `ClanCardTooltip` renders
  *     inline beside the display name (tooltip on hover, chip on click).
  */
-export function PlayerIdentityRow({ profile }: { profile: PlayerProfile }) {
+export function PlayerIdentityRow({
+  profile,
+  rank,
+}: {
+  profile: PlayerProfile
+  /** Season rank; drives the gilded name treatment for #1 Royalty. */
+  rank?: PlayerRank | null
+}) {
   const { displayName, avatarUrl, clan, country, coverImageUrl } = profile
   const hasCover = Boolean(coverImageUrl)
+  const isTopRoyalty = rank?.position === 1 && rank.tier === 'royalty'
 
   return (
     <div
@@ -49,7 +59,11 @@ export function PlayerIdentityRow({ profile }: { profile: PlayerProfile }) {
       </div>
 
       <h1 className="flex min-w-0 items-center gap-2 truncate pb-3 text-2xl font-bold tracking-tight text-foreground sm:pb-4 sm:text-4xl">
-        <span className="min-w-0 truncate">{displayName}</span>
+        {isTopRoyalty ? (
+          <RoyaltyName className="min-w-0">{displayName}</RoyaltyName>
+        ) : (
+          <span className="min-w-0 truncate">{displayName}</span>
+        )}
         {clan ? (
           <ClanCardTooltip clan={clan} className="shrink-0" />
         ) : null}

@@ -30,7 +30,12 @@ export function CardTable({
           '[&_thead_tr]:border-0',
           '[&_th]:h-10 [&_th]:px-2.5 [&_th]:text-muted-foreground',
           '[&_tbody_tr]:border-0 [&_tbody_tr]:hover:bg-transparent',
-          '[&_td]:border-b [&_td]:border-border/60 [&_td]:bg-card [&_td]:p-2.5',
+          '[&_td]:border-b [&_td]:border-border/60 [&_td]:p-2.5',
+          // Zebra striping: odd rows on the card surface, even rows one step
+          // lighter (solid, not translucent). Every table built on CardTable
+          // therefore alternates — events, slayers and match history.
+          '[&_tbody_tr:nth-child(odd)_td]:bg-card',
+          '[&_tbody_tr:nth-child(even)_td]:bg-secondary',
           '[&_tbody_tr_td:first-child]:border-l',
           '[&_tbody_tr_td:last-child]:border-r',
           '[&_tbody_tr:first-child_td]:border-t',

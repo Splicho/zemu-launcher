@@ -7,8 +7,7 @@ import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { LeaderboardEntry } from '@/lib/leaderboard'
 import { RankBadge } from '@/components/leaderboard/rank-badge'
-import { CountryFlagThumb } from '@/components/leaderboard/country-flag-thumb'
-import { ClantagBadge } from '@/components/leaderboard/clantag-badge'
+import { DisplayName } from '@/components/player/display-name'
 import { PlayerGames } from '@/components/leaderboard/player-games'
 
 /** Pill art for the "YOU" badge (37×15, drawn slightly larger). */
@@ -72,15 +71,14 @@ export function HeroRow({
 
         {/* Name + YOU badge */}
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <a
+          <DisplayName
+            name={entry.name}
             href={`#/player/${encodeURIComponent(entry.name)}`}
-            onClick={(event) => event.stopPropagation()}
-            className="truncate font-semibold hover:underline"
-          >
-            {entry.name}
-          </a>
-          {entry.country && <CountryFlagThumb code={entry.country} size={16} className="shrink-0" />}
-          {clan && <ClantagBadge tag={clan.clantag} href={`#/clan/${clan.clanSlug}`} size="sm" className="shrink-0" />}
+            country={entry.country}
+            clan={clan ? { tag: clan.clantag, href: `#/clan/${clan.clanSlug}` } : null}
+            royalty={entry.position === 1 && entry.tier === 'royalty'}
+            nameClassName="font-semibold hover:underline"
+          />
           {/* "YOU" badge — the art is the pill, the label is real text on
               top so it follows the active language. */}
           <span className="relative inline-flex shrink-0 items-center justify-center">

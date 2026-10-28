@@ -332,3 +332,21 @@ html.main-window #root {
   height: 0;
 }
 
+/* Royalty profile treatments (`components/player/royalty-shader.tsx`).
+   Ported from the website's `packages/ui/src/styles/globals.css`: the
+   keyframes drive the CSS fallback gradient used when WebGL is unavailable or
+   the user prefers reduced motion, and the glow gives both the fallback text
+   and the shader canvas their gold/violet halo. */
+@keyframes royalty-name {
+  0% {
+    background-position: 0%;
+  }
+  to {
+    background-position: 250%;
+  }
+}
+
+.royalty-name-glow {
+  filter: drop-shadow(0 0 10px #ffb02a73) drop-shadow(0 0 22px #7601ff47);
+}
+

@@ -60,6 +60,14 @@ export interface PlayerProfile {
   setup: PlayerSetup | null
   useroptionsIniUrl: string | null
   clan: PlayerClanAffiliation | null
+  /**
+   * Ban state. Public reads 404 banned players, so these are normally absent;
+   * they stay optional so a privileged response (or a future public field) can
+   * feed the profile's ban card without a type change.
+   */
+  banned?: boolean
+  bannedAt?: string | null
+  bannedReason?: string | null
 }
 
 /**
