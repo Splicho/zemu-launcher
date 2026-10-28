@@ -183,6 +183,7 @@ export default {
       play: 'Jogar',
       settings: 'Configurações',
       socialize: 'Socializar',
+      help: 'Ajuda',
       friends: 'Amigos',
       account: 'Conta',
     },

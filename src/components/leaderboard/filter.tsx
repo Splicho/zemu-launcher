@@ -10,7 +10,7 @@ import { DEFAULT_FILTERS, type LeaderboardFilters } from './leaderboard-filters'
 
 /**
  * Accent used by every filter control. Kept in one place so the search
- * field, the five selects and any future control stay in sync â€” this is the
+ * field, the five selects and any future control stay in sync — this is the
  * only surface in the app that tints its inputs (global inputs stay
  * `text-foreground`).
  */
@@ -139,7 +139,7 @@ export default function Filter({
         </SelectContent>
       </Select>
 
-      {/* Region Select â€” EU is the default. There is no global-region
+      {/* Region Select — EU is the default. There is no global-region
           option: the season board is global, so the region only scopes
           the Solo/Duo/Fives recent-match views. */}
       <Select

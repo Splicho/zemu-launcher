@@ -177,6 +177,7 @@ export default {
       play: '开始游戏',
       settings: '设置',
       socialize: '社交',
+      help: '帮助',
       friends: '好友',
       account: '账户',
     },

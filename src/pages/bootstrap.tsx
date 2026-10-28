@@ -262,7 +262,17 @@ export function BootstrapPage() {
 
   return (
     <div className="bootstrap-window flex h-screen w-screen items-center justify-center overflow-hidden bg-transparent px-4 py-4 text-foreground dark">
-      <div className="flex h-full max-h-[22.5rem] w-full max-w-[19.5rem] flex-col items-center justify-center overflow-hidden rounded-[22px] bg-background px-12 py-12 shadow-[0_12px_36px_rgba(0,0,0,0.28)]">
+      {/* The card *is* the art: `bootstrap-image.png` is exactly 312×360, the
+          size this window was designed around, so it's drawn 1:1 instead of a
+          bordered/rounded panel sitting on the transparent window. */}
+      <div
+        className="flex h-[360px] w-[312px] flex-col items-center justify-center overflow-hidden px-10 py-10"
+        style={{
+          backgroundImage: "url('/background/bootstrap-image.png')",
+          backgroundSize: '100% 100%',
+          backgroundRepeat: 'no-repeat',
+        }}
+      >
         <div className="flex items-center justify-center">
           <img
             src="./assets/icon/app-icon.ico"
@@ -272,14 +282,14 @@ export function BootstrapPage() {
         </div>
 
         {splashLabel ? (
-          <p className="mt-6 text-center text-sm tracking-[0.08em] text-muted-foreground">
+          <p className="mt-6 text-center text-sm tracking-[0.08em] text-white/80">
             {splashLabel}
           </p>
         ) : null}
 
         {showProgress ? (
           <div className="mt-10 w-full">
-            <Progress className="h-1.5 bg-white/8" value={state.progress ?? undefined} />
+            <Progress className="h-1.5 bg-white/15" value={state.progress ?? undefined} />
           </div>
         ) : null}
 

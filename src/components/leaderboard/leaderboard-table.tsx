@@ -33,7 +33,7 @@ const GRID_COLUMNS =
 
 interface LeaderboardTableProps {
   entries: readonly LeaderboardEntry[]
-  // TanStack-Table v9 generics â€” see leaderboard-columns.tsx for why
+  // TanStack-Table v9 generics — see leaderboard-columns.tsx for why
   // we use `any` for the features slot. The runtime contract still
   // flows through `useTable`, so the column array stays array-shaped.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,7 +43,7 @@ interface LeaderboardTableProps {
 }
 
 /**
- * Leaderboard list â€” divs, not a `<table>`.
+ * Leaderboard list — divs, not a `<table>`.
  *
  * Every row is its own rounded card, separated by a gap, with the column
  * header as a standalone rounded strip above them. Sorting and expansion
@@ -52,7 +52,7 @@ interface LeaderboardTableProps {
  * can't carry their own radius).
  *
  * Rows are `role="button"` divs rather than `<button>`s because the name
- * cell contains a link â€” an interactive element inside a button is invalid
+ * cell contains a link — an interactive element inside a button is invalid
  * HTML and swallows keyboard activation.
  */
 export default function LeaderboardTable({
@@ -99,7 +99,7 @@ export default function LeaderboardTable({
 
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      {/* Column header â€” standalone rounded strip. */}
+      {/* Column header — standalone rounded strip. */}
       <div
         className={cn(
           GRID_COLUMNS,

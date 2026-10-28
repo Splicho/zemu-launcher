@@ -85,7 +85,7 @@ export function EventPage({ id }: { id: string }) {
             <div className="flex flex-col gap-4">
               <div className="h-8 w-2/3 animate-pulse rounded-md bg-muted/40" />
               <div className="h-4 w-1/3 animate-pulse rounded-md bg-muted/40" />
-              <div className="aspect-[16/9] w-full animate-pulse rounded-xl bg-muted/40" />
+              <div className="h-32 w-full animate-pulse rounded-xl bg-muted/40 sm:h-40" />
               <div className="flex flex-col gap-2">
                 {[0, 1, 2, 3, 4].map((i) => (
                   <div key={i} className="h-4 w-full animate-pulse rounded-md bg-muted/30" />
@@ -113,7 +113,7 @@ export function EventPage({ id }: { id: string }) {
                 <img
                   src={event.coverImageUrl}
                   alt={event.coverAlt ?? ''}
-                  className="aspect-[16/9] w-full rounded-xl object-cover"
+                  className="h-32 w-full rounded-xl object-cover sm:h-40"
                 />
               )}
 
@@ -149,3 +149,4 @@ export function EventPage({ id }: { id: string }) {
     </div>
   )
 }
+

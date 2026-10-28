@@ -7,7 +7,7 @@
 
 @theme inline {
   /* Launcher typeface. Arial is a system font, so there is no
-     @font-face to declare â€” it resolves from the OS in every Tauri
+     @font-face to declare — it resolves from the OS in every Tauri
      webview (Windows/macOS/Linux all ship a metric-compatible Arial
      or a Helvetica/Liberation Sans stand-in). The stack after it only
      exists to keep glyph coverage sane on Linux builds that map Arial
@@ -110,7 +110,7 @@
   --success: oklch(0.723 0.219 142.96);
   --success-foreground: oklch(0.985 0 0);
   /* `warning` / `info` exist for the site notice banner. They are
-     deliberately not part of the button/badge vocabulary â€” nothing
+     deliberately not part of the button/badge vocabulary — nothing
      else in the launcher renders a solid warning or info fill, and
      a token that is only used by one component is easier to reason
      about when it is introduced for that component. Values are
@@ -164,7 +164,7 @@
   --success: oklch(0.723 0.219 142.96);
   --success-foreground: oklch(0.985 0 0);
   /* Dark-mode notice fills are lifted off pure white so a solid
-     warning/info bar doesn't glare against `oklch(0.2)` â€” the
+     warning/info bar doesn't glare against `oklch(0.2)` — the
      foreground flips to near-black to keep the text ratio above
      4.5:1 on the lighter fills. Mirrors the website's `.dark`
      values. */

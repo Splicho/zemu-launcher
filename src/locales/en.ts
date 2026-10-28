@@ -200,6 +200,7 @@ export default {
       play: 'Play',
       settings: 'Settings',
       socialize: 'Socialize',
+      help: 'Help',
       friends: 'Friends',
       account: 'Account',
     },

@@ -191,6 +191,7 @@ export default {
       play: "Jouer",
       settings: "Paramètres",
       socialize: "Socialiser",
+      help: "Aide",
       friends: "Amis",
       account: "Compte",
     },

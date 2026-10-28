@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { AccountAvatarMenu } from '@/components/account-avatar-menu'
+import { HelpLink, SocializeMenu } from '@/components/new-launcher/navbar-extras'
 import { useHash } from '@/hooks/use-hash'
 import { cn } from '@/lib/utils'
 
@@ -115,6 +116,15 @@ export function Navbar({ className }: { className?: string }) {
             </li>
           )
         })}
+
+        {/* Actions, not routes: social dropdown + help. Same item chrome as
+            the route links, but they never get the active underline. */}
+        <li>
+          <SocializeMenu />
+        </li>
+        <li>
+          <HelpLink />
+        </li>
       </ul>
       {/* Account menu, hard right. */}
       <div className="flex items-center justify-end">
