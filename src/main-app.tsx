@@ -6,7 +6,6 @@ import { AccessKeyProvisioner } from '@/components/new-launcher/access-key-provi
 import { MainLayout } from '@/components/main-layout'
 import type { SidebarType } from '@/components/main-layout'
 import { TitleBar } from '@/components/title-bar'
-import { SiteNoticeBar } from '@/components/site-notice-bar'
 import { NewsPage } from '@/pages/news'
 import { NewsSlugPage } from '@/pages/news-slug'
 import { EventPage } from '@/pages/event'
@@ -265,7 +264,8 @@ function AuthedApp() {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg bg-background text-foreground border border-muted">
         <TitleBar />
-        <SiteNoticeBar />
+        {/* No site-notice bar while signed out: the login screen is a single
+            focused surface, and the notice has nothing to do with signing in. */}
         <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           <LoginPage />
         </main>
