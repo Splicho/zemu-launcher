@@ -287,18 +287,6 @@ export default {
         languageChinese: "中文",
         languagePortuguese: "Português (Brasil)",
       },
-      appearance: {
-        title: "Apparence",
-        description: "Personnalisez l'apparence de ZEmu Launcher.",
-        theme: "Thème",
-        themeDesc: "Choisissez votre schéma de couleurs préféré.",
-        themeSystem: "Système",
-        themeSystemDesc: "Utiliser le schéma de couleurs de votre système d'exploitation.",
-        themeDark: "Sombre",
-        themeDarkDesc: "Toujours utiliser un thème sombre.",
-        themeLight: "Clair",
-        themeLightDesc: "Toujours utiliser un thème clair.",
-      },
       advanced: {
         title: "Avancé",
         description:

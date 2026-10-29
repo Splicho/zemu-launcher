@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ExternalLink, KeyRound, Palette, SlidersHorizontal, UserCircle, Wrench } from 'lucide-react'
+import { ExternalLink, KeyRound, SlidersHorizontal, UserCircle, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { openUrl } from '@tauri-apps/plugin-opener'
 
@@ -17,14 +17,13 @@ import {
 } from '@/components/ui/sidebar'
 import { AccountPage } from '@/pages/account'
 import { GeneralPage } from '@/pages/settings'
-import { AppearancePage } from '@/pages/appearance'
 import { AdvancedPage } from '@/pages/advanced'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 export type AccountSettingsPanel = 'account' | 'settings' | null
 
 type AccountSection = 'auth-key'
-type SettingsSection = 'general' | 'appearance' | 'advanced'
+type SettingsSection = 'general' | 'advanced'
 
 const SETTINGS_SECTIONS: ReadonlyArray<{
   id: SettingsSection
@@ -32,7 +31,6 @@ const SETTINGS_SECTIONS: ReadonlyArray<{
   Icon: typeof SlidersHorizontal
 }> = [
   { id: 'general', labelKey: 'settings.general.title', Icon: SlidersHorizontal },
-  { id: 'appearance', labelKey: 'settings.appearance.title', Icon: Palette },
   { id: 'advanced', labelKey: 'settings.advanced.title', Icon: Wrench },
 ]
 
@@ -59,9 +57,7 @@ export function AccountSettingsModal({
     ? t('account.description')
     : settingsSection === 'general'
       ? t('settings.general.description')
-      : settingsSection === 'appearance'
-        ? t('settings.appearance.description')
-        : t('settings.advanced.description')
+      : t('settings.advanced.description')
 
   return (
     <Dialog open={panel !== null} onOpenChange={onOpenChange}>
@@ -133,8 +129,6 @@ export function AccountSettingsModal({
               <AccountPage />
             ) : settingsSection === 'general' ? (
               <GeneralPage />
-            ) : settingsSection === 'appearance' ? (
-              <AppearancePage />
             ) : (
               <AdvancedPage />
             )}

@@ -8,7 +8,7 @@ use crate::game;
 use crate::hardware;
 use crate::hardware_api;
 use crate::models::{
-    AppTheme, AuthToken, CommandResult, CompressorManifest, DiscordRpcMode, GameLaunchState,
+    AuthToken, CommandResult, CompressorManifest, DiscordRpcMode, GameLaunchState,
     OAuthCallbackPayload, SteamcmdResult, UpdateCheckResult, UpdateStatus, WineConfig,
     WineRuntime,
 };
@@ -713,30 +713,6 @@ pub fn discord_set_mode(app: tauri::AppHandle, mode: String) -> Result<(), Strin
     storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn theme_get(app: tauri::AppHandle) -> Result<String, String> {
-    storage::load_launcher_config(&app)
-        .map(|config| match config.theme {
-            AppTheme::System => "system".to_owned(),
-            AppTheme::Dark => "dark".to_owned(),
-            AppTheme::Light => "light".to_owned(),
-        })
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn theme_set(app: tauri::AppHandle, theme: String) -> Result<(), String> {
-    let new_theme = match theme.as_str() {
-        "system" => AppTheme::System,
-        "dark" => AppTheme::Dark,
-        "light" => AppTheme::Light,
-        other => return Err(format!("unknown theme: {other}")),
-    };
-    let mut config = storage::load_launcher_config(&app).map_err(|e| e.to_string())?;
-    config.theme = new_theme;
-    storage::save_launcher_config(&app, &config).map_err(|e| e.to_string())
-}
-
 /// Frontend-facing log append. The renderer uses this to mirror console
 /// errors / auth traces / etc. into a file under the user's
 /// app-data directory so the launcher's `debugLog.read()` command can
@@ -1183,8 +1159,6 @@ pub fn register_commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + 
         discord_set_enabled,
         discord_get_mode,
         discord_set_mode,
-        theme_get,
-        theme_set,
         debug_log_write,
         debug_log_path,
         debug_log_read,

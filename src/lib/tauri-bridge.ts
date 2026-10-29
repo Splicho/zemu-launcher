@@ -519,15 +519,6 @@ function setupCompatibilityBridge() {
           error: safeStringify(error),
         })
       }),
-    getTheme: () =>
-      invoke<string>('theme_get').catch((error) => {
-        writeDebugLog('theme', 'getTheme failed', { error: safeStringify(error) })
-        return 'system'
-      }),
-    setTheme: (theme: string) =>
-      invoke<void>('theme_set', { theme }).catch((error) => {
-        writeDebugLog('theme', 'setTheme failed', { theme, error: safeStringify(error) })
-      }),
     getAppDataDir: () =>
       invoke<string>('launcher_get_app_data_dir').catch((error) => {
         writeDebugLog('launcher.advanced', 'getAppDataDir failed', {
@@ -550,31 +541,16 @@ function setupCompatibilityBridge() {
       ),
   }
 
-  // Apply the persisted theme before the first paint so there is no flash.
-  const cacheTheme = (value: string) => {
-    try {
-      localStorage.setItem('zemu.theme', value)
-    } catch {
-      // localStorage may be unavailable (private mode / sandboxed webview);
-      // falling back to the in-memory theme applier is fine.
-    }
+  // The launcher is dark-only: there is no OS theme detection and no user
+  // preference to load. `index.html` already ships `class="dark"`; this keeps
+  // the class in place if some other code ever removes it, and drops the stale
+  // `zemu.theme` key older builds wrote.
+  document.documentElement.classList.add('dark')
+  try {
+    localStorage.removeItem('zemu.theme')
+  } catch {
+    // localStorage may be unavailable (private mode / sandboxed webview).
   }
-  void invoke<string>('theme_get')
-    .then((t) => {
-      cacheTheme(t)
-      const root = document.documentElement
-      if (t === 'dark') root.classList.add('dark')
-      else if (t === 'light') root.classList.remove('dark')
-      // 'system' (or unknown) — dark by default, fall back to OS preference
-      else {
-        const prefersDark =
-          window.matchMedia &&
-          window.matchMedia('(prefers-color-scheme: dark)').matches
-        if (prefersDark !== false) root.classList.add('dark')
-        else root.classList.remove('dark')
-      }
-    })
-    .catch(() => {})
 
   window.addEventListener('error', (event) => {
     writeDebugLog('frontend.error', event.message, {
@@ -814,8 +790,6 @@ declare global {
       setLocale: (locale: string) => Promise<void>
       getAutostartEnabled: () => Promise<boolean>
       setAutostartEnabled: (enabled: boolean) => Promise<void>
-      getTheme: () => Promise<string>
-      setTheme: (theme: string) => Promise<void>
       /**
        * Platform-resolved app-data directory. Resolves to
        * `%APPDATA%\uk.zemu.launcher` on Windows,

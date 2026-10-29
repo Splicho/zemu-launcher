@@ -279,18 +279,6 @@ export default {
         languageChinese: '中文',
         languagePortuguese: 'Português (Brasil)',
       },
-      appearance: {
-        title: 'Aparência',
-        description: 'Personalize a aparência do ZEmu Launcher.',
-        theme: 'Tema',
-        themeDesc: 'Escolha seu esquema de cores preferido.',
-        system: 'Sistema',
-        systemDesc: 'Corresponde ao esquema de cores do seu sistema operacional.',
-        dark: 'Escuro',
-        darkDesc: 'Sempre usa o tema escuro.',
-        light: 'Claro',
-        lightDesc: 'Sempre usa o tema claro.',
-      },
       advanced: {
         title: 'Avançado',
         description:

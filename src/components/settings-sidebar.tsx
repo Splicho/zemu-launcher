@@ -18,7 +18,6 @@ import { AccountDropdown } from '@/components/account-dropdown'
 
 const SETTINGS_NAV = [
   { href: '#/settings', labelKey: 'settings.general.title' },
-  { href: '#/settings/appearance', labelKey: 'settings.appearance.title' },
   { href: '#/settings/advanced', labelKey: 'settings.advanced.title' },
 ] as const
 

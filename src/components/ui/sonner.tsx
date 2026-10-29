@@ -1,16 +1,15 @@
 "use client"
 
-import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CheckCircle, Info, AlertTriangle, XCircle } from "lucide-react"
 import { Spinner } from "./spinner"
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
-
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      // The launcher is dark-only, so the toaster is pinned instead of reading
+      // a theme provider (shadcn's default `next-themes` wiring).
+      theme="dark"
       className="toaster group"
       richColors
       icons={{

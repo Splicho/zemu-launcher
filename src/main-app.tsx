@@ -19,7 +19,6 @@ import { ClanManagePage } from '@/pages/clan-manage'
 import { ClansPage } from '@/pages/clans'
 import { ServersPage } from '@/pages/servers'
 import { GeneralPage } from '@/pages/settings'
-import { AppearancePage } from '@/pages/appearance'
 import { AdvancedPage } from '@/pages/advanced'
 import { AccountPage } from '@/pages/account'
 import { AuthProvider, useAuthContext } from '@/contexts/auth-context'
@@ -82,7 +81,6 @@ function parseRoute(hash: string | null): { page: string; params?: Record<string
   if (hash === '/streams') return { page: 'streams' }
   if (hash === '/leaderboard') return { page: 'leaderboard' }
   if (hash === '/settings') return { page: 'settings' }
-  if (hash === '/settings/appearance') return { page: 'appearance' }
   if (hash === '/settings/advanced') return { page: 'advanced' }
   if (hash === '/account') return { page: 'account' }
 
@@ -206,7 +204,7 @@ function AuthedApp() {
   }, [])
 
   const prevPageRef = useRef(route.page)
-  const isSettingsPage = route.page === 'settings' || route.page === 'appearance' || route.page === 'advanced'
+  const isSettingsPage = route.page === 'settings' || route.page === 'advanced'
   const isAccountPage = route.page === 'account'
   const [sidebarType, setSidebarType] = useState<SidebarType>(
     isSettingsPage ? 'settings' : isAccountPage ? 'account' : 'app',
@@ -218,7 +216,7 @@ function AuthedApp() {
     if (next === prev) return
     prevPageRef.current = next
     const nextType: SidebarType =
-      next === 'settings' || next === 'appearance' || next === 'advanced'
+      next === 'settings' || next === 'advanced'
         ? 'settings'
         : next === 'account'
           ? 'account'
@@ -301,7 +299,6 @@ function AuthedApp() {
         {route.page === 'clans' && <ClansPage />}
         {route.page === 'servers' && <ServersPage />}
         {route.page === 'settings' && <GeneralPage />}
-        {route.page === 'appearance' && <AppearancePage />}
         {route.page === 'advanced' && <AdvancedPage />}
         {route.page === 'account' && <AccountPage />}
         {route.page === 'home' && <HomePage />}

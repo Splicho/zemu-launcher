@@ -73,18 +73,6 @@ fn default_rpc_mode() -> DiscordRpcMode {
     DiscordRpcMode::Always
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum AppTheme {
-    System,
-    Dark,
-    Light,
-}
-
-fn default_theme() -> AppTheme {
-    AppTheme::System
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WineEnvVar {
@@ -175,9 +163,6 @@ pub struct LauncherConfig {
     /// disabling the feature entirely.
     #[serde(default = "default_rpc_mode")]
     pub discord_rpc_mode: DiscordRpcMode,
-    /// App colour theme. `system` follows the OS preference.
-    #[serde(default = "default_theme")]
-    pub theme: AppTheme,
     /// The user's auth key — stored locally and passed as the
     /// `SessionId=` command-line argument at game launch. No server
     /// validation is performed on this value.
@@ -240,7 +225,6 @@ impl Default for LauncherConfig {
             game_executable: None,
             discord_rpc_enabled: true,
             discord_rpc_mode: DiscordRpcMode::Always,
-            theme: AppTheme::System,
             auth_key: None,
             locale: default_locale(),
             wine: WineConfig::default(),
