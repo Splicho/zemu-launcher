@@ -380,7 +380,7 @@ export default {
       event: 'Événement',
       starts: 'Début',
       empty: 'Aucun événement à venir.',
-      emptyHint: "Revenez bientôt — les nouveaux événements sont publiés sur le site.",
+      emptyHint: "Revenez bientôt.",
       error: 'Impossible de charger les événements.',
     },
     slayersTable: {

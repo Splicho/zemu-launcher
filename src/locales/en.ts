@@ -412,7 +412,7 @@ export default {
       event: 'Event',
       starts: 'Starts',
       empty: 'No upcoming events.',
-      emptyHint: "Check back soon — new events are posted on the website.",
+      emptyHint: "Check back soon.",
       error: "Couldn't load events.",
     },
     slayersTable: {

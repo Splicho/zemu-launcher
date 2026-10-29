@@ -102,16 +102,16 @@ importers:
         specifier: 9.2.4
         version: 9.2.4
       '@tauri-apps/api':
-        specifier: ^2.8.0
+        specifier: ~2.11.1
         version: 2.11.1
       '@tauri-apps/plugin-fs':
-        specifier: ^2.5.2
+        specifier: ~2.5.2
         version: 2.5.2
       '@tauri-apps/plugin-opener':
-        specifier: ^2.5.4
+        specifier: ~2.5.4
         version: 2.5.4
       '@tauri-apps/plugin-updater':
-        specifier: ^2.10.0
+        specifier: ~2.10.1
         version: 2.10.1
       class-variance-authority:
         specifier: ^0.7.0

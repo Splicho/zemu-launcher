@@ -361,7 +361,7 @@ export default {
       event: '活动',
       starts: '开始时间',
       empty: '暂无即将举行的活动。',
-      emptyHint: "请稍后再来——新活动会发布在网站上。",
+      emptyHint: "请稍后再来看看。",
       error: '无法加载活动。',
     },
     slayersTable: {

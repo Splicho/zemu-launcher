@@ -368,7 +368,7 @@ export default {
       event: 'Evento',
       starts: 'Início',
       empty: 'Nenhum evento próximo.',
-      emptyHint: "Volte em breve — novos eventos são publicados no site.",
+      emptyHint: "Volte em breve.",
       error: 'Não foi possível carregar os eventos.',
     },
     slayersTable: {
