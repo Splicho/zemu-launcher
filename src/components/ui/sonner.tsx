@@ -25,12 +25,14 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
           "--border-radius": "var(--radius)",
+          // Solid rich colours (the tokens are opaque); a hairline border just
+          // separates the toast from dark surfaces behind it.
           "--success-bg": "var(--toast-success-bg)",
           "--success-text": "var(--toast-success-fg)",
-          "--success-border": "var(--toast-success-bg)",
+          "--success-border": "var(--border)",
           "--error-bg": "var(--toast-error-bg)",
           "--error-text": "var(--toast-error-fg)",
-          "--error-border": "var(--toast-error-bg)",
+          "--error-border": "var(--border)",
         } as React.CSSProperties
       }
       toastOptions={{
