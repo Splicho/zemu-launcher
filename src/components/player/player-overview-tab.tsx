@@ -1,12 +1,15 @@
-import { useMemo, useState } from 'react'
+import { Suspense, lazy, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { RoyaltyAura } from '@/components/player/royalty-shader'
 import type { PlayerMatchStats, PlayerRank, PlayerRecentMatch } from '@/lib/player-stats'
 import { cn } from '@/lib/utils'
+
+// recharts is by far the heaviest dependency in the app and is only needed once
+// a profile with matches is opened, so it loads in its own async chunk.
+const PlayerKillsChart = lazy(() => import('@/components/player/player-kills-chart'))
 
 /**
  * Overview tab: totals from Ghost's public match-stats API plus a
@@ -188,56 +191,11 @@ export function PlayerOverviewTab({
                 </p>
               ) : (
                 <div className="h-60 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
-                      <defs>
-                        <linearGradient id="player-kills-fill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#7a0101" stopOpacity={0.55} />
-                          <stop offset="100%" stopColor="#7a0101" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid stroke="currentColor" strokeOpacity={0.08} vertical={false} />
-                      <XAxis
-                        dataKey="match"
-                        tickFormatter={(value: number) => `#${value}`}
-                        stroke="currentColor"
-                        strokeOpacity={0.35}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fontSize: 11 }}
-                      />
-                      <YAxis
-                        stroke="currentColor"
-                        strokeOpacity={0.35}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fontSize: 11 }}
-                        allowDecimals={false}
-                      />
-                      <Tooltip
-                        cursor={{ stroke: 'currentColor', strokeOpacity: 0.2 }}
-                        contentStyle={{
-                          background: 'var(--popover)',
-                          border: '1px solid var(--border)',
-                          borderRadius: 8,
-                          fontSize: 12,
-                        }}
-                        labelFormatter={(label) =>
-                          t('player.stats.matchNumber', { number: String(label) })
-                        }
-                        formatter={(value) => [String(value), t('player.stats.kills')]}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="kills"
-                        stroke="#9c0b0b"
-                        strokeWidth={1.5}
-                        fill="url(#player-kills-fill)"
-                        dot={false}
-                        activeDot={{ r: 3, fill: '#9c0b0b' }}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <Suspense
+                    fallback={<div className="h-60 w-full animate-pulse rounded-lg bg-muted/40" />}
+                  >
+                    <PlayerKillsChart data={chartData} />
+                  </Suspense>
                 </div>
               )}
             </CardContent>
