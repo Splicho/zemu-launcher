@@ -35,9 +35,7 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::System::Threading::{
-    OpenProcess, TerminateProcess, PROCESS_TERMINATE,
-};
+use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
 
 #[cfg(target_os = "windows")]
 const GAME_PROCESS_POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -661,13 +659,9 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
         // Without the anti-cheat, we keep the original behaviour: build
         // the client arguments ourselves and spawn `H1Z1.exe` directly.
         //
-        // The anti-cheat is a Windows binary, so the detection is
-        // Windows-only — the Wine/Proton path on macOS/Linux is
-        // unchanged.
-        #[cfg(target_os = "windows")]
+        // On macOS/Linux the anti-cheat `.exe` is started through
+        // Wine/Proton, same as the game.
         let catnip_executable = catnip::executable_path(Path::new(&game_directory));
-        #[cfg(not(target_os = "windows"))]
-        let catnip_executable: Option<PathBuf> = None;
 
         let client_args: Vec<String> = match &catnip_executable {
             Some(exe) => {
@@ -859,7 +853,12 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
 
         #[cfg(not(target_os = "windows"))]
         {
-            let child = if let Some(launch) = wine::build_launch_command(app, &executable_path)? {
+            // With the anti-cheat installed, run it instead of the game
+            // exe (no arguments — it starts the game itself).
+            let spawn_target = catnip_executable
+                .clone()
+                .unwrap_or_else(|| executable_path.clone());
+            let child = if let Some(launch) = wine::build_launch_command(app, &spawn_target)? {
                 let _ = debug_log::append(
                     app,
                     "game",
@@ -882,7 +881,7 @@ pub async fn launch_game(app: &AppHandle, state: AppState) -> CommandResult {
                     .spawn()
                     .map_err(|e| anyhow!("Failed to launch game through Wine/Proton: {e}"))?
             } else {
-                crate::child_process::command(&executable_path)
+                crate::child_process::command(&spawn_target)
                     .args(&client_args)
                     .current_dir(&working_dir)
                     .spawn()
@@ -1232,7 +1231,10 @@ pub(crate) fn collect_process_tree(root_pid: u32) -> Vec<(u32, String)> {
     let live_pids: std::collections::HashSet<u32> = processes.keys().copied().collect();
     let mut children_by_parent: HashMap<u32, Vec<u32>> = HashMap::new();
     for (pid, (parent_pid, _)) in &processes {
-        children_by_parent.entry(*parent_pid).or_default().push(*pid);
+        children_by_parent
+            .entry(*parent_pid)
+            .or_default()
+            .push(*pid);
     }
 
     let mut stack = vec![root_pid];
@@ -1266,7 +1268,10 @@ fn is_process_tree_running(root_pid: u32) -> bool {
     let live_pids: HashSet<u32> = processes.keys().copied().collect();
     let mut children_by_parent: HashMap<u32, Vec<u32>> = HashMap::new();
     for (pid, (parent_pid, _)) in &processes {
-        children_by_parent.entry(*parent_pid).or_default().push(*pid);
+        children_by_parent
+            .entry(*parent_pid)
+            .or_default()
+            .push(*pid);
     }
 
     let mut stack = vec![root_pid];
