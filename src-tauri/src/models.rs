@@ -36,6 +36,13 @@ pub struct OAuthCallbackPayload {
     pub state: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Why the account is banned, when `error == "user_banned"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ban_reason: Option<String>,
+    /// ISO 8601 expiry of the ban, when `error == "user_banned"`.
+    /// Absent for a permanent ban.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ban_expires_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

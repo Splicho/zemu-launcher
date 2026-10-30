@@ -579,6 +579,10 @@ export default {
         user_banned_title: 'Your account has been suspended',
         user_banned_desc:
           'If you believe this is a mistake, contact a staff member.',
+        ban_reason_label: 'Reason:',
+        ban_expires_label: 'Expires:',
+        ban_duration_label: 'Duration:',
+        ban_permanent: 'Permanent',
         session_missing_title:
           'Sign-in session expired before completion',
         session_missing_desc: 'Please try again.',

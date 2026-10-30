@@ -320,6 +320,24 @@ fn handle_protocol_url(app: &tauri::AppHandle, raw_url: &str) {
             .query_pairs()
             .find(|(k, _)| k == "error")
             .map(|(_, v)| v.to_string());
-        let _ = auth::process_oauth_callback(app, token, code, state, error);
+        // Only present on the `user_banned` redirect; surfaced by the
+        // login banner.
+        let ban_reason = parsed
+            .query_pairs()
+            .find(|(k, _)| k == "banReason")
+            .map(|(_, v)| v.to_string());
+        let ban_expires_at = parsed
+            .query_pairs()
+            .find(|(k, _)| k == "banExpiresAt")
+            .map(|(_, v)| v.to_string());
+        let _ = auth::process_oauth_callback(
+            app,
+            token,
+            code,
+            state,
+            error,
+            ban_reason,
+            ban_expires_at,
+        );
     }
 }

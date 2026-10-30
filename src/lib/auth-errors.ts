@@ -1,5 +1,7 @@
 import type { TFunction } from 'i18next'
 
+import type { BanDetails } from '@/lib/auth-flow-error'
+
 /**
  * Translate an auth-flow error code (`user_banned`, `session_missing`,
  * etc.) into a localized, user-facing message suitable for rendering in
@@ -58,11 +60,22 @@ import type { TFunction } from 'i18next'
 export interface AuthErrorMessage {
   title: string
   description: string
+  /**
+   * Structured ban details, rendered as label/value rows exactly like
+   * the website's suspended banner (bold "Reason:"/"Expires:" label,
+   * muted value). Absent for every non-ban error.
+   */
+  ban?: {
+    reason: string | null
+    expiryLabel: string
+    expiryValue: string
+  }
 }
 
 export function formatAuthError(
   t: TFunction,
   error: string | null | undefined,
+  banDetails: BanDetails | null = null,
 ): AuthErrorMessage | null {
   if (!error) return null
 
@@ -71,6 +84,23 @@ export function formatAuthError(
 
   const title = t(titleKey)
   const description = t(descKey)
+
+  // A banned account gets the moderator's reason and the expiry as
+  // structured rows under the headline, mirroring the website's
+  // `<AccessDeniedHandler>` layout. The server only sends details for
+  // `user_banned`; anything else leaves the mapping untouched.
+  const ban =
+    error === 'user_banned' && banDetails
+      ? {
+          reason: banDetails.reason || null,
+          expiryLabel: banDetails.expiresAt
+            ? t('login.errors.ban_expires_label')
+            : t('login.errors.ban_duration_label'),
+          expiryValue: banDetails.expiresAt
+            ? new Date(banDetails.expiresAt).toLocaleString()
+            : t('login.errors.ban_permanent'),
+        }
+      : undefined
 
   // i18next's `returnNull: false` (see `lib/i18n.ts`) means an
   // unknown key resolves to the key itself — useful as a built-in
@@ -81,6 +111,7 @@ export function formatAuthError(
     return {
       title: t('login.errors.fallback_title', { code: error }),
       description: t('login.errors.fallback_desc', { code: error }),
+      ban,
     }
   }
   // Only the title key hit. Either the locale intentionally omits
@@ -90,5 +121,6 @@ export function formatAuthError(
   return {
     title,
     description: description === descKey ? '' : description,
+    ban,
   }
 }

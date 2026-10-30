@@ -26,6 +26,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { httpFetch } from '@/lib/http-fetch'
+import { AuthFlowError } from '@/lib/auth-flow-error'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 
 export type Provider = 'discord' | 'steam'
@@ -185,9 +186,19 @@ export async function loginWithCredentials(
     expiresAt?: number
     user?: LauncherUser
     error?: string
+    banReason?: string | null
+    banExpiresAt?: string | null
   }
   if (!response.ok || !payload.token || !payload.user) {
-    throw new Error(payload.error ?? `Login failed (HTTP ${response.status})`)
+    throw new AuthFlowError(
+      payload.error ?? `Login failed (HTTP ${response.status})`,
+      payload.error === 'user_banned'
+        ? {
+            reason: payload.banReason ?? null,
+            expiresAt: payload.banExpiresAt ?? null,
+          }
+        : null,
+    )
   }
   // Always store `expiresAt: null` from credentials login so the
   // launcher treats the session as never-expiring locally. The
@@ -263,6 +274,8 @@ export async function awaitOAuthCallback(
       token?: string
       state?: string
       error?: string
+      banReason?: string | null
+      banExpiresAt?: string | null
     }
     let settled = false
     let unlisten: UnlistenFn | undefined
@@ -279,7 +292,19 @@ export async function awaitOAuthCallback(
     }
     const accept = (payload: CallbackPayload | null) => {
       if (settled || payload?.state !== expectedState) return
-      if (payload.error) return fail(new Error(payload.error))
+      if (payload.error) {
+        return fail(
+          new AuthFlowError(
+            payload.error,
+            payload.error === 'user_banned'
+              ? {
+                  reason: payload.banReason ?? null,
+                  expiresAt: payload.banExpiresAt ?? null,
+                }
+              : null,
+          ),
+        )
+      }
       if (!payload.token) return fail(new Error('OAuth callback missing token'))
       settled = true
       cleanup()

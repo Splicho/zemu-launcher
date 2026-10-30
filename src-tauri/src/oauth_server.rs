@@ -67,6 +67,8 @@ pub fn start_oauth_callback_server(app: &AppHandle, expected_state: &str) -> Res
                         payload.code,
                         payload.state,
                         payload.error,
+                        payload.ban_reason,
+                        payload.ban_expires_at,
                     )
                 },
             );
@@ -193,6 +195,11 @@ fn handle_request(
         code: param("code"),
         state: param("state"),
         error: param("error"),
+        // Only present on the `user_banned` redirect; the launcher's
+        // login banner renders them under "Your account has been
+        // suspended".
+        ban_reason: param("banReason"),
+        ban_expires_at: param("banExpiresAt"),
     };
     if payload.state.is_none()
         || (payload.token.is_none() && payload.code.is_none() && payload.error.is_none())

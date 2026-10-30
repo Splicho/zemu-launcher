@@ -12,6 +12,7 @@ import {
   type Provider,
 } from '@/lib/auth'
 import { clearStoredAuthKey } from '@/lib/auth-key'
+import { AuthFlowError, type BanDetails } from '@/lib/auth-flow-error'
 
 /**
  * Top-level auth state machine for the renderer.
@@ -32,15 +33,20 @@ import { clearStoredAuthKey } from '@/lib/auth-key'
 
 export type AuthStatus = 'loading' | 'auth' | 'authed' | 'exchanging'
 
+/** Extra ban context returned alongside a `user_banned` failure. */
+export type AuthFailure = {
+  success: boolean
+  error?: string
+  banDetails?: BanDetails | null
+}
+
 export interface UseAuthResult {
   token: AuthToken | null
   status: AuthStatus
   error: string | null
 
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  loginWithProvider: (
-    provider: Provider,
-  ) => Promise<{ success: boolean; error?: string }>
+  login: (email: string, password: string) => Promise<AuthFailure>
+  loginWithProvider: (provider: Provider) => Promise<AuthFailure>
   logout: () => void
 }
 
@@ -302,8 +308,9 @@ export function useAuth(): UseAuthResult {
       return { success: true }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Login failed'
+      const banDetails = err instanceof AuthFlowError ? err.banDetails : null
       setError(message)
-      return { success: false, error: message }
+      return { success: false, error: message, banDetails }
     }
   }, [])
 
@@ -319,9 +326,10 @@ export function useAuth(): UseAuthResult {
       return { success: true }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'OAuth failed'
+      const banDetails = err instanceof AuthFlowError ? err.banDetails : null
       setError(message)
       setStatus('auth')
-      return { success: false, error: message }
+      return { success: false, error: message, banDetails }
     }
   }, [])
 

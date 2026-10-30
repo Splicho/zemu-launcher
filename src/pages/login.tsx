@@ -10,6 +10,7 @@ import { CircleAlert, DiscordFilled, Mail, Steam } from '@/components/icons'
 import { useAuthContext } from '@/contexts/auth-context'
 import { useLastUsedProvider } from '@/hooks/use-last-used-provider'
 import { formatAuthError, type AuthErrorMessage } from '@/lib/auth-errors'
+import type { BanDetails } from '@/lib/auth-flow-error'
 import { LAUNCHER_CONFIG } from '@/config/launcher'
 import type { Provider } from '@/lib/auth'
 
@@ -30,8 +31,11 @@ export function LoginPage() {
   // `session_missing`, etc.); without this mapping the user sees
   // the literal snake_case string in the UI, which looks like a
   // dev-mode leak. See `lib/auth-errors.ts` for the full mapping.
-  const setAuthError = (code: string | null | undefined) => {
-    setError(formatAuthError(t, code))
+  const setAuthError = (
+    code: string | null | undefined,
+    banDetails: BanDetails | null = null,
+  ) => {
+    setError(formatAuthError(t, code, banDetails))
   }
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
@@ -52,7 +56,7 @@ export function LoginPage() {
         setEmail('')
         setPassword('')
       } else {
-        setAuthError(result.error ?? 'loginFailed')
+        setAuthError(result.error ?? 'loginFailed', result.banDetails ?? null)
       }
     } finally {
       setIsSubmitting(false)
@@ -79,7 +83,7 @@ export function LoginPage() {
     // when it fails — so we don't need to wait here.
     void loginWithProvider(provider).then((result) => {
       if (!result.success && result.error) {
-        setAuthError(result.error)
+        setAuthError(result.error, result.banDetails ?? null)
       }
     })
   }
@@ -162,7 +166,29 @@ export function LoginPage() {
             />
             <div className="flex flex-col gap-1">
               <p className="font-medium text-destructive">{error.title}</p>
-              {error.description ? (
+              {error.ban ? (
+                // Mirrors the website's suspended banner: bold labels,
+                // muted values, appeal line last.
+                <div className="flex flex-col gap-0.5 text-muted-foreground">
+                  {error.ban.reason ? (
+                    <p>
+                      <span className="font-medium text-foreground">
+                        {t('login.errors.ban_reason_label')}
+                      </span>{' '}
+                      {error.ban.reason}
+                    </p>
+                  ) : null}
+                  <p>
+                    <span className="font-medium text-foreground">
+                      {error.ban.expiryLabel}
+                    </span>{' '}
+                    {error.ban.expiryValue}
+                  </p>
+                  {error.description ? (
+                    <p className="pt-1">{error.description}</p>
+                  ) : null}
+                </div>
+              ) : error.description ? (
                 <p className="text-muted-foreground">{error.description}</p>
               ) : null}
             </div>

@@ -428,7 +428,7 @@ pub fn manual_oauth_callback(
             }
         }
 
-        emit_oauth_callback(app, Some(token), state, None)?;
+        emit_oauth_callback(app, Some(token), state, None, None, None)?;
         Ok(())
     })();
 
@@ -447,6 +447,8 @@ pub fn process_oauth_callback(
     code: Option<String>,
     state: Option<String>,
     error: Option<String>,
+    ban_reason: Option<String>,
+    ban_expires_at: Option<String>,
 ) -> Result<()> {
     let _ = debug_log::append(
         app,
@@ -568,7 +570,14 @@ pub fn process_oauth_callback(
             final_error.is_some()
         ),
     );
-    emit_oauth_callback(app, token, state, final_error.clone())?;
+    emit_oauth_callback(
+        app,
+        token,
+        state,
+        final_error.clone(),
+        ban_reason,
+        ban_expires_at,
+    )?;
     match final_error {
         Some(error) => Err(anyhow!(error)),
         None => Ok(()),
@@ -607,12 +616,16 @@ fn emit_oauth_callback(
     token: Option<String>,
     state: Option<String>,
     error: Option<String>,
+    ban_reason: Option<String>,
+    ban_expires_at: Option<String>,
 ) -> Result<()> {
     let payload = OAuthCallbackPayload {
         token,
         code: None,
         state,
         error,
+        ban_reason,
+        ban_expires_at,
     };
     let _ = debug_log::append(
         app,
@@ -826,6 +839,8 @@ mod tests {
             code: None,
             state: Some("expected-state".into()),
             error: None,
+            ban_reason: None,
+            ban_expires_at: None,
         });
         assert!(take_matching_callback(&mut pending, Some("other-state")).is_none());
         assert!(pending.is_some());
