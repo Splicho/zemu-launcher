@@ -31,6 +31,39 @@ function formatEventDate(iso: string, locale: string): string {
 }
 
 /**
+ * `11:00 – 13:00` when the event ends on the same day, or
+ * `11:00 – 9 Nov, 02:00` when it doesn't. Empty when there is no end
+ * (legacy rows) so the detail page keeps its old single-date line.
+ */
+function formatEventRange(
+  startsAt: string,
+  endsAt: string | null,
+  locale: string
+): string {
+  if (!endsAt) return ''
+  const start = new Date(startsAt)
+  const end = new Date(endsAt)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return ''
+  try {
+    const time = (date: Date) =>
+      new Intl.DateTimeFormat(locale, {
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(date)
+    if (start.toDateString() === end.toDateString()) {
+      return `${time(start)} – ${time(end)}`
+    }
+    const endDay = new Intl.DateTimeFormat(locale, {
+      day: 'numeric',
+      month: 'short',
+    }).format(end)
+    return `${time(start)} – ${endDay}, ${time(end)}`
+  } catch {
+    return ''
+  }
+}
+
+/**
  * Event detail page — mounted at `#/event/:id`.
  *
  * Mirrors the news detail page (`pages/news-slug.tsx`): the table has no
@@ -125,6 +158,13 @@ export function EventPage({ id }: { id: string }) {
                   <span className="text-xs">•</span>
                   <span className="text-sm">
                     {formatEventDate(event.startsAt, i18n.language || 'en')}
+                    {event.endsAt
+                      ? ` · ${formatEventRange(
+                          event.startsAt,
+                          event.endsAt,
+                          i18n.language || 'en'
+                        )}`
+                      : null}
                   </span>
                 </div>
                 <h1 className="text-3xl font-semibold leading-tight tracking-tight">

@@ -2,9 +2,10 @@
  * Upcoming events for the launcher home page.
  *
  * Backed by `GET /v1/events` in the zemu-website api (`apps/api/src/events`):
- * published events whose `startsAt` is still in the future, soonest first.
- * Drafts never appear, and an event drops off the list on its own once it
- * starts — the renderer does no date filtering.
+ * published events whose time range has not finished, soonest first.
+ * Drafts never appear, and an event stays listed between its start and end
+ * (an 11:00–13:00 event is still shown at 11:30) — the renderer does no
+ * status filtering.
  *
  * Public endpoint: same anonymous transport as the news feed (native HTTP
  * on desktop, browser fetch in previews).
@@ -21,6 +22,8 @@ export interface UpcomingEvent {
   coverAlt: string | null
   /** ISO start timestamp. */
   startsAt: string
+  /** ISO end timestamp, or null on legacy events (end == start). */
+  endsAt: string | null
 }
 
 /** Single event, including the rich-text body. */
