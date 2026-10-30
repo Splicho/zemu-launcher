@@ -61,6 +61,13 @@ function CountdownUnit({
 
 type Countdown = {
   live: boolean
+  /**
+   * False when there is nothing to count toward — an open-ended event
+   * while it runs, or a countdown the admin switched off. The row then
+   * shows the "Live" badge (or falls back to a plain date) with no
+   * digits.
+   */
+  hasTarget: boolean
   days: number
   hours: number
   minutes: number
@@ -74,24 +81,41 @@ type Countdown = {
  *   - between start and end → counts down to `endsAt` and reads "Ends in"
  *     (the event is live — the reason an 11:00–13:00 event stays on the
  *     launcher at 11:30 instead of vanishing)
- *   - legacy rows without `endsAt` → `end == start`, so they fall back to
- *     the old "ends when it starts" behaviour
+ *   - `endsAt === null` (open-ended) → live with **no** end to count
+ *     toward, so the row reads "Live" with no digits
+ *   - `showStartCountdown` / `showEndCountdown` false → the admin hid
+ *     that timer, so the row falls back to a plain date / bare "Live"
  *
- * Returns `null` when the timestamps are unusable so the caller can fall
- * back to a plain date.
+ * Returns `null` when there is nothing live to show, so the caller can
+ * fall back to a plain date.
  */
 function remaining(event: UpcomingEvent, now: number): Countdown | null {
   const startMs = Date.parse(event.startsAt)
   if (!Number.isFinite(startMs)) return null
-  const endMs = event.endsAt ? Date.parse(event.endsAt) : startMs
-  if (!Number.isFinite(endMs)) return null
+
+  // A null end is a real state (open-ended), not a legacy stand-in for
+  // "ends when it starts" — treat it as "never ends" instead.
+  const endMs =
+    event.endsAt === null ? Number.POSITIVE_INFINITY : Date.parse(event.endsAt)
+  if (Number.isNaN(endMs)) return null
 
   const live = now >= startMs && now < endMs
+  const countdownVisible = live
+    ? event.showEndCountdown
+    : event.showStartCountdown
   const target = live ? endMs : startMs
-  const total = Math.max(0, Math.floor((target - now) / SECOND_MS))
+  const hasTarget = countdownVisible && Number.isFinite(target)
+
+  // Not live and no timer to render — the caller shows the start date.
+  if (!live && !hasTarget) return null
+
+  const total = hasTarget
+    ? Math.max(0, Math.floor((target - now) / SECOND_MS))
+    : 0
 
   return {
     live,
+    hasTarget,
     days: Math.floor(total / DAY_SECONDS),
     hours: Math.floor((total % DAY_SECONDS) / HOUR_SECONDS),
     minutes: Math.floor((total % HOUR_SECONDS) / 60),
@@ -99,7 +123,11 @@ function remaining(event: UpcomingEvent, now: number): Countdown | null {
   }
 }
 
-/** `Sat, 8 Nov · 20:00` — used only when the timestamps can't be parsed. */
+/**
+ * `Sat, 8 Nov · 20:00` — the fallback for the right-hand column when there
+ * is no countdown to render: an unparseable timestamp, or a live
+ * open-ended event with no end to count toward.
+ */
 function formatStartsAt(iso: string, locale: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return '—'
@@ -123,7 +151,10 @@ function formatStartsAt(iso: string, locale: string): string {
  * Upcoming events table for the home page.
  *
  * The right column is a live countdown rather than a static date: "Starts
- * in 2h 15m" before the event, "Ends in" while it runs. Uses the
+ * in 2h 15m" before the event, "Ends in" while it runs, falling back to
+ * the start date when there is nothing to count toward. Running events
+ * carry a "Live" badge next to the title, where it reads as part of the
+ * event's name rather than as a unit of the countdown. Uses the
  * dashboard's `CardTable` frame + `Table` primitives and an `Empty` state,
  * so it matches the admin tables exactly.
  */
@@ -144,8 +175,11 @@ export function UpcomingEvents({ className }: { className?: string }) {
 
   // Once an event's window has closed the cached payload still lists it,
   // so refetch once to drop it instead of leaving "Ends in 00:00:00" up.
+  // Open-ended events have no end to pass — including them here would
+  // refetch every 5s forever, since nothing but staff can close them.
   const hasEnded = events.some((event) => {
-    const end = event.endsAt ? Date.parse(event.endsAt) : Date.parse(event.startsAt)
+    if (event.endsAt === null) return false
+    const end = Date.parse(event.endsAt)
     return Number.isFinite(end) && now >= end
   })
   useEffect(() => {
@@ -210,22 +244,34 @@ export function UpcomingEvents({ className }: { className?: string }) {
               return (
                 <TableRow key={event.id}>
                   <TableCell className="max-w-0">
-                    <a
-                      href={`#/event/${event.id}`}
-                      title={event.title}
-                      className="block truncate font-medium hover:underline"
-                    >
-                      {event.title}
-                    </a>
+                    <div className="flex items-center gap-2">
+                      {time?.live ? (
+                        <Badge
+                          variant="secondary"
+                          className="shrink-0 rounded-md"
+                        >
+                          {/* Same red-dot convention as `LiveIndicator`; the
+                              badge already supplies the gap. Decorative —
+                              the "Live" label carries the meaning. */}
+                          <span
+                            aria-hidden
+                            className="size-1.5 shrink-0 rounded-full bg-red-500"
+                          />
+                          {t('eventsTable.live')}
+                        </Badge>
+                      ) : null}
+                      <a
+                        href={`#/event/${event.id}`}
+                        title={event.title}
+                        className="block min-w-0 flex-1 truncate font-medium hover:underline"
+                      >
+                        {event.title}
+                      </a>
+                    </div>
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground tabular-nums">
-                    {time ? (
+                    {time?.hasTarget ? (
                       <span className="inline-flex items-center justify-end gap-1 text-xs">
-                        {time.live ? (
-                          <Badge variant="secondary" className="rounded-md">
-                            {t('eventsTable.live')}
-                          </Badge>
-                        ) : null}
                         <span className="text-muted-foreground">
                           {time.live
                             ? t('eventsTable.endsIn')

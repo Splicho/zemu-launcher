@@ -370,6 +370,7 @@ export default {
     eventPage: {
       back: 'Retour',
       badge: 'Événement',
+      openEnded: 'Sans date de fin',
       notFound: 'Événement introuvable',
       notFoundDesc: "Cet événement a peut-être été supprimé ou n'est plus publié.",
       failedLoad: "Impossible de charger cet événement : {{error}}",

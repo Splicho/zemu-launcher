@@ -32,8 +32,9 @@ function formatEventDate(iso: string, locale: string): string {
 
 /**
  * `11:00 – 13:00` when the event ends on the same day, or
- * `11:00 – 9 Nov, 02:00` when it doesn't. Empty when there is no end
- * (legacy rows) so the detail page keeps its old single-date line.
+ * `11:00 – 9 Nov, 02:00` when it doesn't. Empty when there is no end, so
+ * an open-ended event keeps a single-date line (its "Open-ended" badge
+ * carries the missing end).
  */
 function formatEventRange(
   startsAt: string,
@@ -155,6 +156,11 @@ export function EventPage({ id }: { id: string }) {
                   <Badge variant="outline" className="rounded-sm">
                     {t('eventPage.badge')}
                   </Badge>
+                  {event.isOpenEnded ? (
+                    <Badge variant="secondary" className="rounded-sm">
+                      {t('eventPage.openEnded')}
+                    </Badge>
+                  ) : null}
                   <span className="text-xs">•</span>
                   <span className="text-sm">
                     {formatEventDate(event.startsAt, i18n.language || 'en')}

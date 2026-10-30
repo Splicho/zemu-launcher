@@ -351,6 +351,7 @@ export default {
     eventPage: {
       back: '返回',
       badge: '活动',
+      openEnded: '无固定结束时间',
       notFound: '未找到活动',
       notFoundDesc: '该活动可能已被删除或不再发布。',
       failedLoad: '无法加载此活动：{{error}}',

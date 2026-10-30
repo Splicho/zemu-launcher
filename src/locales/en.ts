@@ -402,6 +402,8 @@ export default {
     eventPage: {
       back: 'Back',
       badge: 'Event',
+      // Event with no scheduled end — closes when staff say so.
+      openEnded: 'Open-ended',
       notFound: 'Event not found',
       notFoundDesc: 'This event may have been removed or is no longer published.',
       failedLoad: "Couldn't load this event: {{error}}",

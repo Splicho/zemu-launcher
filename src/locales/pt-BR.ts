@@ -358,6 +358,7 @@ export default {
     eventPage: {
       back: 'Voltar',
       badge: 'Evento',
+      openEnded: 'Sem data de término',
       notFound: 'Evento não encontrado',
       notFoundDesc: 'Este evento pode ter sido removido ou não está mais publicado.',
       failedLoad: 'Não foi possível carregar este evento: {{error}}',
