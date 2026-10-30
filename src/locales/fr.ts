@@ -385,6 +385,11 @@ export default {
     },
     slayersTable: {
       title: 'Tueurs de la semaine',
+      resetsIn: 'Réinitialisation dans',
+      unitDays: 'j',
+      unitHours: 'h',
+      unitMinutes: 'min',
+      unitSeconds: 's',
       player: 'Joueur',
       kills: 'Éliminations',
       killsPerMatch: 'É/M',

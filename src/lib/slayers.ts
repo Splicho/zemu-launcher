@@ -32,10 +32,12 @@ export interface SlayerEntry {
 
 export interface SlayersResponse {
   entries: SlayerEntry[]
-  /** Inclusive start of the 7-day window (ISO). */
+  /** Inclusive start of the window (ISO). */
   from: string
   /** End of the window / generation time (ISO). */
   to: string
+  /** Next weekly reset (ISO) — Monday 00:00 UTC. */
+  resetsAt: string
   fetchedAt: string
   source: 'live' | 'cache' | 'unavailable'
 }

@@ -366,6 +366,11 @@ export default {
     },
     slayersTable: {
       title: '本周击杀榜',
+      resetsIn: '距离重置',
+      unitDays: '天',
+      unitHours: '小时',
+      unitMinutes: '分',
+      unitSeconds: '秒',
       player: '玩家',
       kills: '击杀',
       killsPerMatch: '场均',

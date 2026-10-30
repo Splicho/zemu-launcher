@@ -417,6 +417,11 @@ export default {
     },
     slayersTable: {
       title: 'Slayers of the Week',
+      resetsIn: 'Resets in',
+      unitDays: 'd',
+      unitHours: 'h',
+      unitMinutes: 'm',
+      unitSeconds: 's',
       player: 'Player',
       kills: 'Kills',
       killsPerMatch: 'K/M',

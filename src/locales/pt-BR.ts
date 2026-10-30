@@ -373,6 +373,11 @@ export default {
     },
     slayersTable: {
       title: 'Assassinos da Semana',
+      resetsIn: 'Reinicia em',
+      unitDays: 'd',
+      unitHours: 'h',
+      unitMinutes: 'min',
+      unitSeconds: 's',
       player: 'Jogador',
       kills: 'Abates',
       killsPerMatch: 'A/P',
