@@ -408,7 +408,7 @@ export default {
       noDescription: 'No details have been posted for this event yet.',
     },
     eventsTable: {
-      title: 'Upcoming events',
+      title: 'Upcoming Events',
       event: 'Event',
       starts: 'Starts',
       empty: 'No upcoming events.',

@@ -364,7 +364,7 @@ export default {
       noDescription: 'Nenhum detalhe foi publicado para este evento ainda.',
     },
     eventsTable: {
-      title: 'Próximos eventos',
+      title: 'Próximos Eventos',
       event: 'Evento',
       starts: 'Início',
       empty: 'Nenhum evento próximo.',
