@@ -66,15 +66,14 @@ export interface LeaderboardSelection {
 }
 
 /**
- * The season board is global — it ignores region and mode. "All modes"
- * therefore maps to `/v1/stats/leaderboards`, the view the website opens on;
- * a specific mode selects that region's recent-match board. The launcher
- * default has to match the website's (`EU` + all modes), otherwise the two
- * apps show entirely different rankings — see `leaderboardPath` below.
+ * Page default, matching the website: EU / Solo. Every selection maps to the
+ * region+mode board, which the api now fills with each player's season totals
+ * — there is no separate global "All modes" view any more (see
+ * `leaderboardPath`).
  */
 export const DEFAULT_LEADERBOARD_SELECTION: LeaderboardSelection = {
   region: 'EU',
-  teamMode: 'all',
+  teamMode: 'Solo',
 }
 
 const REGION_PARAM: Record<string, string> = { EU: 'eu', NA: 'na' }
@@ -85,18 +84,13 @@ const MODE_PARAM: Record<string, string> = {
 }
 
 export function leaderboardPath(selection: LeaderboardSelection): string {
-  const region = REGION_PARAM[selection.region]
-  const mode = MODE_PARAM[selection.teamMode]
+  // Every selectable mode maps to the region+mode board; unknown values fall
+  // back to EU / Solos rather than the global season route, which no longer
+  // has a UI entry point.
+  const region = REGION_PARAM[selection.region] ?? 'eu'
+  const mode = MODE_PARAM[selection.teamMode] ?? 'solos'
 
-  // The season board has no region or mode split; keep this as the
-  // fallback for an unknown/invalid mode.
-  if (!mode) {
-    return '/leaderboards'
-  }
-
-  const params = new URLSearchParams()
-  if (region) params.set('region', region)
-  params.set('mode', mode)
+  const params = new URLSearchParams({ region, mode })
   return `/leaderboards/matches?${params.toString()}`
 }
 
@@ -176,6 +170,13 @@ export async function fetchTopLeaderboard(options: FetchTopLeaderboardOptions = 
     throw new Error(`Leaderboard request failed (HTTP ${response.status})`)
   }
   const data = await response.json()
+  // The api answers 200 with `source: "unavailable"` when it cannot build the
+  // board (identity sync down, upstream unreachable). Treat that as an error
+  // instead of rendering it as "no players" — the website throws the same way
+  // in `apps/leaderboard/lib/leaderboard-fetch.ts`.
+  if (data.source === 'unavailable') {
+    throw new Error('Leaderboard is temporarily unavailable. Try again shortly.')
+  }
   const entries = ((data.entries ?? []) as Array<Parameters<typeof toEntry>[0]>).map(toEntry)
   const matchingEntries = tier === 'all' ? entries : entries.filter((entry) => entry.tier === tier)
 
@@ -201,6 +202,13 @@ export async function fetchLeaderboardEntries(
   })
   if (!response.ok) throw new Error(`Leaderboard request failed (HTTP ${response.status})`)
   const data = await response.json()
+  // Same rule as the website's fetcher: a 200 with `source: "unavailable"`
+  // is a failed refresh (identity sync down, upstream unreachable), not an
+  // empty leaderboard. Throwing makes the page show its error state instead
+  // of "No players found", and stops TanStack Query caching the empty view.
+  if (data.source === 'unavailable') {
+    throw new Error('Leaderboard is temporarily unavailable. Try again shortly.')
+  }
   const entries = ((data.entries ?? []) as Array<Parameters<typeof toEntry>[0]>).map(toEntry)
   // The upstream game server assigns `position` by its own array order, which
   // does NOT match the ranking metric the website shows (`top10TotalScore`,
